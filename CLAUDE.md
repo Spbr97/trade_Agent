@@ -4,7 +4,7 @@ Short-term momentum scanner for NSE stocks using the INDstocks (INDmoney) API.
 Evening scan on daily charts, live trigger monitoring, trades held hours to 10 sessions.
 It alerts; the human places every order.
 
-**Current milestone: M2 built, live check pending (needs `tradedesk auth setup`); M1 golden tests pending contract-note figures.** Next: M3. Full spec and milestone list: PLAN.md.
+**Status: M1, M2, M3 built and unit-tested. Pending live data (needs `tradedesk auth setup`): M2 sign-off (NSE close check), M3 sign-off (quality report on real history). M1 golden tests pending contract-note figures.** Next: M4 (indicators, regime, RS, patterns). Full spec and milestone list: PLAN.md.
 
 ## Hard rules
 - NEVER call or implement order placement, modification or cancellation unless the task explicitly says "Milestone M12".
@@ -31,6 +31,7 @@ It alerts; the human places every order.
 - Credentials: uv run tradedesk auth setup [--stdin] | auth status | auth check | auth clear   (keychain only; hidden input only works in a real Windows console, not Git Bash/mintty)
 - Instruments: uv run tradedesk instruments refresh
 - Candles / quote / stream: uv run tradedesk candles NSE_3045 --interval 1day --days 30 | quote NSE_3045 | stream NSE:3045 --seconds 30
+- Data store: uv run tradedesk data sync-instruments | data load [--interval 1day] | data import-actions <nse.csv> | data import-results <nse.csv> | data quality [--out data/reports/q.csv] | data universe [--on YYYY-MM-DD] | data status
 - Live session: uv run tradedesk live            (M7+)
 - Evening scan: uv run tradedesk scan --date today   (M6+)
 - Backtest: uv run tradedesk backtest --setup base_breakout --from 2023-09-01   (M5+)
@@ -45,6 +46,9 @@ It alerts; the human places every order.
 - INDstocks facts baked into broker/indstocks/: REST codes are `NSE_3045`, WebSocket codes `NSE:3045`; candle `ts` is the OPEN time in epoch seconds, requests use epoch ms; ≤5 codes per candle call, ≤1000 per quote call, ≤3000 instruments per WS connection; one TOTP token live at a time (24 h, 1 generation/min).
 - The doc's FAQ section contradicts the endpoint pages (different WS URL, `symbols` param). Follow the endpoint pages and the OpenAPI spec, never the FAQ.
 - Market-data prices are float (pandas/DuckDB bound); accounting money is Decimal.
+- Candle store keeps RAW candles; split/bonus adjustment is applied on read (`CandleStore.load(adjusted=True)`) from the corporate_actions table. Never write adjusted prices back.
+- The trading calendar is the benchmark index's daily candle dates (config/universe.yaml `benchmark`); universe membership is computed as-of-date from stored candles (survivorship caveat stays in every backtest report).
+- Windows Smart App Control is ON on this machine: it blocks unsigned DLLs in brand-new wheels (numpy 2.5 / pandas 3 failed). Pins in pyproject.toml exist for that reason; if a new package fails with "Application Control policy has blocked this file", pin an older, widely-distributed version.
 - pydantic models: Candle, Signal, Position, TradeCard, RiskStatus, RegimeSnapshot, HealthStatus
 - One module per setup, implementing the Setup protocol in setups/base.py
 - New setups ship disabled until their backtest report and first 30 paper trades are reviewed

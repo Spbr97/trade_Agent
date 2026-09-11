@@ -15,6 +15,9 @@ dependencies = [
     "pyotp>=2.9",
     "keyring>=25",
     "tzdata>=2024.1",
+    "duckdb>=1.1",
+    "pandas>=2.2,<3",     # 3.x binaries blocked by Windows Smart App Control (see README)
+    "numpy>=1.26,<2.4",   # 2.5.x numpy.random DLL blocked by Smart App Control
 ]
 
 [project.scripts]
@@ -29,6 +32,7 @@ dev = [
     "types-PyYAML>=6.0",
     "pytest-asyncio>=0.24",
     "respx>=0.21",
+    "pandas-stubs>=2.2,<3",
 ]
 
 [build-system]

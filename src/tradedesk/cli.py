@@ -20,6 +20,7 @@ from tradedesk.risk.costs import LegCost, net_reward_risk, round_trip_cost
 
 if TYPE_CHECKING:
     from tradedesk.broker.indstocks import IndstocksClient
+    from tradedesk.data.candle_store import CandleStore
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)
 config_app = typer.Typer(no_args_is_help=True)
@@ -28,6 +29,10 @@ auth_app = typer.Typer(no_args_is_help=True)
 app.add_typer(auth_app, name="auth", help="INDstocks credentials (stored in the OS keychain).")
 instruments_app = typer.Typer(no_args_is_help=True)
 app.add_typer(instruments_app, name="instruments", help="Instrument master files.")
+data_app = typer.Typer(no_args_is_help=True)
+app.add_typer(data_app, name="data", help="Candle store: load history, import events, quality.")
+
+DB_OPTION = typer.Option(Path("data/tradedesk.duckdb"), "--db", help="DuckDB file.")
 
 
 ROOT_OPTION = typer.Option(Path("."), "--root", help="Project root containing config/.")
@@ -379,6 +384,199 @@ def stream(
         typer.echo(f"{count} ticks in {seconds}s; reconnects={feed.reconnects}")
 
     asyncio.run(_with_client(go))
+
+
+# ------------------------------------------------------------------- M3: data
+
+
+def _store(db: Path) -> CandleStore:
+    from tradedesk.data.candle_store import CandleStore
+
+    return CandleStore(db)
+
+
+def _reference_code(store: CandleStore, root: Path) -> str:
+    name = load_config(root).universe.benchmark
+    code = store.index_code(name)
+    if code is None:
+        raise typer.BadParameter(
+            f"benchmark {name!r} not in instruments table; run `tradedesk data sync-instruments`"
+        )
+    return code
+
+
+@data_app.command("sync-instruments")
+def data_sync_instruments(db: Path = DB_OPTION) -> None:
+    """Download the equity and index masters into the store's instruments table."""
+
+    async def go(c: IndstocksClient) -> None:
+        from tradedesk.broker.indstocks.instruments import nse_cash_equities
+
+        eq = await c.equity_instruments()
+        idx = await c.index_instruments()
+        with _store(db) as store:
+            n = store.upsert_instruments([*nse_cash_equities(eq), *idx])
+        typer.echo(f"{n} instruments stored ({len(idx)} indices) in {db}")
+
+    asyncio.run(_with_client(go))
+
+
+@data_app.command("load")
+def data_load(
+    codes: list[str] = typer.Argument(None, help="Scrip codes; default = universe + benchmark"),
+    interval: str = typer.Option("1day", "--interval"),
+    years: float | None = typer.Option(
+        None, "--years", help="History depth; default 10 daily / 2 intraday"
+    ),
+    db: Path = DB_OPTION,
+    root: Path = ROOT_OPTION,
+) -> None:
+    """Pull candle history into the store (incremental: only new bars are fetched)."""
+    from tradedesk.broker.indstocks.models import IST, Interval
+    from tradedesk.data.history_loader import LoadResult, default_start, load_history
+
+    iv = Interval(interval)
+    now = datetime.now(IST)
+    start = now - timedelta(days=365 * years) if years else default_start(iv, now)
+
+    async def go(c: IndstocksClient) -> None:
+        with _store(db) as store:
+            targets = list(codes) if codes else store.instrument_codes(kind="equity")
+            ref = store.index_code(load_config(root).universe.benchmark)
+            if ref and ref not in targets:
+                targets.append(ref)
+            if not targets:
+                raise typer.BadParameter("no codes: pass scrip codes or run data sync-instruments")
+            done = 0
+
+            def progress(r: LoadResult) -> None:
+                nonlocal done
+                done += 1
+                if done % 25 == 0 or r.error:
+                    typer.echo(
+                        f"  {done}/{len(targets)} {r.scrip_code}: {r.fetched} bars {r.error or ''}"
+                    )
+
+            typer.echo(
+                f"loading {iv.value} for {len(targets)} codes from {start:%Y-%m-%d} into {db}"
+            )
+            summary = await load_history(
+                c, store, targets, iv, start=start, end=now, progress=progress
+            )
+            typer.echo(f"fetched {summary.fetched} bars; {len(summary.errors)} errors")
+            for r in summary.errors[:20]:
+                typer.echo(f"  ERROR {r.scrip_code}: {r.error}")
+            from tradedesk.broker.indstocks.ratelimit import Category
+
+            typer.echo(f"data-API calls today: {c.limiter.used_today(Category.DATA)}")
+
+    asyncio.run(_with_client(go))
+
+
+@data_app.command("import-actions")
+def data_import_actions(
+    csv_file: Path = typer.Argument(..., exists=True), db: Path = DB_OPTION
+) -> None:
+    """Import NSE's corporate-actions CSV (splits and bonuses adjust prices on read)."""
+    from tradedesk.data.corporate_actions import parse_nse_corporate_actions_csv
+
+    actions = parse_nse_corporate_actions_csv(csv_file.read_text(encoding="utf-8-sig"))
+    with _store(db) as store:
+        n = store.upsert_corporate_actions(actions)
+    adjusting = sum(1 for a in actions if a.adjusts_prices)
+    unparsed = [a for a in actions if a.kind.value != "other" and not a.adjusts_prices]
+    typer.echo(
+        f"{n} actions stored; {adjusting} adjust prices; "
+        f"{len(unparsed)} split/bonus rows with unparsed ratio"
+    )
+    for a in unparsed[:10]:
+        typer.echo(f"  CHECK {a.symbol} {a.ex_date}: {a.purpose}")
+
+
+@data_app.command("import-results")
+def data_import_results(
+    csv_file: Path = typer.Argument(..., exists=True), db: Path = DB_OPTION
+) -> None:
+    """Import NSE's board-meetings CSV (results dates drive the results blackout)."""
+    from tradedesk.data.results_calendar import parse_nse_board_meetings_csv
+
+    events = parse_nse_board_meetings_csv(csv_file.read_text(encoding="utf-8-sig"))
+    with _store(db) as store:
+        n = store.upsert_results_events(events)
+    typer.echo(f"{n} results events stored")
+
+
+@data_app.command("quality")
+def data_quality(
+    codes: list[str] = typer.Argument(None),
+    out: Path | None = typer.Option(None, "--out", help="Write the full issue list as CSV"),
+    db: Path = DB_OPTION,
+    root: Path = ROOT_OPTION,
+) -> None:
+    """Data-quality report: gaps, bad bars, big jumps, suspected unadjusted splits, staleness."""
+    from tradedesk.broker.indstocks.models import Interval
+    from tradedesk.data.health import run_quality_report
+
+    with _store(db) as store:
+        ref = _reference_code(store, root)
+        targets = list(codes) if codes else [c for c in store.codes(Interval.D1) if c != ref]
+        rep = run_quality_report(store, targets, ref)
+    typer.echo(f"{rep.codes_checked} codes checked; {len(rep.issues)} issues")
+    for kind, n in sorted(rep.by_kind().items(), key=lambda kv: -kv[1]):
+        typer.echo(f"  {kind.value:<28}{n:>8}")
+    worst = sorted(rep.issues, key=lambda i: -i.count)[:15]
+    for i in worst:
+        typer.echo(f"  {i.scrip_code:<12}{i.kind.value:<28}{str(i.on or ''):<12}{i.detail}")
+    if out is not None:
+        out.parent.mkdir(parents=True, exist_ok=True)
+        rep.to_frame().to_csv(out, index=False)
+        typer.echo(f"written {out}")
+
+
+@data_app.command("universe")
+def data_universe(
+    on: str | None = typer.Option(None, "--on", help="YYYY-MM-DD; default today"),
+    db: Path = DB_OPTION,
+    root: Path = ROOT_OPTION,
+) -> None:
+    """List the liquid universe as of a date, from the rules in config/universe.yaml."""
+    from tradedesk.broker.indstocks.models import IST
+    from tradedesk.data.universe import UniverseRules, universe_on
+
+    cfg = load_config(root).universe
+    rules = UniverseRules(
+        min_avg_turnover_inr=float(cfg.min_avg_daily_turnover_inr), min_price=float(cfg.min_price)
+    )
+    day = datetime.strptime(on, "%Y-%m-%d").date() if on else datetime.now(IST).date()
+    with _store(db) as store:
+        members = universe_on(store, store.instrument_codes(kind="equity"), day, rules)
+        names = [f"{c} {store.symbol_for(c) or ''}" for c in members]
+    typer.echo(f"{len(members)} members on {day}")
+    for n in names:
+        typer.echo(f"  {n}")
+
+
+@data_app.command("status")
+def data_status(db: Path = DB_OPTION) -> None:
+    """What the store holds."""
+    from tradedesk.broker.indstocks.models import Interval
+
+    with _store(db) as store:
+        for iv in (Interval.D1, Interval.H1, Interval.M15):
+            codes = store.codes(iv)
+            if not codes:
+                continue
+            stamps = [t for c in codes if (t := store.last_ts(c, iv)) is not None]
+            when = f"{max(stamps):%Y-%m-%d %H:%M}" if stamps else "-"
+            typer.echo(f"  {iv.value:<10}{len(codes):>5} codes, latest bar {when}")
+        n_inst = store.con.execute("SELECT count(*) FROM instruments").fetchone()
+        n_ca = store.con.execute("SELECT count(*) FROM corporate_actions").fetchone()
+        n_re = store.con.execute("SELECT count(*) FROM results_events").fetchone()
+        typer.echo(
+            f"  instruments {n_inst[0] if n_inst else 0}, "
+            f"corporate actions {n_ca[0] if n_ca else 0}, "
+            f"results events {n_re[0] if n_re else 0}"
+        )
 
 
 def _not_yet(milestone: str) -> None:
