@@ -1,1 +1,1 @@
-"""tradedesk.alerts — placeholder; implemented in a later milestone (see PLAN.md §14)."""
+"""Alerts (M8): desktop, Telegram, trade cards. charts.py (M6) renders signal PNGs."""

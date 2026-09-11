@@ -593,9 +593,50 @@ def live() -> None:
 
 
 @app.command()
-def scan(date: str = typer.Option("today", "--date")) -> None:
-    """Evening scan and watchlist (M6)."""
-    _not_yet("M6")
+def scan(
+    on: str = typer.Option("today", "--date", help="YYYY-MM-DD or 'today' (last stored session)"),
+    setup: list[str] = typer.Option(None, "--setup", help="Override enabled setups"),
+    charts: bool = typer.Option(False, "--charts", help="Render a PNG per active entry"),
+    include_rejected: bool = typer.Option(True, "--rejected/--no-rejected"),
+    out_dir: Path = typer.Option(Path("data/watchlists"), "--out-dir"),
+    db: Path = DB_OPTION,
+    root: Path = ROOT_OPTION,
+) -> None:
+    """Evening scan: build, print and save tomorrow's watchlist from stored daily candles."""
+    from tradedesk.alerts.charts import render_signal_chart
+    from tradedesk.backtest.runner import prepare_market
+    from tradedesk.broker.indstocks.models import Interval
+    from tradedesk.engine.signals import SetupKind
+    from tradedesk.scan import build_watchlist, render_text, save_watchlist, scan_config
+
+    settings = load_config(root)
+    kinds = [SetupKind(k) for k in setup] if setup else None
+    with _store(db) as store:
+        ref = _reference_code(store, root)
+        vix = store.index_code(settings.universe.volatility_index)
+        if on == "today":
+            last = store.last_ts(ref, Interval.D1)
+            if last is None:
+                raise typer.BadParameter("no benchmark candles stored; run `tradedesk data load`")
+            day = last.date()
+        else:
+            day = datetime.strptime(on, "%Y-%m-%d").date()
+        cfg = scan_config(settings, day, kinds)
+        cfg.vix_code = vix
+        codes = [c for c in store.codes(Interval.D1) if c not in (ref, vix)]
+        typer.echo(f"scanning {len(codes)} codes as of {day} with {[k.value for k in cfg.setups]}")
+        md = prepare_market(store, codes, ref, cfg)
+    wl = build_watchlist(md, cfg, settings, day)
+    typer.echo(render_text(wl, include_rejected=include_rejected))
+    path = save_watchlist(wl, out_dir)
+    typer.echo(f"saved {path}")
+    if charts:
+        chart_dir = out_dir / day.isoformat()
+        for e in wl.active:
+            code = e.signal.scrip_code
+            feats = md.features[code].iloc[: md.pos_by_date[code][day] + 1]
+            png = render_signal_chart(feats, e.signal, chart_dir / f"{e.signal.symbol}.png")
+            typer.echo(f"  chart {png}")
 
 
 @app.command()

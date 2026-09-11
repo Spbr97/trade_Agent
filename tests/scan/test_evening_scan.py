@@ -1,0 +1,223 @@
+"""M6: scoring, filters, watchlist build, parity with the backtester, report, charts."""
+
+from __future__ import annotations
+
+from datetime import date
+from pathlib import Path
+
+import pytest
+
+from tests.backtest.test_runner import CAL, PARAMS, REF, RULES, build_store, config
+from tradedesk.alerts.charts import render_signal_chart
+from tradedesk.backtest.runner import prepare_market, run_backtest
+from tradedesk.config import load_config
+from tradedesk.config.models import RiskConfig, Settings, UniverseConfig
+from tradedesk.engine.filters import apply_filters
+from tradedesk.engine.lifecycle import SignalState
+from tradedesk.engine.scoring import Grade, ScoreInputs, TrackRecord, score_signal
+from tradedesk.engine.signals import SetupKind, Signal
+from tradedesk.scan import (
+    OpenPositionInfo,
+    build_watchlist,
+    load_watchlist,
+    render_markdown,
+    render_text,
+    save_watchlist,
+    trade_card,
+)
+
+ROOT = Path(__file__).resolve().parents[2]
+
+
+def sig(**kw: object) -> Signal:
+    base = dict(
+        id="s", scrip_code="NSE_1", symbol="ONE", setup=SetupKind.BASE_BREAKOUT,
+        armed_on=date(2026, 3, 2), trigger=100.0, stop=95.0, t1=110.0, t2=115.0, atr=2.0,
+    )  # fmt: skip
+    base.update(kw)
+    return Signal(**base)  # type: ignore[arg-type]
+
+
+# ----------------------------------------------------------------- scoring
+
+
+def test_score_grades_and_components() -> None:
+    strong = score_signal(
+        ScoreInputs(
+            signal=sig(),
+            trend_strength=1.0,
+            rs_percentile=95,
+            sector_percentile=90,
+            pattern_quality=0.9,
+            room_r=4.0,
+            net_rr_t2=3.5,
+            regime="risk_on",
+        )  # fmt: skip
+    )
+    assert strong.grade is Grade.A and strong.total >= 80 and strong.alertable
+    assert set(strong.components) == {
+        "trend",
+        "rs",
+        "sector",
+        "pattern",
+        "room",
+        "net_rr",
+        "regime",
+        "track",
+    }
+    weak = score_signal(
+        ScoreInputs(
+            signal=sig(),
+            trend_strength=0.3,
+            rs_percentile=55,
+            sector_percentile=None,
+            pattern_quality=0.3,
+            room_r=1.0,
+            net_rr_t2=1.6,
+            regime="neutral",
+        )  # fmt: skip
+    )
+    assert weak.grade is Grade.C and not weak.alertable
+    assert any("overhead" in n for n in weak.notes) and any("net R:R" in n for n in weak.notes)
+    benched = score_signal(
+        ScoreInputs(
+            signal=sig(),
+            trend_strength=1.0,
+            rs_percentile=95,
+            sector_percentile=90,
+            pattern_quality=0.9,
+            room_r=None,
+            net_rr_t2=3.5,
+            regime="risk_on",
+            track=TrackRecord(trades=40, expectancy_r=-0.2, benched=True),
+        )  # fmt: skip
+    )
+    assert benched.grade is Grade.A and benched.benched and not benched.alertable
+    assert benched.components["track"] < 0.5
+
+
+# ----------------------------------------------------------------- filters
+
+
+def test_filters_reasons_and_net_rr() -> None:
+    risk = RiskConfig(trading_capital=100000)  # type: ignore[arg-type]
+    uni = UniverseConfig()
+    ok = apply_filters(
+        sig(), qty=50, atr_pct=2.5, avg_turnover=1e8, regime="risk_on", risk=risk, universe=uni
+    )
+    assert ok.ok and ok.net_rr_t2 is not None and ok.net_rr_t2 > 2.0 and ok.net_rr_t1 is not None
+    bad = apply_filters(
+        sig(t2=104.0), qty=50, atr_pct=7.0, avg_turnover=1e6, regime="risk_off", risk=risk,
+        universe=uni, surveillance={"ONE": "ASM"}, upper_circuit=100.2,
+    )  # fmt: skip
+    assert not bad.ok
+    joined = " ".join(bad.reasons)
+    for word in ("turnover", "ATR", "ASM", "circuit", "risk_off", "net R:R"):
+        assert word in joined, word
+    none = apply_filters(
+        sig(), qty=0, atr_pct=None, avg_turnover=None, regime=None, risk=risk, universe=uni
+    )
+    assert none.ok and none.net_rr_t2 is None
+
+
+# ------------------------------------------------------------ watchlist e2e
+
+
+@pytest.fixture(scope="module")
+def world():  # type: ignore[no-untyped-def]
+    stocks = {"NSE_WIN": ("win", 1), "NSE_GAP": ("gap", 2), "NSE_STOP": ("stop", 3)}
+    store = build_store(stocks)
+    cfg = config(CAL[300 - 40], CAL[-1])
+    md = prepare_market(store, list(stocks), REF, cfg)
+    res = run_backtest(md, cfg)
+    settings = load_config(ROOT)
+    return store, cfg, md, res, settings
+
+
+def _settings_for(settings: Settings, cfg) -> Settings:  # type: ignore[no-untyped-def]
+    # Use the test's relaxed setup params and a universe rule that admits the synthetic stocks.
+    setups = settings.setups.model_copy(
+        update={
+            "setups": {
+                "base_breakout": settings.setups.setups["base_breakout"].model_copy(
+                    update=PARAMS["base_breakout"]
+                )
+            }
+        }
+    )
+    universe = settings.universe.model_copy(
+        update={
+            "min_avg_daily_turnover_inr": RULES.min_avg_turnover_inr,
+            "min_price": RULES.min_price,
+        }
+    )
+    return settings.model_copy(update={"setups": setups, "universe": universe})
+
+
+def test_watchlist_matches_backtester_signals_for_that_date(world) -> None:  # type: ignore[no-untyped-def]
+    store, cfg, md, res, settings = world
+    armed_by_date: dict[date, set[str]] = {}
+    for ts in res.signals:
+        armed_by_date.setdefault(ts.signal.armed_on, set()).add(ts.signal.id)
+    assert armed_by_date
+    s = _settings_for(settings, cfg)
+    for d, ids in sorted(armed_by_date.items())[:5]:
+        # The backtester skips codes it is already tracking (armed or open) when it scans;
+        # give the evening scan the same exclusion via open positions.
+        live = {
+            ts.signal.scrip_code
+            for ts in res.signals
+            if ts.signal.armed_on < d and (not ts.terminal or ts.history[-1].on > d)
+        }
+        held = [OpenPositionInfo(scrip_code=c, entry=1.0, stop=1.0, qty=0) for c in live]
+        wl = build_watchlist(md, cfg, s, d, open_positions=held)
+        assert {e.signal.id for e in wl.entries} == ids, d
+        # Same levels, not just the same ids.
+        levels = {ts.signal.id: (ts.signal.trigger, ts.signal.stop) for ts in res.signals}
+        for e in wl.entries:
+            assert (e.signal.trigger, e.signal.stop) == levels[e.signal.id]
+
+
+def test_watchlist_entries_are_priced_scored_and_serialisable(world, tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
+    store, cfg, md, res, settings = world
+    d = sorted({ts.signal.armed_on for ts in res.signals})[-1]
+    wl = build_watchlist(md, cfg, _settings_for(settings, cfg), d)
+    assert wl.entries
+    e = wl.entries[0]
+    assert e.qty > 0 and e.risk_pct <= float(cfg.risk.max_risk_per_trade_pct) + 1e-9
+    assert e.costs_round_trip > 0 and e.net_rr_t2 is not None
+    assert e.grade in (Grade.A, Grade.B, Grade.C) and 0 <= e.score <= 100
+    assert wl.entries == sorted(wl.entries, key=lambda x: (-x.score, x.signal.scrip_code))
+    text = render_text(wl)
+    assert e.signal.symbol in text
+    if wl.active:
+        assert "Trigger" in text and "Qty" in text
+    assert "|" in render_markdown(wl)
+    card = trade_card(e, wl.capital)
+    assert f"{e.signal.trigger:.2f}" in card and "net R:R" in card
+    path = save_watchlist(wl, tmp_path / "wl")
+    again = load_watchlist(path)
+    assert again.on == wl.on and [x.signal.id for x in again.entries] == [
+        x.signal.id for x in wl.entries
+    ]
+
+
+def test_open_positions_are_excluded_and_add_heat(world) -> None:  # type: ignore[no-untyped-def]
+    store, cfg, md, res, settings = world
+    d = sorted({ts.signal.armed_on for ts in res.signals})[-1]
+    s = _settings_for(settings, cfg)
+    base = build_watchlist(md, cfg, s, d)
+    code = base.entries[0].signal.scrip_code
+    held = [OpenPositionInfo(scrip_code=code, entry=100.0, stop=90.0, qty=200)]  # 2,000 risk
+    wl = build_watchlist(md, cfg, s, d, open_positions=held)
+    assert all(e.signal.scrip_code != code for e in wl.entries)
+    assert all(e.heat_before_pct == pytest.approx(2000 / cfg.capital) for e in wl.entries)
+
+
+def test_chart_renders_png(world, tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
+    store, cfg, md, res, settings = world
+    ts = next(t for t in res.signals if t.state is not SignalState.ARMED)
+    code = ts.signal.scrip_code
+    feats = md.features[code].iloc[: md.pos_by_date[code][ts.signal.armed_on] + 1]
+    out = render_signal_chart(feats, ts.signal, tmp_path / "charts" / "x.png")
+    assert out.exists() and out.stat().st_size > 10_000

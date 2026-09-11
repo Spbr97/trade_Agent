@@ -18,6 +18,7 @@ dependencies = [
     "duckdb>=1.1",
     "pandas>=2.2,<3",     # 3.x binaries blocked by Windows Smart App Control (see README)
     "numpy>=1.26,<2.4",   # 2.5.x numpy.random DLL blocked by Smart App Control
+    "mplfinance>=0.12.10b0",
 ]
 
 [project.scripts]
@@ -55,6 +56,10 @@ python_version = "3.12"
 strict = true
 files = ["src"]
 plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = ["mplfinance", "mplfinance.*"]
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

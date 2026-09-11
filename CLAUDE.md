@@ -4,7 +4,7 @@ Short-term momentum scanner for NSE stocks using the INDstocks (INDmoney) API.
 Evening scan on daily charts, live trigger monitoring, trades held hours to 10 sessions.
 It alerts; the human places every order.
 
-**Status: M1-M5 built and unit-tested. Pending live data (needs `tradedesk auth setup`): M2 sign-off (NSE close check), M3 sign-off (quality report on real history). M1 cost model verified against 5 FY25-26 ledger bills (delivery); current-plan intraday notes still wanted; M4 TradingView golden tests pending an export in tests/golden/indicators/.** Next: M6 (evening scan pipeline, watchlist report, chart rendering). Full spec and milestone list: PLAN.md.
+**Status: M1-M6 built and unit-tested. Pending live data (needs `tradedesk auth setup`): M2 sign-off (NSE close check), M3 sign-off (quality report on real history). M1 cost model verified against 5 FY25-26 ledger bills (delivery); current-plan intraday notes still wanted; M4 TradingView golden tests pending an export in tests/golden/indicators/.** Next: M7 (live trigger monitor, 15-minute confirmation, gap check, position watch, recorder/replayer). Full spec and milestone list: PLAN.md.
 
 ## Hard rules
 - NEVER call or implement order placement, modification or cancellation unless the task explicitly says "Milestone M12".
@@ -33,7 +33,7 @@ It alerts; the human places every order.
 - Candles / quote / stream: uv run tradedesk candles NSE_3045 --interval 1day --days 30 | quote NSE_3045 | stream NSE:3045 --seconds 30
 - Data store: uv run tradedesk data sync-instruments | data load [--interval 1day] | data import-actions <nse.csv> | data import-results <nse.csv> | data quality [--out data/reports/q.csv] | data universe [--on YYYY-MM-DD] | data status
 - Live session: uv run tradedesk live            (M7+)
-- Evening scan: uv run tradedesk scan --date today   (M6+)
+- Evening scan: uv run tradedesk scan [--date YYYY-MM-DD] [--setup base_breakout] [--charts]   -> data/watchlists/<date>.json (+ PNGs)
 - Backtest: uv run tradedesk backtest --setup base_breakout --from 2023-09-01 [--to ...] [--split 2025-09-01] [--out data/reports/trades.csv]
 - Train model (shadow): uv run tradedesk train --shadow   (M11+)
 
@@ -52,6 +52,9 @@ It alerts; the human places every order.
 - engine/engine.py::scan_day is THE scan. The backtester (backtest/runner.py) calls it with frames sliced to each session; the live evening scan (M6) calls it with today's frames. Never add signal logic anywhere else.
 - Backtest fills use daily bars as a stand-in for the 15-minute confirmation until intraday history exists (M7): open beyond trigger+1 ATR = chased; open past the stop = out at the open; a bar touching both stop and target = stop.
 - Signal lifecycle is engine/lifecycle.py (ARMED -> TRIGGERED/CHASED/EXPIRED/INVALIDATED -> TAKEN/SKIPPED -> OPEN -> CLOSED); illegal transitions raise.
+- Evening scan = backtest/runner.py::prepare_market + build_snapshot + engine.scan_day, then engine/scoring.py (grade), risk/sizing.py, engine/filters.py. tests/scan proves watchlist signals for a date == the backtester's for that date (given the same exclusion set).
+- Scoring weights are in engine/scoring.py::WEIGHTS; TrackRecord (rolling paper expectancy, benched flag) is supplied by M9 and neutral until 30 trades.
+- Charts: alerts/charts.py renders mplfinance PNGs headless (Agg); geometry bar indices refer to the FULL feature frame, so pass the unsliced frame up to the arming session.
 - Portfolio limits live in backtest/portfolio.py::Portfolio.can_enter and are the same object the paper book and live risk manager will use (M9).
 - Backtest e2e fixtures live in tests/backtest/synth_universe.py; the ATR stop rule (2x) is deliberately relaxed to 3x there because ATR decays inside a synthetic tight base.
 - Candle store keeps RAW candles; split/bonus adjustment is applied on read (`CandleStore.load(adjusted=True)`) from the corporate_actions table. Never write adjusted prices back.
