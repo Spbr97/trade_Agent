@@ -1,0 +1,7 @@
+# Where Claude fits (PLAN.md §9). Advisory text only; never a price, level or quantity.
+mode: "off"                         # off | notify | veto
+chart_read_model: claude-sonnet-5
+weekly_review_model: claude-sonnet-5
+trigger_note_model: claude-haiku-4-5-20251001
+max_setups_per_evening: 10
+monthly_spend_limit_usd: 20

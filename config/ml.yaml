@@ -1,0 +1,8 @@
+# Prediction layer (PLAN.md §10). Shadow-only until it beats the plain score out of sample.
+enabled: false
+shadow: true
+grade_a_min_probability: 0.50
+grade_c_below_probability: 0.40
+half_size_below_probability: 0.45
+retrain: monthly
+embargo_sessions: 10

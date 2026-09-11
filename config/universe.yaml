@@ -1,0 +1,20 @@
+# Universe rules (PLAN.md §5.2). Rebuilt monthly from M3 onward.
+base_index: NIFTY 500
+min_avg_daily_turnover_inr: 50000000   # 5 crore, 20-day average
+min_price: 50
+atr_pct_band:
+  min: 0.015
+  max: 0.05
+exclude_surveillance: true             # ASM / GSM lists
+benchmark: NIFTY 50
+sector_indices:
+  - NIFTY BANK
+  - NIFTY IT
+  - NIFTY AUTO
+  - NIFTY PHARMA
+  - NIFTY FMCG
+  - NIFTY METAL
+  - NIFTY REALTY
+  - NIFTY ENERGY
+  - NIFTY FIN SERVICE
+volatility_index: INDIA VIX

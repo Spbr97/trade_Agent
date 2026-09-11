@@ -1,0 +1,10 @@
+# Daily timeline in IST (PLAN.md §2). Consumed by APScheduler from M6 onward.
+timezone: Asia/Kolkata
+startup: "08:30"
+morning_brief: "08:45"
+gap_check: {start: "09:15", end: "09:30"}
+monitor: {start: "09:30", end: "15:00"}
+close_check: {start: "15:00", end: "15:20"}
+evening_scan: "15:45"
+watchlist_send: "16:30"
+weekly_review_day: saturday

@@ -1,0 +1,53 @@
+# Real charge figures transcribed from INDmoney contract notes (PLAN.md M1 "done when").
+# Numbers only; never put the PDFs in the repo.
+#
+# Each entry is one round trip. Provide per-leg lines (`legs.buy` / `legs.sell`) when the
+# note itemises each order, or `combined` when it only shows day totals (common for intraday,
+# where both legs are on one note). Any charge line you omit is not compared — e.g. dp_charge
+# usually appears on the demat ledger, not the contract note.
+#
+# Tolerances: 0.01 per line, 0.05 on totals (broker rounding order can differ from ours).
+#
+# Rates are pulled from config/risk.yaml. If a golden line fails, fix the RATE (or the
+# rounding rule in costs.py) — never the expected number.
+
+notes: []
+
+# Example entries (delete once real ones are in):
+#
+# - id: 2026-09-01-ABC-delivery
+#   trade_type: delivery
+#   qty: 20
+#   buy_price: 842.00
+#   sell_price: 890.00
+#   legs:
+#     buy:
+#       brokerage: 5.00
+#       stt: 16.84
+#       exchange_txn: 0.52
+#       sebi_fee: 0.02
+#       stamp_duty: 2.53
+#       gst: 1.00
+#       total: 25.91
+#     sell:
+#       brokerage: 5.00
+#       stt: 17.80
+#       exchange_txn: 0.55
+#       sebi_fee: 0.02
+#       stamp_duty: 0.00
+#       gst: 1.00
+#       total: 24.37        # excludes DP charge (on the demat ledger)
+#
+# - id: 2026-09-02-XYZ-intraday
+#   trade_type: intraday
+#   qty: 50
+#   buy_price: 310.00
+#   sell_price: 314.50
+#   combined:
+#     brokerage: 10.00
+#     stt: 3.93
+#     exchange_txn: 0.96
+#     sebi_fee: 0.03
+#     stamp_duty: 0.47
+#     gst: 1.98
+#     total: 17.37

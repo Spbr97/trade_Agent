@@ -1,0 +1,8 @@
+# Alert channels (PLAN.md §7). All off until M8.
+desktop: {enabled: false, sound: true}
+telegram: {enabled: false, allowed_chat_id: null}   # bot token comes from keyring, never here
+dashboard: {enabled: false, host: "127.0.0.1", port: 8765}
+grades:
+  A: {min_score: 80, channels: [desktop, telegram, dashboard]}
+  B: {min_score: 65, channels: [dashboard]}
+  C: {min_score: 0, channels: []}

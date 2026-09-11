@@ -1,0 +1,29 @@
+# Swing setups (PLAN.md §6.5). All ship disabled until backtested (M5) and reviewed.
+# Thresholds are starting guesses; the backtest decides.
+setups:
+  base_breakout:
+    enabled: false
+    base_len_sessions: {min: 5, max: 25}
+    close_within_pct_of_base_high: 0.03
+    rs_percentile_min: 75
+    max_stop_distance_atr: 2.0
+    partial_at_r: 2.0
+    trail: ema10_close
+  trend_pullback:
+    enabled: false
+    pullback_len_sessions: {min: 2, max: 5}
+    rs_percentile_min: 75
+    partial_at_r: 2.0
+    trail: ema10_close
+  nr7_breakout:
+    enabled: false
+    within_pct_of_recent_high: 0.05
+    partial_at_r: 2.0
+    trail_atr_multiple: 2.0
+
+# Shared entry rules (PLAN.md §6.6)
+entry:
+  confirm_timeframe_minutes: 15
+  chased_atr_multiple: 1.0
+  late_trigger_after: "15:00"
+  setup_valid_sessions: 3

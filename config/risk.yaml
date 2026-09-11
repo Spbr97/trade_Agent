@@ -1,0 +1,54 @@
+# Trading pot and hard risk rules (PLAN.md §1.2). Enforced in code, never by prompting.
+# All *_pct values are fractions: 0.0025 = 0.25%.
+
+trading_capital: 100000          # INR. The ONLY money the agent ever sees.
+
+max_risk_per_trade_pct: 0.0025   # 0.25% for the first 50 live trades; 0.5% after; 1% max ever
+max_open_positions: 5
+max_per_sector: 2
+max_portfolio_heat_pct: 0.025    # total open risk; never above 0.04
+max_position_value_pct: 0.25
+gap_risk_cap_pct: 0.01           # 95th-pct gap-down must not cost more than this at planned qty
+max_new_entries_per_day: 3
+weekly_loss_limit_pct: 0.03
+consecutive_loss_pause:
+  losses: 4
+  sessions: 2
+reentry_cooldown_sessions: 3
+min_net_rr: 2.0                  # to the FINAL target, after costs
+time_stop:
+  sessions: 5
+  min_r: 1.0
+max_hold_sessions: 10
+no_entry_window:
+  start: "09:15"
+  end: "09:30"
+regime_size_multiplier:
+  risk_on: 1.0
+  neutral: 0.5
+  risk_off: 0.0
+
+# Charge schedule (PLAN.md §1.6). Starting values from public INDmoney/NSE schedules.
+# VERIFY against contract notes — tests/golden/contract_notes.yaml is the source of truth.
+costs:
+  brokerage:                       # IND Pricing: 0.1% or Rs 5 per executed order, whichever lower; min Rs 2
+    pct: 0.001
+    max_per_order: 5
+    min_per_order: 2
+  stt:
+    delivery_buy: 0.001
+    delivery_sell: 0.001
+    intraday_sell: 0.00025         # intraday pays STT on the sell only
+  exchange_txn_pct: 0.0000307      # NSE, both sides. IND Pricing table says 0.00307%, its text 0.00322%
+  ipft_pct: 0.000000001            # NSE investor protection fund levy, both sides (negligible)
+  gst_on_exchange_txn: true        # IND Pricing lists GST on brokerage+SEBI+DP only; confirm on a note
+  sebi_fee_pct: 0.000001           # Rs 10 per crore, both sides
+  stamp_duty:
+    delivery_buy: 0.00015
+    intraday_buy: 0.00003
+  gst_pct: 0.18                    # on brokerage + exchange txn + SEBI fee
+  dp_charge:
+    amount: 18.5                   # per scrip per sell-day, delivery only
+    gst_applies: true
+  slippage_pct: 0.0005             # assumed per fill; used by sizing, paper book and backtests
+  rounding: paise                  # each charge line rounded half-up to 2 dp before summing

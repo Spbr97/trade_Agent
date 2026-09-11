@@ -1,0 +1,65 @@
+[project]
+name = "tradedesk"
+version = "0.1.0"
+description = "Personal short-term momentum scanner for NSE stocks (INDstocks API). Alerts only; the human places every order."
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "pydantic>=2.7",
+    "pyyaml>=6.0",
+    "structlog>=24.1",
+    "typer>=0.12",
+    "httpx>=0.27",
+    "websockets>=13",
+    "aiolimiter>=1.1",
+    "pyotp>=2.9",
+    "keyring>=25",
+    "tzdata>=2024.1",
+]
+
+[project.scripts]
+tradedesk = "tradedesk.cli:app"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.2",
+    "hypothesis>=6.100",
+    "ruff>=0.5",
+    "mypy>=1.10",
+    "types-PyYAML>=6.0",
+    "pytest-asyncio>=0.24",
+    "respx>=0.21",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/tradedesk"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["src"]
+plugins = ["pydantic.mypy"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+markers = [
+    "golden: tests that compare against real INDmoney contract-note figures",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"src/tradedesk/cli.py" = ["B008"]  # typer.Option() in defaults is the typer idiom

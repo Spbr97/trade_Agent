@@ -1,0 +1,26 @@
+# environments / caches
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+dist/
+build/
+*.egg-info/
+
+# local data & secrets — never commit
+data/
+*.duckdb
+*.sqlite
+*.sqlite3
+.env
+*.pdf
+models/
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
