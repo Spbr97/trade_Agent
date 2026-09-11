@@ -1,7 +1,7 @@
 {
   "mcpServers": {
     "tradedesk": {
-      "command": "uv",
+      "command": "C:/Users/sibap/.local/bin/uv.exe",
       "args": ["run", "tradedesk", "mcp"],
       "cwd": "."
     }
