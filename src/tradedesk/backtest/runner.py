@@ -33,7 +33,9 @@ from tradedesk.engine.indicators import daily_features
 from tradedesk.engine.lifecycle import SignalState, TrackedSignal
 from tradedesk.engine.regime import RegimeSnapshot, breadth_above_ema, classify_regime
 from tradedesk.engine.relative_strength import rs_rank
-from tradedesk.engine.signals import SetupKind
+from tradedesk.engine.signals import SetupKind, Signal
+from tradedesk.live.confirmation import Decision, confirm_trigger, is_chased
+from tradedesk.live.models import IntradayBar, SessionRules
 from tradedesk.risk.sizing import SizeInputs, gap95_pct, position_size
 
 
@@ -51,6 +53,8 @@ class BacktestConfig:
     slippage_pct: float = 0.0005
     warmup_sessions: int = 260
     vix_code: str | None = None
+    session_rules: SessionRules = SessionRules()
+    use_intraday: bool = True  # confirm on 15-minute bars when the store has them
 
 
 @dataclass
@@ -68,6 +72,7 @@ class MarketData:
     vix: pd.Series | None  # index date
     universe_by_month: dict[tuple[int, int], list[str]]
     results_dates: dict[str, list[date]]
+    intraday: dict[str, dict[date, list[IntradayBar]]] = field(default_factory=dict)
 
 
 @dataclass
@@ -155,6 +160,30 @@ def prepare_market(
             c for c, a, b in zip(cols, liquid, priced, strict=True) if bool(a) and bool(b)
         )
 
+    intraday: dict[str, dict[date, list[IntradayBar]]] = {}
+    if cfg.use_intraday:
+        for code in features:
+            m15 = store.load(code, Interval.M15, load_from, load_to, adjusted=True)
+            if m15.empty:
+                continue
+            by_day: dict[date, list[IntradayBar]] = {}
+            starts = [t.to_pydatetime() for t in pd.DatetimeIndex(m15.index)]
+            ohlc = {k: m15[k].to_numpy(dtype=float) for k in ("open", "high", "low", "close")}
+            vols = m15["volume"].to_numpy(dtype="int64")
+            for j, start in enumerate(starts):
+                bar = IntradayBar(
+                    scrip_code=code,
+                    start=start,
+                    end=start + timedelta(minutes=15),
+                    open=float(ohlc["open"][j]),
+                    high=float(ohlc["high"][j]),
+                    low=float(ohlc["low"][j]),
+                    close=float(ohlc["close"][j]),
+                    volume=int(vols[j]),
+                )
+                by_day.setdefault(start.date(), []).append(bar)
+            intraday[code] = by_day
+
     results_dates: dict[str, list[date]] = {}
     for code, symbol in symbols.items():
         rows = store.con.execute(
@@ -174,6 +203,7 @@ def prepare_market(
         vix=vix,
         universe_by_month=universe_by_month,
         results_dates=results_dates,
+        intraday=intraday,
     )
 
 
@@ -219,6 +249,41 @@ def regime_on(md: MarketData, on: date, cfg: BacktestConfig) -> RegimeSnapshot |
         vix=vix,
         cfg=cfg.engine.regime,
         on=on,
+    )
+
+
+def evaluate_entry_intraday(
+    sig: Signal, bars: Sequence[IntradayBar], rules: SessionRules, slippage_pct: float
+) -> tuple[EntryOutcome, float | None, int]:
+    """Same decision as the live monitor: chased on the day's open, else the first 15-minute
+    bar that closes above the trigger. Returns (outcome, fill price, index of the fill bar)."""
+    if not bars:
+        return EntryOutcome.NONE, None, -1
+    if is_chased(sig, bars[0].open):
+        return EntryOutcome.CHASED, None, -1
+    for i, bar in enumerate(bars):
+        c = confirm_trigger(sig, bar, rules)
+        if c.decision is Decision.TRIGGERED and c.fill_price is not None:
+            return EntryOutcome.FILLED, c.fill_price * (1 + slippage_pct), i
+        if c.decision is Decision.INVALIDATED:
+            return EntryOutcome.INVALIDATED, None, i
+    return EntryOutcome.NONE, None, -1
+
+
+def _post_fill_bar(bars: Sequence[IntradayBar], fill_index: int, daily: Bar) -> Bar | None:
+    """The rest of the entry day after the fill bar, as one Bar for the exit rules."""
+    rest = list(bars[fill_index + 1 :])
+    if not rest:
+        return None
+    return Bar(
+        on=daily.on,
+        open=rest[0].open,
+        high=max(b.high for b in rest),
+        low=min(b.low for b in rest),
+        close=rest[-1].close,
+        volume=sum(b.volume for b in rest),
+        ema10=daily.ema10,
+        atr=daily.atr,
     )
 
 
@@ -309,7 +374,16 @@ def run_backtest(md: MarketData, cfg: BacktestConfig) -> BacktestResult:
                     live_by_code.pop(code, None)
                 continue
             bar = _bar(md.features[code], i, on)
-            outcome, price = evaluate_entry(sig, bar, cfg.slippage_pct)
+            day_bars = md.intraday.get(code, {}).get(on) if md.intraday else None
+            fill_index = -1
+            if day_bars:
+                outcome, price, fill_index = evaluate_entry_intraday(
+                    sig, day_bars, cfg.session_rules, cfg.slippage_pct
+                )
+                if outcome is EntryOutcome.NONE and bar.close < sig.stop:
+                    outcome = EntryOutcome.INVALIDATED
+            else:
+                outcome, price = evaluate_entry(sig, bar, cfg.slippage_pct)
             if outcome is EntryOutcome.CHASED:
                 ts.move(SignalState.CHASED, on, f"open {bar.open:.2f} > trigger + ATR")
                 live_by_code.pop(code, None)
@@ -362,7 +436,12 @@ def run_backtest(md: MarketData, cfg: BacktestConfig) -> BacktestResult:
             ts.move(SignalState.TAKEN, on, f"qty {size.qty} " + ", ".join(size.caps))
             ts.move(SignalState.OPEN, on)
             portfolio.open_position(pos)
-            fills = evaluate_exit(pos, bar, cfg.slippage_pct, entry_day=True)
+            entry_bar = _post_fill_bar(day_bars, fill_index, bar) if day_bars else bar
+            fills = (
+                evaluate_exit(pos, entry_bar, cfg.slippage_pct, entry_day=True)
+                if entry_bar is not None
+                else []
+            )
             if pos.closed:
                 portfolio.record_fills(pos, fills)
                 ts.move(SignalState.CLOSED, on, fills[-1].reason.value)

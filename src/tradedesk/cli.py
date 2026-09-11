@@ -587,9 +587,66 @@ def _not_yet(milestone: str) -> None:
 
 
 @app.command()
-def live() -> None:
-    """Market-hours session: trigger monitor and position watch (M7)."""
-    _not_yet("M7")
+def live(
+    watchlist: Path | None = typer.Option(
+        None, "--watchlist", help="Watchlist JSON; default: newest in data/watchlists"
+    ),
+    record_dir: Path = typer.Option(Path("data/sessions"), "--record-dir"),
+    until: str = typer.Option("15:35", "--until", help="HH:MM IST to stop"),
+    all_entries: bool = typer.Option(False, "--all", help="Watch C-grade entries too"),
+    root: Path = ROOT_OPTION,
+) -> None:
+    """Market-hours session: stream prices for the watchlist, confirm triggers on 15-minute
+    closes, watch positions, record the session for replay. Alerts print to the console."""
+    from tradedesk.broker.indstocks.models import IST
+    from tradedesk.live.models import Alert, SessionRules
+    from tradedesk.live.session import run_session, signals_from_watchlist
+    from tradedesk.live.trigger_monitor import TriggerMonitor
+    from tradedesk.scan import load_watchlist
+
+    settings = load_config(root)
+    entry_rules = settings.setups.entry
+    rules = SessionRules(
+        no_entry_before=datetime.strptime(settings.risk.no_entry_window.end, "%H:%M").time(),
+        late_trigger_after=datetime.strptime(entry_rules.late_trigger_after, "%H:%M").time(),
+        bar_minutes=entry_rules.confirm_timeframe_minutes,
+    )
+    if watchlist is None:
+        candidates = sorted(Path("data/watchlists").glob("*.json"))
+        if not candidates:
+            raise typer.BadParameter("no watchlist found; run `tradedesk scan` first")
+        watchlist = candidates[-1]
+    wl = load_watchlist(watchlist)
+    signals = signals_from_watchlist(wl, alertable_only=not all_entries)
+    if not signals:
+        typer.echo(f"{watchlist}: nothing alertable on the watchlist; exiting")
+        raise typer.Exit(code=0)
+    codes = sorted({t.signal.scrip_code for t in signals})
+    atr = {t.signal.scrip_code: t.signal.atr for t in signals}
+    typer.echo(f"watching {len(codes)} instruments from {watchlist} until {until} IST")
+
+    def on_alert(a: Alert) -> None:
+        typer.echo(f"{a.at:%H:%M:%S} [{a.level.value.upper():<7}] {a.kind.value:<15} {a.message}")
+
+    monitor = TriggerMonitor(rules, signals=signals, atr_by_code=atr)
+    today = datetime.now(IST).date()
+    recording = record_dir / f"{today.isoformat()}.jsonl"
+
+    async def go(c: IndstocksClient) -> None:
+        await run_session(
+            c,
+            monitor,
+            codes=codes,
+            rules=rules,
+            recording=recording,
+            on_alert=on_alert,
+            until=datetime.strptime(until, "%H:%M").time(),
+        )
+
+    asyncio.run(_with_client(go))
+    triggered = [t.signal.symbol for t in monitor.signals if t.state.value == "triggered"]
+    typer.echo(f"session over: {len(monitor.alerts)} alerts, triggered {triggered or 'none'}")
+    typer.echo(f"recording: {recording}")
 
 
 @app.command()
@@ -732,9 +789,41 @@ def backtest(
 
 
 @app.command()
-def replay(session: str = typer.Argument(...)) -> None:
-    """Replay a recorded market-hours session (M7)."""
-    _not_yet("M7")
+def replay(
+    session: Path = typer.Argument(..., exists=True, help="Recorded session JSONL"),
+    watchlist: Path = typer.Option(..., "--watchlist", help="Watchlist JSON in force that day"),
+    all_entries: bool = typer.Option(False, "--all"),
+    root: Path = ROOT_OPTION,
+) -> None:
+    """Replay a recorded session through the trigger monitor and print the alerts."""
+    from tradedesk.live.models import SessionRules
+    from tradedesk.live.session import signals_from_watchlist
+    from tradedesk.live.trigger_monitor import TriggerMonitor
+    from tradedesk.replay import read_session
+    from tradedesk.replay import replay as run_replay
+    from tradedesk.scan import load_watchlist
+
+    settings = load_config(root)
+    entry_rules = settings.setups.entry
+    rules = SessionRules(
+        no_entry_before=datetime.strptime(settings.risk.no_entry_window.end, "%H:%M").time(),
+        late_trigger_after=datetime.strptime(entry_rules.late_trigger_after, "%H:%M").time(),
+        bar_minutes=entry_rules.confirm_timeframe_minutes,
+    )
+    wl = load_watchlist(watchlist)
+    signals = signals_from_watchlist(wl, alertable_only=not all_entries)
+    monitor = TriggerMonitor(
+        rules, signals=signals, atr_by_code={t.signal.scrip_code: t.signal.atr for t in signals}
+    )
+    result = run_replay(read_session(session), monitor)
+    for a in result.alerts:
+        typer.echo(f"{a.at:%H:%M:%S} [{a.level.value.upper():<7}] {a.kind.value:<15} {a.message}")
+    typer.echo(
+        f"{result.ticks} ticks, {result.bars} bars, {result.resyncs} resyncs, "
+        f"{len(result.alerts)} alerts"
+    )
+    for t in monitor.signals:
+        typer.echo(f"  {t.signal.symbol:<12}{t.state.value}")
 
 
 @app.command()

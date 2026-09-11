@@ -89,3 +89,48 @@ def benchmark(
         out.append(_candle(code, d, px, max(px, c) * 1.002, min(px, c) * 0.998, c, 0))
         px = c
     return out
+
+
+def intraday_from_daily(candles: list[Candle], slots: int = 25) -> list[Candle]:
+    """Deterministic 15-minute bars that reproduce each daily bar: open -> high -> low ->
+    close as a piecewise path, sliced into `slots` bars from 09:15."""
+    from datetime import timedelta
+
+    out: list[Candle] = []
+    for c in candles:
+        path = []
+        third = max(1, slots // 3)
+        for k in range(slots):
+            if k < third:
+                f = k / third
+                lo_, hi_ = (
+                    c.open + (c.high - c.open) * f,
+                    c.open + (c.high - c.open) * (k + 1) / third,
+                )
+            elif k < 2 * third:
+                f = (k - third) / third
+                lo_, hi_ = (
+                    c.high - (c.high - c.low) * (k - third + 1) / third,
+                    c.high - (c.high - c.low) * f,
+                )
+            else:
+                f = (k - 2 * third) / max(1, slots - 2 * third)
+                nxt = (k - 2 * third + 1) / max(1, slots - 2 * third)
+                lo_, hi_ = c.low + (c.close - c.low) * f, c.low + (c.close - c.low) * nxt
+            path.append((lo_, hi_))
+        day_open_ts = c.ts.replace(hour=9, minute=15)
+        for k, (a, b) in enumerate(path):
+            o, cl = a, b
+            out.append(
+                Candle(
+                    scrip_code=c.scrip_code,
+                    interval=Interval.M15,
+                    ts=day_open_ts + timedelta(minutes=15 * k),
+                    open=round(o, 2),
+                    high=round(max(o, cl), 2),
+                    low=round(min(o, cl), 2),
+                    close=round(cl, 2),
+                    volume=max(1, c.volume // slots),
+                )  # fmt: skip
+            )
+    return out
