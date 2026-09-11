@@ -11,13 +11,16 @@ build/
 *.egg-info/
 
 # local data & secrets — never commit
-data/
+# NOTE: these are ANCHORED with a leading slash on purpose. Unanchored `data/` matches a
+# directory named `data` at ANY depth, which silently kept src/tradedesk/data/ and
+# tests/data/ - 13 source files, the whole M3 data layer - out of version control.
+/data/
 *.duckdb
 *.sqlite
 *.sqlite3
 .env
 *.pdf
-models/
+/models/
 
 # OS / IDE
 .DS_Store
