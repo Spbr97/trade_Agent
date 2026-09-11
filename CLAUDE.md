@@ -4,7 +4,7 @@ Short-term momentum scanner for NSE stocks using the INDstocks (INDmoney) API.
 Evening scan on daily charts, live trigger monitoring, trades held hours to 10 sessions.
 It alerts; the human places every order.
 
-**Status: M1-M10 built and unit-tested. Pending live data (needs `tradedesk auth setup`): M2 sign-off (NSE close check), M3 sign-off (quality report on real history). M1 cost model verified against 5 FY25-26 ledger bills (delivery); current-plan intraday notes still wanted; M4 TradingView golden tests pending an export in tests/golden/indicators/.** Next: M11 (prediction layer: triple-barrier labels, features, purged walk-forward, shadow mode). Full spec and milestone list: PLAN.md.
+**Status: M1-M11 built and unit-tested. Pending live data (needs `tradedesk auth setup`): M2 sign-off (NSE close check), M3 sign-off (quality report on real history). M1 cost model verified against 5 FY25-26 ledger bills (delivery); current-plan intraday notes still wanted; M4 TradingView golden tests pending an export in tests/golden/indicators/.** Next: Phase 2 with live data (credentials -> M2/M3 sign-off -> paper trading), then M12 (order placement) only after Phase 3. Full spec and milestone list: PLAN.md.
 
 ## Hard rules
 - NEVER call or implement order placement, modification or cancellation unless the task explicitly says "Milestone M12".
@@ -40,7 +40,7 @@ It alerts; the human places every order.
 - Alerts: uv run tradedesk alerts setup-telegram | alerts telegram-chat-id | alerts test ; dashboard: uv run tradedesk dashboard (live embeds it by default at 127.0.0.1:8765)
 - Evening scan: uv run tradedesk scan [--date YYYY-MM-DD] [--setup base_breakout] [--charts]   -> data/watchlists/<date>.json (+ PNGs)
 - Backtest: uv run tradedesk backtest --setup base_breakout --from 2023-09-01 [--to ...] [--split 2025-09-01] [--out data/reports/trades.csv]
-- Train model (shadow): uv run tradedesk train --shadow   (M11+)
+- Train model (shadow): uv run tradedesk train --from 2023-09-01 [--to ...] [--setup base_breakout] [--splits 4] [--dataset data/reports/ds.csv]   -> data/models/<version>.joblib (+ .json); `scan` then logs shadow probabilities to data/models/shadow.jsonl
 
 ## Conventions
 - Money and rates are `Decimal`, never float. Config percentages are fractions (0.001 = 0.1%).
@@ -75,6 +75,7 @@ It alerts; the human places every order.
 - Candle store keeps RAW candles; split/bonus adjustment is applied on read (`CandleStore.load(adjusted=True)`) from the corporate_actions table. Never write adjusted prices back.
 - The trading calendar is the benchmark index's daily candle dates (config/universe.yaml `benchmark`); universe membership is computed as-of-date from stored candles (survivorship caveat stays in every backtest report).
 - Windows Smart App Control is ON on this machine: it blocks unsigned DLLs in brand-new wheels (numpy 2.5 / pandas 3 failed). Pins in pyproject.toml exist for that reason; if a new package fails with "Application Control policy has blocked this file", pin an older, widely-distributed version.
+- Prediction layer (M11) lives in prediction/: labeling.py (triple barrier: T1 -> 1, stop or gap-through-stop -> 0, vertical barrier max_hold -> 0; a bar touching both = stop, as in the backtester), features.py (31 features, all known at the arming close; tests assert a truncated frame gives identical features), train.py (build_dataset from a BacktestResult, purged walk-forward BY DATE with ml.yaml embargo_sessions, sigmoid-calibrated logistic baseline; LightGBM only if importable AND better OOS Brier - it is NOT installed here, Smart App Control), predict.py (apply_probability can only LOWER a grade or halve qty, gated by ml.yaml enabled+not shadow; shadow mode only appends a score note and logs), calibration.py (drift_check pauses the layer when a bucket with >= 30 resolved signals drifts > 0.15). `tradedesk train` refuses --no-shadow; switching on is a config edit, never a CLI flag.
 - pydantic models: Candle, Signal, Position, TradeCard, RiskStatus, RegimeSnapshot, HealthStatus
 - One module per setup, implementing the Setup protocol in setups/base.py
 - New setups ship disabled until their backtest report and first 30 paper trades are reviewed

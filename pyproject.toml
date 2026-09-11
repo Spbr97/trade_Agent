@@ -23,6 +23,8 @@ dependencies = [
     "uvicorn>=0.30",
     "anthropic>=1.0",
     "mcp>=1.2",
+    "scikit-learn>=1.5",
+    "joblib>=1.4",
 ]
 
 [project.scripts]
@@ -65,7 +67,7 @@ files = ["src"]
 plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
-module = ["mplfinance", "mplfinance.*"]
+module = ["mplfinance", "mplfinance.*", "sklearn", "sklearn.*", "joblib", "lightgbm"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

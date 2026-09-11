@@ -1218,6 +1218,22 @@ def scan(
             for n in e.score_notes:
                 if n.startswith("Claude ("):
                     typer.echo(f"  {e.signal.symbol}: {n}")
+    bundle = None
+    if settings.ml.enabled or settings.ml.shadow:
+        from tradedesk.prediction import latest_bundle
+
+        bundle = latest_bundle(Path("data/models"))
+    if bundle is not None:
+        from tradedesk.prediction.predict import score_watchlist
+
+        wl, probs = score_watchlist(
+            bundle, wl, md, settings.ml, shadow_log=Path("data/models/shadow.jsonl")
+        )
+        label = "shadow" if (settings.ml.shadow or not settings.ml.enabled) else "ENABLED"
+        typer.echo(
+            f"model {bundle.version} ({label}): "
+            + ", ".join(f"{k} {v:.2f}" for k, v in probs.items())
+        )
     path = save_watchlist(wl, out_dir)
     typer.echo(f"saved {path}")
 
@@ -1360,9 +1376,64 @@ def replay(
 
 
 @app.command()
-def train(shadow: bool = typer.Option(True, "--shadow/--no-shadow")) -> None:
-    """Train the meta-labeling model (M11)."""
-    _not_yet("M11")
+def train(
+    from_: str = typer.Option(..., "--from", help="YYYY-MM-DD start of the backtest window"),
+    to: str | None = typer.Option(None, "--to", help="YYYY-MM-DD; default today"),
+    setup: list[str] = typer.Option(None, "--setup", help="Setup name; default: all enabled"),
+    shadow: bool = typer.Option(True, "--shadow/--no-shadow", help="Shadow is the only mode"),
+    n_splits: int = typer.Option(4, "--splits", help="Purged walk-forward folds"),
+    models_dir: Path = typer.Option(Path("data/models"), "--models-dir"),
+    dataset_out: Path | None = typer.Option(None, "--dataset", help="Also write the CSV"),
+    db: Path = DB_OPTION,
+    root: Path = ROOT_OPTION,
+) -> None:
+    """Train the meta-labeling model (M11): backtest -> triple-barrier labels -> purged
+    walk-forward -> calibrated baseline (LightGBM only if better OOS) -> saved bundle.
+    The saved model is used in shadow mode by `tradedesk scan` until ml.yaml enables it."""
+    from tradedesk.backtest import prepare_market, run_backtest
+    from tradedesk.broker.indstocks.models import IST, Interval
+    from tradedesk.engine.signals import SetupKind
+    from tradedesk.prediction import build_dataset
+    from tradedesk.prediction import train as train_model
+    from tradedesk.scan import scan_config
+
+    if not shadow:
+        raise typer.BadParameter("training never switches the model on; edit config/ml.yaml")
+    settings = load_config(root)
+    kinds = [SetupKind(k) for k in setup] if setup else None
+    start = datetime.strptime(from_, "%Y-%m-%d").date()
+    end = datetime.strptime(to, "%Y-%m-%d").date() if to else datetime.now(IST).date()
+    cfg = scan_config(settings, end, kinds)
+    cfg.start = start
+    with _store(db) as store:
+        ref = _reference_code(store, root)
+        vix = store.index_code(settings.universe.volatility_index)
+        cfg.vix_code = vix
+        codes = [c for c in store.codes(Interval.D1) if c not in (ref, vix)]
+        typer.echo(f"backtesting {len(codes)} codes {start} -> {end} for the dataset")
+        md = prepare_market(store, codes, ref, cfg)
+    result = run_backtest(md, cfg)
+    df = build_dataset(md, result, max_hold=settings.risk.max_hold_sessions)
+    typer.echo(
+        f"dataset: {len(df)} triggered signals, base rate "
+        f"{(df['label'].mean() if len(df) else float('nan')):.2f}"
+    )
+    if dataset_out is not None:
+        dataset_out.parent.mkdir(parents=True, exist_ok=True)
+        df.to_csv(dataset_out, index=False)
+        typer.echo(f"dataset written to {dataset_out}")
+    rep = train_model(
+        df,
+        n_splits=n_splits,
+        embargo_sessions=settings.ml.embargo_sessions,
+        threshold=float(settings.ml.grade_a_min_probability),
+    )
+    typer.echo(rep.text())
+    if rep.bundle is None:
+        typer.echo("no model saved", err=True)
+        raise typer.Exit(code=1)
+    path = rep.bundle.save(models_dir)
+    typer.echo(f"saved {path} (shadow only; ml.yaml enabled={settings.ml.enabled})")
 
 
 if __name__ == "__main__":
