@@ -2,9 +2,6 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from datetime import date, datetime, time, timedelta
-from typing import Any
-
-import pytest
 
 from tests.data.synth import daily, sessions, with_split
 from tradedesk.broker.indstocks.models import IST, Candle, Interval
@@ -31,9 +28,7 @@ class FakeClient:
             raise ApiError(503, "NetworkException")
         out: dict[str, list[Candle]] = {}
         for code in codes:
-            out[code] = [
-                c for c in daily(code, self.days) if start <= c.ts < end
-            ]
+            out[code] = [c for c in daily(code, self.days) if start <= c.ts < end]
         return out
 
 
@@ -153,7 +148,14 @@ def test_run_quality_report_uses_reference_calendar_and_adjustments() -> None:
         assert rep.by_kind() == {IssueKind.SUSPECTED_UNADJUSTED: 1}
         # ...and once it is recorded, the adjusted series is clean.
         store.upsert_corporate_actions(
-            [CorporateAction(symbol="SPL", ex_date=cal[20], kind=ActionKind.BONUS, price_factor=Fraction(1, 2))]
+            [
+                CorporateAction(
+                    symbol="SPL",
+                    ex_date=cal[20],
+                    kind=ActionKind.BONUS,
+                    price_factor=Fraction(1, 2),
+                )
+            ]
         )
         rep = run_quality_report(store, ["NSE_1"], nifty.scrip_code, start=cal[0], end=cal[-1])
         assert rep.issues == [] and rep.codes_checked == 1

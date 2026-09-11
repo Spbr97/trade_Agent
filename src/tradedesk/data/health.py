@@ -70,7 +70,10 @@ def check_series(
         )  # fmt: skip
 
     o, h, lo, c, v = (df[k].to_numpy() for k in ("open", "high", "low", "close", "volume"))
-    bad = (o <= 0) | (h <= 0) | (lo <= 0) | (c <= 0) | (h < lo) | (o > h) | (o < lo) | (c > h) | (c < lo)
+    bad = (
+        (o <= 0) | (h <= 0) | (lo <= 0) | (c <= 0) | (h < lo)
+        | (o > h) | (o < lo) | (c > h) | (c < lo)
+    )  # fmt: skip
     if bad.any():
         idx = int(np.argmax(bad))
         issues.append(

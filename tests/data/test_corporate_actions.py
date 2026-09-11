@@ -20,8 +20,8 @@ from tradedesk.data.models import ActionKind
 @pytest.mark.parametrize(
     ("purpose", "kind", "factor"),
     [
-        ("Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share", ActionKind.SPLIT, Fraction(1, 5)),
-        ("Face Value Split (Sub-Division) - From Rs 2/- Per Share To Re 1/- Per Share", ActionKind.SPLIT, Fraction(1, 2)),
+        ("Face Value Split (Sub-Division) - From Rs 10/- Per Share To Rs 2/- Per Share", ActionKind.SPLIT, Fraction(1, 5)),  # noqa: E501
+        ("Face Value Split (Sub-Division) - From Rs 2/- Per Share To Re 1/- Per Share", ActionKind.SPLIT, Fraction(1, 2)),  # noqa: E501
         ("FACE VALUE SPLIT FROM RS.10 TO RS.5", ActionKind.SPLIT, Fraction(1, 2)),
         ("Bonus 1:1", ActionKind.BONUS, Fraction(1, 2)),
         ("Bonus 3:2", ActionKind.BONUS, Fraction(2, 5)),
@@ -42,13 +42,16 @@ def test_parse_nse_date_formats() -> None:
     assert parse_nse_date("-") is None and parse_nse_date("") is None
 
 
-NSE_CSV = """﻿SYMBOL,COMPANY NAME,SERIES,FACE VALUE,PURPOSE,EX-DATE,RECORD DATE
+NSE_CSV = (
+    """﻿SYMBOL,COMPANY NAME,SERIES,FACE VALUE,PURPOSE,EX-DATE,RECORD DATE
 SBIN,State Bank of India,EQ,1,Dividend - Rs 13.70 Per Share,16-May-2025,16-May-2025
-TATASTEEL,Tata Steel Limited,EQ,1,Face Value Split (Sub-Division) - From Rs 10/- Per Share To Re 1/- Per Share,28-Jul-2022,29-Jul-2022
+TATASTEEL,Tata Steel Limited,EQ,1,Face Value Split (Sub-Division) - From Rs 10/- Per Share """
+    """To Re 1/- Per Share,28-Jul-2022,29-Jul-2022
 NESTLEIND,Nestle India Limited,EQ,1,Bonus 1:1,05-Jan-2024,05-Jan-2024
 SOMEDEBT,Some Bond,N1,1000,Interest Payment,01-Jan-2024,01-Jan-2024
 BADDATE,Bad Date Ltd,EQ,10,Bonus 1:1,-,-
 """
+)
 
 
 def test_parse_nse_csv_tolerant_columns_and_bom() -> None:
@@ -83,4 +86,3 @@ def test_detect_unadjusted_split_but_not_crash() -> None:
         b = detect_unadjusted(store.load("NSE_B", Interval.D1, adjusted=False))
     assert len(a) == 1 and a[0][0] == ex and a[0][2] in {"bonus 1:1", "split 10->5", "split 2->1"}
     assert b == []
-

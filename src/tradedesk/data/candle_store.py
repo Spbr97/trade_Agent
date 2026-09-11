@@ -156,7 +156,10 @@ class CandleStore:
         adjusted: bool = True,
     ) -> pd.DataFrame:
         """OHLCV DataFrame indexed by tz-aware IST open time, ascending. `end` exclusive."""
-        sql = "SELECT ts, open, high, low, close, volume FROM candles WHERE scrip_code = ? AND interval = ?"
+        sql = (
+            "SELECT ts, open, high, low, close, volume FROM candles "
+            "WHERE scrip_code = ? AND interval = ?"
+        )
         params: list[object] = [scrip_code, interval.value]
         if start is not None:
             sql += " AND ts >= ?"

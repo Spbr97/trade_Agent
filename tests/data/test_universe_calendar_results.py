@@ -48,7 +48,9 @@ def test_universe_on_applies_turnover_price_and_history_rules(store: CandleStore
     assert universe_on(store, candidates, days[-1]) == ["NSE_LIQ"]
     # As of an earlier date the new listing has no bars at all, and NSE_LIQ still qualifies.
     assert universe_on(store, candidates, days[25]) == ["NSE_LIQ"]
-    loose = UniverseRules(min_avg_turnover_inr=1e6, min_price=1, lookback_sessions=5, min_sessions_present=5)
+    loose = UniverseRules(
+        min_avg_turnover_inr=1e6, min_price=1, lookback_sessions=5, min_sessions_present=5
+    )
     assert universe_on(store, candidates, days[-1], loose) == sorted(candidates)
     assert universe_on(store, [], days[-1]) == []
 

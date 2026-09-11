@@ -13,7 +13,6 @@ from datetime import date, datetime, time, timedelta
 from typing import TYPE_CHECKING
 
 from tradedesk.broker.indstocks.models import IST, Interval
-
 from tradedesk.data.candle_store import ist_dates
 
 if TYPE_CHECKING:
@@ -26,6 +25,9 @@ class UniverseRules:
     min_price: float = 50.0
     lookback_sessions: int = 20
     min_sessions_present: int = 20  # must have a full lookback of candles
+
+
+_DEFAULT_RULES = UniverseRules()  # frozen and shared, so it's a name not a call in defaults below
 
 
 def trading_days(store: CandleStore, reference_code: str, start: date, end: date) -> list[date]:
@@ -41,7 +43,7 @@ def universe_on(
     store: CandleStore,
     candidates: list[str],
     on: date,
-    rules: UniverseRules = UniverseRules(),
+    rules: UniverseRules = _DEFAULT_RULES,
 ) -> list[str]:
     """Codes that pass the liquidity rules using only candles with open date <= `on`."""
     if not candidates:
@@ -82,7 +84,7 @@ def universe_history(
     store: CandleStore,
     candidates: list[str],
     rebuild_dates: list[date],
-    rules: UniverseRules = UniverseRules(),
+    rules: UniverseRules = _DEFAULT_RULES,
 ) -> dict[date, list[str]]:
     """Membership at each rebuild date (e.g. the first session of every month)."""
     return {d: universe_on(store, candidates, d, rules) for d in rebuild_dates}
