@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "tradedesk": {
+      "command": "uv",
+      "args": ["run", "tradedesk", "mcp"],
+      "cwd": "."
+    }
+  }
+}

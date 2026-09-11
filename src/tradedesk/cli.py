@@ -936,6 +936,46 @@ def paper_update(
         )
 
 
+# --------------------------------------------------------------- M10: Claude
+
+
+@app.command()
+def review(
+    what: str = typer.Argument("week", help="week"),
+    on: str | None = typer.Option(None, "--date", help="Any date in the week; default today"),
+    out_dir: Path = typer.Option(Path("data/reviews"), "--out-dir"),
+    journal: Path = JOURNAL_OPTION,
+    root: Path = ROOT_OPTION,
+) -> None:
+    """Weekly coach: Claude reads the journal and paper book and names one change."""
+    from tradedesk.broker.indstocks.models import IST
+    from tradedesk.claude import ClaudeAdvisor
+    from tradedesk.claude.weekly_review import run_weekly_review
+    from tradedesk.journal import Journal
+
+    if what != "week":
+        raise typer.BadParameter("only `review week` exists")
+    settings = load_config(root)
+    if settings.claude.mode == "off":
+        raise typer.BadParameter("config/claude.yaml mode is off; set notify or veto")
+    day = datetime.strptime(on, "%Y-%m-%d").date() if on else datetime.now(IST).date()
+    with Journal(journal) as jn:
+        path, rev = run_weekly_review(ClaudeAdvisor(settings.claude), jn, day, out_dir)
+    if path is None or rev is None:
+        typer.echo("no review produced (API failure or spend cap); see logs", err=True)
+        raise typer.Exit(code=1)
+    typer.echo(path.read_text(encoding="utf-8"))
+    typer.echo(f"saved {path}")
+
+
+@app.command()
+def mcp() -> None:
+    """Serve the read-only MCP server over stdio (registered in .mcp.json for Claude Code)."""
+    from tradedesk.mcp_server import main
+
+    main()
+
+
 def _not_yet(milestone: str) -> None:
     typer.echo(f"not implemented until Milestone {milestone} (see PLAN.md 14)", err=True)
     raise typer.Exit(code=2)
@@ -999,10 +1039,27 @@ def live(
     if state is not None:
         state.set_watchlist(wl)
     router = _build_router(settings, wl, state)
+    notes = None
+    if settings.claude.mode != "off":
+        from tradedesk.claude import ClaudeAdvisor
+        from tradedesk.claude.trigger_note import TriggerNoteWorker
+
+        def emit_note(a: Alert) -> None:
+            typer.echo(f"{a.at:%H:%M:%S} [NOTE   ] {a.message}")
+            router.route(a)
+
+        notes = TriggerNoteWorker(
+            ClaudeAdvisor(settings.claude),
+            wl,
+            emit_note,
+            bars_for=lambda code: [b for b in monitor.bars_seen if b.scrip_code == code],
+        )
 
     def on_alert(a: Alert) -> None:
         typer.echo(f"{a.at:%H:%M:%S} [{a.level.value.upper():<7}] {a.kind.value:<15} {a.message}")
         router.route(a)
+        if notes is not None:
+            notes.on_alert(a)  # enqueue only; the note arrives later, after the alert
         jn.record_alert(a)
         for t in monitor.signals:
             if t.signal.scrip_code == a.scrip_code:
@@ -1016,6 +1073,8 @@ def live(
         await router.worker(stop)
 
     extra: list[Callable[[asyncio.Event], Awaitable[None]]] = [alert_worker]
+    if notes is not None:
+        extra.append(notes.run)
     if router.telegram is not None:
         bot = router.telegram
 
@@ -1086,11 +1145,15 @@ def scan(
     charts: bool = typer.Option(False, "--charts", help="Render a PNG per active entry"),
     include_rejected: bool = typer.Option(True, "--rejected/--no-rejected"),
     out_dir: Path = typer.Option(Path("data/watchlists"), "--out-dir"),
+    claude_mode: str | None = typer.Option(
+        None, "--claude", help="off|notify|veto; default from config/claude.yaml"
+    ),
     db: Path = DB_OPTION,
     journal: Path = JOURNAL_OPTION,
     root: Path = ROOT_OPTION,
 ) -> None:
-    """Evening scan: build, print and save tomorrow's watchlist from stored daily candles."""
+    """Evening scan: build, print and save tomorrow's watchlist from stored daily candles.
+    With Claude enabled (config or --claude), the top setups get a three-line chart read."""
     from tradedesk.alerts.charts import render_signal_chart
     from tradedesk.backtest.runner import prepare_market
     from tradedesk.broker.indstocks.models import Interval
@@ -1139,6 +1202,22 @@ def scan(
             typer.echo(f"  chart {png}")
             entries.append(e.model_copy(update={"chart_path": str(png)}))
         wl = wl.model_copy(update={"entries": entries})
+    mode = claude_mode or settings.claude.mode
+    if mode != "off":
+        from tradedesk.claude import ClaudeAdvisor
+        from tradedesk.claude.chart_read import apply_reads, read_watchlist
+
+        advisor = ClaudeAdvisor(settings.claude.model_copy(update={"mode": mode}))
+        reads = read_watchlist(advisor, wl, max_setups=settings.claude.max_setups_per_evening)
+        wl = apply_reads(wl, reads, mode)
+        typer.echo(
+            f"claude ({mode}): {len(reads)} chart reads, "
+            f"month spend ${advisor.month_spend_usd():.2f}"
+        )
+        for e in wl.entries:
+            for n in e.score_notes:
+                if n.startswith("Claude ("):
+                    typer.echo(f"  {e.signal.symbol}: {n}")
     path = save_watchlist(wl, out_dir)
     typer.echo(f"saved {path}")
 

@@ -4,7 +4,7 @@ Short-term momentum scanner for NSE stocks using the INDstocks (INDmoney) API.
 Evening scan on daily charts, live trigger monitoring, trades held hours to 10 sessions.
 It alerts; the human places every order.
 
-**Status: M1-M9 built and unit-tested. Pending live data (needs `tradedesk auth setup`): M2 sign-off (NSE close check), M3 sign-off (quality report on real history). M1 cost model verified against 5 FY25-26 ledger bills (delivery); current-plan intraday notes still wanted; M4 TradingView golden tests pending an export in tests/golden/indicators/.** Next: M10 (Claude chart reads, trigger notes, weekly review, MCP server + skills). Full spec and milestone list: PLAN.md.
+**Status: M1-M10 built and unit-tested. Pending live data (needs `tradedesk auth setup`): M2 sign-off (NSE close check), M3 sign-off (quality report on real history). M1 cost model verified against 5 FY25-26 ledger bills (delivery); current-plan intraday notes still wanted; M4 TradingView golden tests pending an export in tests/golden/indicators/.** Next: M11 (prediction layer: triple-barrier labels, features, purged walk-forward, shadow mode). Full spec and milestone list: PLAN.md.
 
 ## Hard rules
 - NEVER call or implement order placement, modification or cancellation unless the task explicitly says "Milestone M12".
@@ -34,6 +34,7 @@ It alerts; the human places every order.
 - Data store: uv run tradedesk data sync-instruments | data load [--interval 1day] | data import-actions <nse.csv> | data import-results <nse.csv> | data quality [--out data/reports/q.csv] | data universe [--on YYYY-MM-DD] | data status
 - Live session: uv run tradedesk live [--watchlist data/watchlists/<date>.json] [--until 15:35]   -> records data/sessions/<date>.jsonl
 - Replay: uv run tradedesk replay data/sessions/<date>.jsonl --watchlist data/watchlists/<date>.json [--alerts]
+- Claude: uv run tradedesk scan --claude notify|veto ; uv run tradedesk review week ; uv run tradedesk mcp (also .mcp.json + .claude/skills analyze|review|backtest)
 - Journal: uv run tradedesk journal fill <signal_id> --qty --price | journal exit <id> --qty --price --reason | journal stop <id> --to | journal positions | journal tag <id> rule_break "note" | journal stats | journal orders
 - Paper book: uv run tradedesk paper update [--date]   (run after the close and `data load`)
 - Alerts: uv run tradedesk alerts setup-telegram | alerts telegram-chat-id | alerts test ; dashboard: uv run tradedesk dashboard (live embeds it by default at 127.0.0.1:8765)
@@ -62,6 +63,8 @@ It alerts; the human places every order.
 - httpx's ASGITransport buffers responses: test SSE against a real uvicorn server on a free port (see tests/alerts).
 - Journal (M9) is SQLite at data/journal.sqlite (journal/db.py). Real fills are entered by hand (`journal fill/exit`) or via Telegram Took it/Skip; the broker order-updates feed is only captured raw (`order_updates` table) because its messages carry no instrument - matching to signals is manual until an order-book endpoint is wired.
 - Paper book (paper/book.py) simulates EVERY triggered signal with the live exit rules and full costs, sized per risk.yaml against its own equity, deliberately WITHOUT portfolio crowding limits (it measures setups, not queue order). `journal.stats.track_record` -> TrackRecord -> scoring; a setup with a negative rolling-30 paper expectancy is benched (never alerts).
+- Claude (M10) lives in claude/: output schemas in claude/models.py are TEXT ONLY (tests assert no int/float field exists); claude/chart_read.py::apply_reads is the only place a read touches the watchlist and it can only add a note, lower a grade or reject an entry - never a price, level, quantity or score. Trigger notes are queued by TriggerNoteWorker.on_alert and produced in a background task AFTER the alert is out. The SDK is called via client.messages.parse(output_format=<pydantic>); credentials resolve from ANTHROPIC_API_KEY / `ant auth login`; spend is logged to data/claude_usage.jsonl and capped by claude.yaml monthly_spend_limit_usd. Models are those PLAN.md names (sonnet-5 for reads/review, haiku-4-5 for notes); change in config/claude.yaml.
+- mcp_server.py exposes read-only tools (get_watchlist, get_position, analyze, journal_stats, backtest) via the mcp 2.x MCPServer API (`from mcp.server.mcpserver import MCPServer`; FastMCP no longer exists).
 - risk/limits.py::RiskManager rebuilds the Portfolio counters from journaled live trades in exit order (weekly start equity, consecutive-loss pause, re-entry cooldowns) so restarts are deterministic; it adds the results blackout on top of Portfolio.can_enter.
 - Signal lifecycle is engine/lifecycle.py (ARMED -> TRIGGERED/CHASED/EXPIRED/INVALIDATED -> TAKEN/SKIPPED -> OPEN -> CLOSED); illegal transitions raise.
 - Evening scan = backtest/runner.py::prepare_market + build_snapshot + engine.scan_day, then engine/scoring.py (grade), risk/sizing.py, engine/filters.py. tests/scan proves watchlist signals for a date == the backtester's for that date (given the same exclusion set).
