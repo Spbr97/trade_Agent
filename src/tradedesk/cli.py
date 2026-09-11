@@ -67,7 +67,9 @@ def config_check(root: Path = ROOT_OPTION) -> None:
 
 def _print_leg(label: str, leg: LegCost) -> None:
     typer.echo(f"{label}: {leg.side.value} {leg.qty} @ {leg.price}  (turnover {leg.turnover:,.2f})")
-    for name in ("brokerage", "stt", "exchange_txn", "sebi_fee", "stamp_duty", "gst", "dp_charge"):
+    for name in (
+        "brokerage", "stt", "exchange_txn", "ipft", "sebi_fee", "stamp_duty", "gst", "dp_charge"
+    ):  # fmt: skip
         typer.echo(f"    {name:<13}{getattr(leg, name):>10}")
     typer.echo(f"    {'total':<13}{leg.total:>10}")
 

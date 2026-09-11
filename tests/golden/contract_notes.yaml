@@ -1,53 +1,68 @@
-# Real charge figures transcribed from INDmoney contract notes (PLAN.md M1 "done when").
+# Real charge figures from INDmoney records (PLAN.md M1 "done when").
 # Numbers only; never put the PDFs in the repo.
 #
-# Each entry is one round trip. Provide per-leg lines (`legs.buy` / `legs.sell`) when the
-# note itemises each order, or `combined` when it only shows day totals (common for intraday,
-# where both legs are on one note). Any charge line you omit is not compared — e.g. dp_charge
-# usually appears on the demat ledger, not the contract note.
+# Sources:
+#   - Ledger Statement FY2025-26: each "BILL ENTRY" is the day's net obligation. Paired with
+#     the fills in the Transactions Report, bill - traded value = that day's total charges.
+#   - Tax P&L FY2024-25: charges by TYPE across all trades of the year (used to verify the
+#     structure: GST base, rupee rounding of STT/stamp, IPFT rate) - see the notes at the end.
 #
-# Tolerances: 0.01 per line, 0.05 on totals (broker rounding order can differ from ours).
+# Each entry is one trading day for one scrip. Give `legs.buy` / `legs.sell` with whatever
+# lines you know; a leg with only `total` compares the leg total. Tolerances: 0.01 per line,
+# 0.05 on totals; override with `tolerance:` when fills were split (STT rounds per fill).
 #
-# Rates are pulled from config/risk.yaml. If a golden line fails, fix the RATE (or the
-# rounding rule in costs.py) — never the expected number.
+# If an entry fails, fix the RATE in config/risk.yaml or the rounding rule in costs.py -
+# never the expected number.
 
-notes: []
+notes:
+  - id: 2025-10-21-ADANIPOWER-delivery-buy
+    trade_type: delivery
+    qty: 5
+    buy_price: 172.95
+    legs:
+      buy:
+        total: 3.40        # bill 868.15 - 864.75; brokerage Rs 2 minimum (Muhurat reversal 2.36 = 2 + GST)
+  - id: 2025-12-11-ATHERENERG-delivery-sell
+    trade_type: delivery
+    qty: 46
+    sell_price: 655.9565217391304
+    legs:
+      sell:
+        total: 58.86       # bill 30115.14 credit vs 30174.00 sold
+  - id: 2025-12-31-BPCL-delivery-sell
+    trade_type: delivery
+    qty: 21
+    sell_price: 378.75
+    legs:
+      sell:
+        total: 36.04       # bill 7917.71 credit vs 7953.75 sold
+  - id: 2026-01-05-VEDL-delivery-sell
+    trade_type: delivery
+    qty: 11
+    sell_price: 612.10
+    legs:
+      sell:
+        total: 34.99       # bill 6698.11 credit vs 6733.10 sold
+  - id: 2025-09-30-LEMONTREE-delivery-sell
+    trade_type: delivery
+    qty: 9
+    sell_price: 166.17
+    tolerance: 1.05        # 26.24 reported vs 25.25 modelled: the STT was Rs 2, i.e. rounded per fill
+    legs:
+      sell:
+        total: 26.24
 
-# Example entries (delete once real ones are in):
+# Not reconciled (kept for the record):
+#   2025-05-06 VEDL buy 11 @ 417.15 + LEMONTREE buy 2 @ 137.92: bill 4875.72 => charges 11.23;
+#   the model gives 13.95. About Rs 2.36 short - looks like a waived brokerage minimum on the
+#   Rs 276 LEMONTREE order. Unexplained; excluded.
 #
-# - id: 2026-09-01-ABC-delivery
-#   trade_type: delivery
-#   qty: 20
-#   buy_price: 842.00
-#   sell_price: 890.00
-#   legs:
-#     buy:
-#       brokerage: 5.00
-#       stt: 16.84
-#       exchange_txn: 0.52
-#       sebi_fee: 0.02
-#       stamp_duty: 2.53
-#       gst: 1.00
-#       total: 25.91
-#     sell:
-#       brokerage: 5.00
-#       stt: 17.80
-#       exchange_txn: 0.55
-#       sebi_fee: 0.02
-#       stamp_duty: 0.00
-#       gst: 1.00
-#       total: 24.37        # excludes DP charge (on the demat ledger)
-#
-# - id: 2026-09-02-XYZ-intraday
-#   trade_type: intraday
-#   qty: 50
-#   buy_price: 310.00
-#   sell_price: 314.50
-#   combined:
-#     brokerage: 10.00
-#     stt: 3.93
-#     exchange_txn: 0.96
-#     sebi_fee: 0.03
-#     stamp_duty: 0.47
-#     gst: 1.98
-#     total: 17.37
+# FY2024-25 Tax P&L aggregates (all trades that year: 15 intraday round trips + 3 delivery buys,
+# traded value 1,23,829.83):
+#   GST 12.44 = 18% x (brokerage 64.99 + exchange 3.98 + SEBI 0.15)   -> GST base confirmed
+#   STT 20    = 14 (intraday sells, rounded per trade) + 6 (delivery buys) -> rupee rounding
+#   stamp 1   = only the Rs 3,798 delivery buy rounds up to Re 1          -> rupee rounding
+#   exchange 3.98 => 0.00322% (NSE rate at the time; 0.00307% today per IND Pricing)
+#   IPFT 0.15 == SEBI 0.15                                               -> IPFT = 0.0001%
+#   brokerage 64.99 over ~33 orders (~Rs 2 avg) does NOT match today's 0.1% capped at Rs 5;
+#   the 2024 plan was different. Current-plan intraday notes are still wanted.

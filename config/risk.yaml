@@ -40,8 +40,9 @@ costs:
     delivery_sell: 0.001
     intraday_sell: 0.00025         # intraday pays STT on the sell only
   exchange_txn_pct: 0.0000307      # NSE, both sides. IND Pricing table says 0.00307%, its text 0.00322%
-  ipft_pct: 0.000000001            # NSE investor protection fund levy, both sides (negligible)
-  gst_on_exchange_txn: true        # IND Pricing lists GST on brokerage+SEBI+DP only; confirm on a note
+  ipft_pct: 0.000001               # NSE investor protection fund levy, both sides (Rs 10 / crore)
+  statutory_rounding: rupee        # STT and stamp duty are rounded to the nearest rupee per trade (ledger-verified)
+  gst_on_exchange_txn: true        # verified: GST = 18% x (brokerage + exchange + SEBI); not IPFT/STT/stamp
   sebi_fee_pct: 0.000001           # Rs 10 per crore, both sides
   stamp_duty:
     delivery_buy: 0.00015

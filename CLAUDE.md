@@ -4,7 +4,7 @@ Short-term momentum scanner for NSE stocks using the INDstocks (INDmoney) API.
 Evening scan on daily charts, live trigger monitoring, trades held hours to 10 sessions.
 It alerts; the human places every order.
 
-**Status: M1-M5 built and unit-tested. Pending live data (needs `tradedesk auth setup`): M2 sign-off (NSE close check), M3 sign-off (quality report on real history). M1 golden tests pending contract-note figures; M4 TradingView golden tests pending an export in tests/golden/indicators/.** Next: M6 (evening scan pipeline, watchlist report, chart rendering). Full spec and milestone list: PLAN.md.
+**Status: M1-M5 built and unit-tested. Pending live data (needs `tradedesk auth setup`): M2 sign-off (NSE close check), M3 sign-off (quality report on real history). M1 cost model verified against 5 FY25-26 ledger bills (delivery); current-plan intraday notes still wanted; M4 TradingView golden tests pending an export in tests/golden/indicators/.** Next: M6 (evening scan pipeline, watchlist report, chart rendering). Full spec and milestone list: PLAN.md.
 
 ## Hard rules
 - NEVER call or implement order placement, modification or cancellation unless the task explicitly says "Milestone M12".
@@ -39,7 +39,7 @@ It alerts; the human places every order.
 
 ## Conventions
 - Money and rates are `Decimal`, never float. Config percentages are fractions (0.001 = 0.1%).
-- Cost lines are rounded half-up to the paisa individually before summing, matching contract notes.
+- Cost lines are rounded half-up to the paisa individually before summing; STT and stamp duty are rounded to the nearest RUPEE per trade (ledger-verified: Rs 0.86 STT -> 1, Rs 0.13 stamp -> 0). GST = 18% x (brokerage + exchange txn + SEBI) - not IPFT/STT/stamp. Brokerage = 0.1% capped at Rs 5 with a Rs 2 minimum (Muhurat reversal 2.36 = 2 + GST).
 - Net R:R = (gross reward − costs to target) / (gross risk + costs to stop). A stop-out loses more than 1R. PLAN.md §7's worked numbers (1.4R/2.3R, ~₹110) assume ₹20/order; INDmoney actually charges 0.1% capped at ₹5 (min ₹2) per order, so the same card is ₹72 and 1.61R/2.48R.
 - The cost calculator never infers intraday vs delivery; the caller passes `TradeType`. Same-day buy+sell is INTRADAY.
 - Charge rates live in config/risk.yaml under `costs:`. Real contract-note figures live in tests/golden/contract_notes.yaml; if INDmoney changes pricing, update both.

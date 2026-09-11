@@ -207,7 +207,7 @@ def _sessions_until_results(
     return j - cal_pos
 
 
-def _regime_on(md: MarketData, on: date, cfg: BacktestConfig) -> RegimeSnapshot | None:
+def regime_on(md: MarketData, on: date, cfg: BacktestConfig) -> RegimeSnapshot | None:
     bench = md.benchmark.loc[:on]
     if len(bench) < cfg.engine.regime.nifty_ema + 5:
         return None
@@ -219,6 +219,53 @@ def _regime_on(md: MarketData, on: date, cfg: BacktestConfig) -> RegimeSnapshot 
         vix=vix,
         cfg=cfg.engine.regime,
         on=on,
+    )
+
+
+def universe_for(md: MarketData, on: date) -> list[str] | None:
+    """Monthly universe in force on `on` (the most recent rebuild at or before it)."""
+    key = (on.year, on.month)
+    if key in md.universe_by_month:
+        return md.universe_by_month[key]
+    earlier = [k for k in md.universe_by_month if k <= key]
+    return md.universe_by_month[max(earlier)] if earlier else None
+
+
+def build_snapshot(
+    md: MarketData,
+    on: date,
+    cfg: BacktestConfig,
+    *,
+    regime: RegimeSnapshot | None,
+    exclude: set[str] | None = None,
+) -> MarketSnapshot:
+    """Everything known at the close of `on`, built the same way for the backtester and
+    the live evening scan (that shared construction is what the parity test checks)."""
+    exclude = exclude or set()
+    cal_pos = bisect.bisect_left(md.calendar, on)
+    universe = universe_for(md, on)
+    candidates = [
+        c for c in (universe if universe is not None else md.features) if c not in exclude
+    ]
+    sliced = {
+        c: md.features[c].iloc[: md.pos_by_date[c][on] + 1]
+        for c in candidates
+        if on in md.pos_by_date.get(c, {})
+    }
+    rs_row = md.rs_rank.loc[on] if on in md.rs_rank.index else None
+    return MarketSnapshot(
+        on=on,
+        features=sliced,
+        symbols=md.symbols,
+        rs_percentile={
+            c: float(rs_row[c]) for c in sliced if rs_row is not None and pd.notna(rs_row.get(c))
+        },
+        regime=regime,
+        results_in_sessions={
+            c: _sessions_until_results(md.results_dates.get(c), on, md.calendar, cal_pos)
+            for c in sliced
+        },
+        universe=list(sliced),
     )
 
 
@@ -234,8 +281,6 @@ def run_backtest(md: MarketData, cfg: BacktestConfig) -> BacktestResult:
 
     for si, on in enumerate(sessions):
         portfolio.start_session(on, si)
-        cal_pos = bisect.bisect_left(md.calendar, on)
-
         # 1. exits for held positions
         for code, pos in list(portfolio.open.items()):
             i = md.pos_by_date[code].get(on)
@@ -332,37 +377,8 @@ def run_backtest(md: MarketData, cfg: BacktestConfig) -> BacktestResult:
         portfolio.mark_to_market(closes)
 
         # 4. evening scan -> tomorrow's armed signals
-        regime = _regime_on(md, on, cfg)
-        universe = md.universe_by_month.get((on.year, on.month))
-        if universe is None and md.universe_by_month:
-            universe = md.universe_by_month[
-                max(k for k in md.universe_by_month if k <= (on.year, on.month))
-            ]
-        candidates = [
-            c for c in (universe if universe is not None else md.features) if c not in live_by_code
-        ]
-        sliced = {
-            c: md.features[c].iloc[: md.pos_by_date[c][on] + 1]
-            for c in candidates
-            if on in md.pos_by_date[c]
-        }
-        rs_row = md.rs_rank.loc[on] if on in md.rs_rank.index else None
-        snapshot = MarketSnapshot(
-            on=on,
-            features=sliced,
-            symbols=md.symbols,
-            rs_percentile={
-                c: float(rs_row[c])
-                for c in sliced
-                if rs_row is not None and pd.notna(rs_row.get(c))
-            },
-            regime=regime,
-            results_in_sessions={
-                c: _sessions_until_results(md.results_dates.get(c), on, md.calendar, cal_pos)
-                for c in sliced
-            },
-            universe=list(sliced),
-        )
+        regime = regime_on(md, on, cfg)
+        snapshot = build_snapshot(md, on, cfg, regime=regime, exclude=set(live_by_code))
         for sig in scan_day(
             snapshot, cfg.setups, cfg.setup_params, max_hold_sessions=cfg.risk.max_hold_sessions
         ):

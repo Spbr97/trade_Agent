@@ -25,12 +25,12 @@ def test_delivery_buy_leg_lines(default_schedule: ChargeSchedule) -> None:
     assert leg.turnover == D("100000")
     assert leg.brokerage == D("5.00")  # 0.1% = 100 > Rs 5 cap
     assert leg.stt == D("100.00")
-    assert leg.exchange_txn == D("3.07")  # 0.00307% + IPFT (negligible)
-    assert leg.sebi_fee == D("0.10")
+    assert leg.exchange_txn == D("3.07")  # 0.00307%
+    assert leg.ipft == D("0.10") and leg.sebi_fee == D("0.10")  # 0.0001% each
     assert leg.stamp_duty == D("15.00")
-    assert leg.gst == D("1.47")  # 18% of (5 + 3.07 + 0.10) = 1.4706
+    assert leg.gst == D("1.47")  # 18% of (5 + 3.07 + 0.10): IPFT, STT and stamp excluded
     assert leg.dp_charge == D("0.00")
-    assert leg.total == D("124.64")
+    assert leg.total == D("124.74")
 
 
 def test_delivery_sell_leg_lines(default_schedule: ChargeSchedule) -> None:
@@ -38,7 +38,7 @@ def test_delivery_sell_leg_lines(default_schedule: ChargeSchedule) -> None:
     assert leg.stt == D("100.00")
     assert leg.stamp_duty == D("0.00")  # buy side only
     assert leg.dp_charge == D("21.83")  # 18.5 + 18% GST
-    assert leg.total == D("131.47")
+    assert leg.total == D("131.57")
 
 
 def test_intraday_legs(default_schedule: ChargeSchedule) -> None:
@@ -49,8 +49,8 @@ def test_intraday_legs(default_schedule: ChargeSchedule) -> None:
     assert buy.stamp_duty == D("3.00")
     assert sell.stamp_duty == D("0.00")
     assert buy.dp_charge == D("0.00") and sell.dp_charge == D("0.00")
-    assert buy.total == D("12.64")
-    assert sell.total == D("34.64")
+    assert buy.total == D("12.74")
+    assert sell.total == D("34.74")
 
 
 @pytest.mark.parametrize(
@@ -82,6 +82,17 @@ def test_dp_gst_flag(default_schedule: ChargeSchedule) -> None:
     assert leg.dp_charge == D("18.50")
 
 
+def test_statutory_rounding_to_rupee_per_trade(default_schedule: ChargeSchedule) -> None:
+    # Ledger-verified: ADANIPOWER 5 @ 172.95 delivery buy cost Rs 3.40 in total.
+    leg = leg_cost(default_schedule, side=Side.BUY, trade_type=DLV, qty=5, price=D("172.95"))
+    assert leg.stt == D("1.00")  # 0.86 -> 1
+    assert leg.stamp_duty == D("0.00")  # 0.13 -> 0
+    assert leg.brokerage == D("2.00")  # Rs 2 minimum on a Rs 865 order
+    assert leg.total == D("3.40")
+    paise = default_schedule.model_copy(update={"statutory_rounding": "paise"})
+    assert leg_cost(paise, side=Side.BUY, trade_type=DLV, qty=5, price=D("172.95")).stt == D("0.86")
+
+
 def test_gst_base_can_exclude_exchange_txn(default_schedule: ChargeSchedule) -> None:
     # IND Pricing lists GST on brokerage + SEBI (+ DP) but not on exchange charges.
     sched = default_schedule.model_copy(update={"gst_on_exchange_txn": False})
@@ -93,7 +104,7 @@ def test_one_lakh_delivery_round_trip(default_schedule: ChargeSchedule) -> None:
     rt = round_trip_cost(
         default_schedule, trade_type=DLV, qty=100, entry_price=D(1000), exit_price=D(1000)
     )
-    assert rt.total == D("256.11")
+    assert rt.total == D("256.31")
     assert D("0.0025") < rt.pct_of_entry_value < D("0.0027")
 
 
@@ -102,9 +113,10 @@ def test_trade_card_at_indmoney_rates(default_schedule: ChargeSchedule) -> None:
     rt = round_trip_cost(
         default_schedule, trade_type=DLV, qty=20, entry_price=D(842), exit_price=D(890)
     )
-    assert rt.entry.total == D("25.91")
-    assert rt.exit.total == D("46.20")
-    assert rt.total == D("72.11")
+    assert rt.entry.stt == D("17.00") and rt.entry.stamp_duty == D("3.00")  # rupee rounding
+    assert rt.entry.total == D("26.56")
+    assert rt.exit.total == D("46.42")
+    assert rt.total == D("72.98")
     rr_t1 = net_reward_risk(
         default_schedule, trade_type=DLV, qty=20, entry=D(842), stop=D(818), target=D(890)
     )
@@ -139,7 +151,7 @@ def test_spec_anchor_reproduces_plan_numbers(flat20_schedule: ChargeSchedule) ->
 
 def test_net_pnl_and_r_multiple(default_schedule: ChargeSchedule) -> None:
     pnl = net_pnl(default_schedule, trade_type=DLV, qty=20, entry_price=D(842), exit_price=D(890))
-    assert pnl == D("960") - D("72.11")
+    assert pnl == D("960") - D("72.98")
     r = net_r_multiple(
         default_schedule, trade_type=DLV, qty=20, entry=D(842), stop=D(818), exit_price=D(818)
     )

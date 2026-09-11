@@ -21,8 +21,8 @@ def schedule(settings: Settings) -> ChargeSchedule:
 
 @pytest.fixture(scope="session")
 def default_schedule() -> ChargeSchedule:
-    """INDmoney's published equity rates (IND Pricing page, Sept 2026), pinned here so
-    the unit tests don't move when config/risk.yaml is tuned against contract notes."""
+    """INDmoney's equity rates (IND Pricing page, Sept 2026, verified against FY25-26 ledger
+    bills), pinned here so the unit tests don't move when config/risk.yaml is tuned."""
     return ChargeSchedule.model_validate(
         {
             "brokerage": {
@@ -36,7 +36,7 @@ def default_schedule() -> ChargeSchedule:
                 "intraday_sell": Decimal("0.00025"),
             },
             "exchange_txn_pct": Decimal("0.0000307"),
-            "ipft_pct": Decimal("0.000000001"),
+            "ipft_pct": Decimal("0.000001"),
             "sebi_fee_pct": Decimal("0.000001"),
             "stamp_duty": {"delivery_buy": Decimal("0.00015"), "intraday_buy": Decimal("0.00003")},
             "gst_pct": Decimal("0.18"),
@@ -44,6 +44,7 @@ def default_schedule() -> ChargeSchedule:
             "dp_charge": {"amount": Decimal("18.5"), "gst_applies": True},
             "slippage_pct": Decimal("0.0005"),
             "rounding": "paise",
+            "statutory_rounding": "rupee",
         }
     )
 

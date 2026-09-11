@@ -23,6 +23,7 @@ def test_total_is_sum_of_lines_and_non_negative(
         leg.brokerage,
         leg.stt,
         leg.exchange_txn,
+        leg.ipft,
         leg.sebi_fee,
         leg.stamp_duty,
         leg.gst,

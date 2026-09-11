@@ -51,7 +51,7 @@ class ChargeSchedule(Strict):
     brokerage: Brokerage = Brokerage()
     stt: SttRates = SttRates()
     exchange_txn_pct: Fraction = Decimal("0.0000307")
-    ipft_pct: Fraction = Decimal("0.000000001")
+    ipft_pct: Fraction = Decimal("0.000001")
     sebi_fee_pct: Fraction = Decimal("0.000001")
     stamp_duty: StampDutyRates = StampDutyRates()
     gst_pct: Fraction = Decimal("0.18")
@@ -59,6 +59,7 @@ class ChargeSchedule(Strict):
     dp_charge: DpCharge = DpCharge()
     slippage_pct: Fraction = Decimal("0.0005")
     rounding: Literal["paise", "none"] = "paise"
+    statutory_rounding: Literal["rupee", "paise"] = "rupee"  # STT and stamp duty per trade
 
 
 class ConsecutiveLossPause(Strict):

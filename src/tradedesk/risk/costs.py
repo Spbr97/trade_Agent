@@ -8,7 +8,8 @@ Charge rules encoded:
 - STT: delivery on both legs; intraday on the sell leg only.
 - Exchange transaction charge and SEBI fee: both legs, on turnover.
 - Stamp duty: buy leg only; rate depends on trade type.
-- GST: on brokerage + exchange transaction charge + SEBI fee.
+- GST: on brokerage + exchange transaction charge + SEBI fee (not IPFT, STT or stamp).
+- STT and stamp duty: rounded to the nearest rupee per trade (ledger-verified).
 - DP charge: delivery sell legs only, once per scrip per day (`dp_applies` lets the
   caller suppress it for a second partial exit on the same day); carries its own GST.
 
@@ -38,6 +39,7 @@ __all__ = [
 ]
 
 PAISA = Decimal("0.01")
+RUPEE = Decimal("1")
 ZERO = Decimal("0")
 
 
@@ -54,6 +56,7 @@ class LegCost(BaseModel):
     brokerage: Decimal
     stt: Decimal
     exchange_txn: Decimal
+    ipft: Decimal
     sebi_fee: Decimal
     stamp_duty: Decimal
     gst: Decimal
@@ -76,6 +79,14 @@ def _round(value: Decimal, schedule: ChargeSchedule) -> Decimal:
     if schedule.rounding == "paise":
         return value.quantize(PAISA, rounding=ROUND_HALF_UP)
     return value
+
+
+def _round_statutory(value: Decimal, schedule: ChargeSchedule) -> Decimal:
+    """STT and stamp duty appear on contract notes rounded to the nearest rupee per trade
+    (ledger-verified: Rs 0.86 STT -> 1, Rs 0.13 stamp -> 0)."""
+    if schedule.statutory_rounding == "rupee":
+        return value.quantize(RUPEE, rounding=ROUND_HALF_UP).quantize(PAISA)
+    return _round(value, schedule)
 
 
 def _check_order(qty: int, price: Decimal) -> None:
@@ -109,10 +120,10 @@ def leg_cost(
         stt_rate = schedule.stt.delivery_buy if side is Side.BUY else schedule.stt.delivery_sell
     else:
         stt_rate = ZERO if side is Side.BUY else schedule.stt.intraday_sell
-    stt = r(turnover * stt_rate)
+    stt = _round_statutory(turnover * stt_rate, schedule)
 
-    # IPFT (investor protection fund) is an exchange levy; folded into the exchange line.
-    exchange_txn = r(turnover * (schedule.exchange_txn_pct + schedule.ipft_pct))
+    exchange_txn = r(turnover * schedule.exchange_txn_pct)
+    ipft = r(turnover * schedule.ipft_pct)  # exchange levy; outside the GST base
     sebi_fee = r(turnover * schedule.sebi_fee_pct)
 
     if side is Side.BUY:
@@ -121,7 +132,7 @@ def leg_cost(
             if trade_type is TradeType.DELIVERY
             else schedule.stamp_duty.intraday_buy
         )
-        stamp_duty = r(turnover * stamp_rate)
+        stamp_duty = _round_statutory(turnover * stamp_rate, schedule)
     else:
         stamp_duty = r(ZERO)
 
@@ -138,7 +149,7 @@ def leg_cost(
     else:
         dp_charge = r(ZERO)
 
-    total = brokerage + stt + exchange_txn + sebi_fee + stamp_duty + gst + dp_charge
+    total = brokerage + stt + exchange_txn + ipft + sebi_fee + stamp_duty + gst + dp_charge
     return LegCost(
         side=side,
         trade_type=trade_type,
@@ -148,6 +159,7 @@ def leg_cost(
         brokerage=brokerage,
         stt=stt,
         exchange_txn=exchange_txn,
+        ipft=ipft,
         sebi_fee=sebi_fee,
         stamp_duty=stamp_duty,
         gst=gst,
