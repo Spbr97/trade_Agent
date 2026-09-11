@@ -15,6 +15,7 @@ from tradedesk.config.models import (
     AlertsConfig,
     ChargeSchedule,
     ClaudeConfig,
+    EngineConfig,
     MlConfig,
     RiskConfig,
     ScheduleConfig,
@@ -36,6 +37,7 @@ _FILES: dict[str, tuple[str, type[Any], bool]] = {
     "alerts": ("alerts.yaml", AlertsConfig, False),
     "claude": ("claude.yaml", ClaudeConfig, False),
     "ml": ("ml.yaml", MlConfig, False),
+    "engine": ("engine.yaml", EngineConfig, False),
 }
 
 

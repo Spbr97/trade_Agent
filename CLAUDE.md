@@ -4,7 +4,7 @@ Short-term momentum scanner for NSE stocks using the INDstocks (INDmoney) API.
 Evening scan on daily charts, live trigger monitoring, trades held hours to 10 sessions.
 It alerts; the human places every order.
 
-**Status: M1, M2, M3 built and unit-tested. Pending live data (needs `tradedesk auth setup`): M2 sign-off (NSE close check), M3 sign-off (quality report on real history). M1 golden tests pending contract-note figures.** Next: M4 (indicators, regime, RS, patterns). Full spec and milestone list: PLAN.md.
+**Status: M1-M4 built and unit-tested. Pending live data (needs `tradedesk auth setup`): M2 sign-off (NSE close check), M3 sign-off (quality report on real history). M1 golden tests pending contract-note figures; M4 TradingView golden tests pending an export in tests/golden/indicators/.** Next: M5 (three setups + event-driven backtester). Full spec and milestone list: PLAN.md.
 
 ## Hard rules
 - NEVER call or implement order placement, modification or cancellation unless the task explicitly says "Milestone M12".
@@ -46,6 +46,9 @@ It alerts; the human places every order.
 - INDstocks facts baked into broker/indstocks/: REST codes are `NSE_3045`, WebSocket codes `NSE:3045`; candle `ts` is the OPEN time in epoch seconds, requests use epoch ms; ≤5 codes per candle call, ≤1000 per quote call, ≤3000 instruments per WS connection; one TOTP token live at a time (24 h, 1 generation/min).
 - The doc's FAQ section contradicts the endpoint pages (different WS URL, `symbols` param). Follow the endpoint pages and the OpenAPI spec, never the FAQ.
 - Market-data prices are float (pandas/DuckDB bound); accounting money is Decimal.
+- Indicators (engine/indicators.py) are hand-written pandas with TradingView conventions (ema seeded on first value; rma = Wilder, SMA-seeded, na until n finite values; population stdev). No TA-Lib: its C DLL would hit Smart App Control.
+- Pattern detectors (engine/patterns.py) evaluate the LAST bar of the frame they receive and return geometry models; look-ahead freedom comes from slicing the frame to the evaluation date. Pivots carry `confirmed_at`.
+- tests/engine/test_indicators.py::test_daily_features_have_no_look_ahead is the leakage test for every feature column; extend `daily_features` and it is covered automatically.
 - Candle store keeps RAW candles; split/bonus adjustment is applied on read (`CandleStore.load(adjusted=True)`) from the corporate_actions table. Never write adjusted prices back.
 - The trading calendar is the benchmark index's daily candle dates (config/universe.yaml `benchmark`); universe membership is computed as-of-date from stored candles (survivorship caveat stays in every backtest report).
 - Windows Smart App Control is ON on this machine: it blocks unsigned DLLs in brand-new wheels (numpy 2.5 / pandas 3 failed). Pins in pyproject.toml exist for that reason; if a new package fails with "Application Control policy has blocked this file", pin an older, widely-distributed version.

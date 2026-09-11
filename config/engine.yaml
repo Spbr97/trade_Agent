@@ -1,0 +1,30 @@
+# Engine parameters (PLAN.md 6.1-6.4): regime thresholds, relative-strength weights,
+# pattern geometry. Starting points for the backtest to tune.
+regime:
+  nifty_ema: 50
+  ema_slope_lookback: 5           # sessions; EMA must be higher than this many sessions ago
+  breadth_ema: 50                 # % of universe above this EMA
+  breadth_risk_on_pct: 50
+  breadth_risk_off_pct: 40
+  vix_calm_max: 18
+  vix_spike_level: 25
+  vix_spike_change_5d_pct: 25     # VIX up this much over 5 sessions counts as a spike
+relative_strength:
+  lookbacks_sessions: [21, 63, 126]     # 1, 3, 6 months
+  weights: [0.4, 0.3, 0.3]
+  top_quartile_pct: 75
+patterns:
+  pivot_bars: 3                   # left/right bars for a swing high/low
+  base_len: {min: 5, max: 25}
+  base_max_depth_pct: 0.15
+  base_close_within_pct: 0.03
+  flag_pole_min_gain_pct: 0.10
+  flag_pole_max_len: 10
+  flag_len: {min: 3, max: 15}
+  flag_max_retrace: 0.5
+  pullback_ema: 20
+  pullback_len: {min: 2, max: 5}
+  pullback_touch_pct: 0.01
+  near_high_pct: 0.05
+  double_bottom_tolerance_pct: 0.02
+  overhead_lookback: 250

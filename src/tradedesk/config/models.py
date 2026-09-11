@@ -221,6 +221,56 @@ class MlConfig(Strict):
     embargo_sessions: int = Field(10, ge=1)
 
 
+# ------------------------------------------------------------------------- engine.yaml
+
+
+class IntRange(Strict):
+    min: int = Field(ge=1)
+    max: int = Field(ge=1)
+
+
+class RegimeConfig(Strict):
+    nifty_ema: int = 50
+    ema_slope_lookback: int = 5
+    breadth_ema: int = 50
+    breadth_risk_on_pct: Decimal = Decimal("50")
+    breadth_risk_off_pct: Decimal = Decimal("40")
+    vix_calm_max: Decimal = Decimal("18")
+    vix_spike_level: Decimal = Decimal("25")
+    vix_spike_change_5d_pct: Decimal = Decimal("25")
+
+
+class RelativeStrengthConfig(Strict):
+    lookbacks_sessions: list[int] = Field(default_factory=lambda: [21, 63, 126])
+    weights: list[Decimal] = Field(
+        default_factory=lambda: [Decimal("0.4"), Decimal("0.3"), Decimal("0.3")]
+    )
+    top_quartile_pct: Decimal = Decimal("75")
+
+
+class PatternConfig(Strict):
+    pivot_bars: int = 3
+    base_len: IntRange = IntRange(min=5, max=25)
+    base_max_depth_pct: Decimal = Decimal("0.15")
+    base_close_within_pct: Decimal = Decimal("0.03")
+    flag_pole_min_gain_pct: Decimal = Decimal("0.10")
+    flag_pole_max_len: int = 10
+    flag_len: IntRange = IntRange(min=3, max=15)
+    flag_max_retrace: Decimal = Decimal("0.5")
+    pullback_ema: int = 20
+    pullback_len: IntRange = IntRange(min=2, max=5)
+    pullback_touch_pct: Decimal = Decimal("0.01")
+    near_high_pct: Decimal = Decimal("0.05")
+    double_bottom_tolerance_pct: Decimal = Decimal("0.02")
+    overhead_lookback: int = 250
+
+
+class EngineConfig(Strict):
+    regime: RegimeConfig = RegimeConfig()
+    relative_strength: RelativeStrengthConfig = RelativeStrengthConfig()
+    patterns: PatternConfig = PatternConfig()
+
+
 # ------------------------------------------------------------------------------ bundle
 
 
@@ -232,3 +282,4 @@ class Settings(Strict):
     alerts: AlertsConfig = AlertsConfig()
     claude: ClaudeConfig = ClaudeConfig()
     ml: MlConfig = MlConfig()
+    engine: EngineConfig = EngineConfig()
