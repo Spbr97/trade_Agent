@@ -7,6 +7,14 @@ Every call goes through `RateLimiter` and the retry policy from the doc's Error 
 - 429, 5xx, NetworkException / ServiceUnavailable / GatewayTimeout → back off and retry;
 - 401/403 TokenException → regenerate the token once, then retry;
 - 400/404/405 and other 4xx → raise `ApiError`, no retry.
+
+Undocumented quirk observed live (2026-09-11): a `/market/historical` call whose window
+spans less than a few days AND ends at "now" silently omits the most recent day's candle,
+even though the same end time in a wider window returns it correctly. Not a rate limit or
+error - the response is 200 with that day simply missing. `candles_history` pads its
+paging window (MIN_WINDOW_PAD) to stay clear of this; a bare `candles()` call with a
+narrow recent window can still hit it - prefer `candles_history` for anything that might
+run near "today".
 """
 
 from __future__ import annotations
@@ -36,6 +44,7 @@ from tradedesk.broker.indstocks.ratelimit import Category, RateLimiter
 
 BASE_URL = "https://api.indstocks.com"
 MAX_CANDLE_CODES_PER_CALL = 5
+MIN_WINDOW_PAD = timedelta(days=6)  # stays clear of the narrow-window-near-now quirk above
 MAX_QUOTE_CODES_PER_CALL = 1000
 MAX_ATTEMPTS = 5
 BACKOFF_BASE_SECONDS = 0.5
@@ -230,6 +239,14 @@ class IndstocksClient:
             win_end = end
             while win_end > start:
                 win_start = max(start, win_end - window)
+                if win_end == end:
+                    # The first (most recent) window is the one at risk of the narrow-
+                    # window-near-now quirk above. Pad it earlier when it would otherwise
+                    # be narrower than MIN_WINDOW_PAD - never past the API's max window,
+                    # and later iterations are unaffected (they already end well before
+                    # "now"). Extra rows this pulls in are harmless: still filtered to
+                    # ts in [start, end) below.
+                    win_start = max(win_end - window, min(win_start, win_end - MIN_WINDOW_PAD))
                 got = await self.candles(interval, batch, win_start, win_end)
                 for code, candles in got.items():
                     bucket = result[code]

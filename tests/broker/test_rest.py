@@ -198,3 +198,54 @@ async def test_instruments_csv_is_returned_raw(client: IndstocksClient) -> None:
     assert idx[0].name == "NIFTY 50" and idx[0].scrip_code == "NSE_40000001"
     with pytest.raises(ValueError):
         await client.instruments_csv("bonds")
+
+
+@respx.mock
+async def test_history_pads_the_first_window_near_now(client: IndstocksClient) -> None:
+    """Live API quirk (2026-09-11): a window ending at/near `end` shorter than
+    MIN_WINDOW_PAD silently drops the most recent day. An incremental load for a code
+    already up to date through yesterday calls candles_history(start=today, end=now) -
+    exactly that shape. The first window must be padded earlier; later windows must not
+    change (they already end well before `end`, so the quirk does not apply there)."""
+    end = datetime(2026, 9, 11, 21, 0, tzinfo=IST)
+    start = end.replace(hour=0, minute=0, second=0, microsecond=0)  # a few hours of span
+    seen: list[tuple[int, int]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        p = request.url.params
+        seen.append((int(p["start_time"]), int(p["end_time"])))
+        return httpx.Response(200, json={"success": True, "data": {"NSE_1": {"candles": []}}})
+
+    respx.get(f"{HIST}/1day").mock(side_effect=handler)
+    await client.candles_history(Interval.D1, ["NSE_1"], start, end)
+
+    assert len(seen) == 1  # padded window already reaches back past `start`
+    s, e = seen[0]
+    assert e == int(end.timestamp() * 1000)
+    span_days = (e - s) / 86_400_000
+    assert span_days >= 6  # MIN_WINDOW_PAD, not the few-hour natural span
+
+
+@respx.mock
+async def test_history_padding_does_not_change_later_windows(
+    client: IndstocksClient,
+) -> None:
+    """Regression: only the first (most recent) window may be padded; a plain backward
+    paging call over many days must page exactly as before (windows sized to the max,
+    remainder last, never past `start`)."""
+    end = datetime(2026, 9, 11, tzinfo=IST)
+    start = end - timedelta(days=20)
+    seen: list[tuple[int, int]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        p = request.url.params
+        seen.append((int(p["start_time"]), int(p["end_time"])))
+        return httpx.Response(200, json={"success": True, "data": {"NSE_1": {"candles": []}}})
+
+    respx.get(f"{HIST}/15minute").mock(side_effect=handler)
+    await client.candles_history(Interval.M15, ["NSE_1"], start, end)
+
+    assert len(seen) == 3
+    widths = [(e - s) / 86_400_000 for s, e in seen]
+    assert widths == [7, 7, 6]
+    assert seen[-1][0] == int(start.timestamp() * 1000)
