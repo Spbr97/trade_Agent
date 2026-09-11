@@ -9,7 +9,7 @@ from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import typer
 from pydantic import ValidationError
@@ -19,6 +19,7 @@ from tradedesk.models import TradeType
 from tradedesk.risk.costs import LegCost, net_reward_risk, round_trip_cost
 
 if TYPE_CHECKING:
+    from tradedesk.alerts import AlertRouter
     from tradedesk.broker.indstocks import IndstocksClient
     from tradedesk.data.candle_store import CandleStore
 
@@ -31,6 +32,8 @@ instruments_app = typer.Typer(no_args_is_help=True)
 app.add_typer(instruments_app, name="instruments", help="Instrument master files.")
 data_app = typer.Typer(no_args_is_help=True)
 app.add_typer(data_app, name="data", help="Candle store: load history, import events, quality.")
+alerts_app = typer.Typer(no_args_is_help=True)
+app.add_typer(alerts_app, name="alerts", help="Alert channels: Telegram setup, test sends.")
 
 DB_OPTION = typer.Option(Path("data/tradedesk.duckdb"), "--db", help="DuckDB file.")
 
@@ -581,6 +584,111 @@ def data_status(db: Path = DB_OPTION) -> None:
         )
 
 
+# ------------------------------------------------------------------- M8: alerts
+
+
+def _build_router(settings: Any, watchlist: Any, dashboard: Any) -> AlertRouter:
+    from tradedesk.alerts import AlertRouter, DesktopNotifier, TelegramBot, load_bot_token
+
+    cfg = settings.alerts
+    desktop = DesktopNotifier(sound=cfg.desktop.sound) if cfg.desktop.enabled else None
+    telegram = None
+    if cfg.telegram.enabled:
+        token = load_bot_token()
+        if token and cfg.telegram.allowed_chat_id:
+            telegram = TelegramBot(token=token, chat_id=int(cfg.telegram.allowed_chat_id))
+        else:
+            typer.echo(
+                "telegram enabled but no bot token / chat id: "
+                "run `tradedesk alerts setup-telegram`",
+                err=True,
+            )
+    return AlertRouter(
+        cfg, watchlist=watchlist, desktop=desktop, telegram=telegram, dashboard=dashboard
+    )
+
+
+@alerts_app.command("setup-telegram")
+def alerts_setup_telegram() -> None:
+    """Store the bot token (from @BotFather) in the keychain, then print your chat id."""
+    from tradedesk.alerts import TelegramBot, store_bot_token
+
+    hidden = _stdin_is_windows_console()
+    token = _read_secret("Bot token from @BotFather", hidden=hidden).strip()
+    if ":" not in token:
+        raise typer.BadParameter("that does not look like a bot token (expected 123456:ABC...)")
+    store_bot_token(token)
+    typer.echo("token stored in keychain service 'tradedesk-telegram'.")
+    typer.echo("Now send any message to your bot in Telegram, then press Enter.")
+    input()
+    bot = TelegramBot(token=token, chat_id=0)
+    ids = asyncio.run(bot.my_chat_ids())
+    if not ids:
+        typer.echo(
+            "no messages seen yet; message the bot and run `tradedesk alerts telegram-chat-id`"
+        )
+    else:
+        typer.echo(f"chat id(s) that messaged the bot: {ids}")
+        typer.echo(
+            "put yours in config/alerts.yaml under telegram.allowed_chat_id and set enabled: true"
+        )
+
+
+@alerts_app.command("telegram-chat-id")
+def alerts_chat_id() -> None:
+    """Print the chat ids that have messaged the bot."""
+    from tradedesk.alerts import TelegramBot, load_bot_token
+
+    token = load_bot_token()
+    if not token:
+        raise typer.BadParameter("no bot token stored; run `tradedesk alerts setup-telegram`")
+    typer.echo(asyncio.run(TelegramBot(token=token, chat_id=0).my_chat_ids()))
+
+
+@alerts_app.command("test")
+def alerts_test(root: Path = ROOT_OPTION) -> None:
+    """Send a test alert through every enabled channel."""
+    from tradedesk.broker.indstocks.models import IST
+    from tradedesk.live.models import Alert, AlertKind, AlertLevel
+
+    settings = load_config(root)
+    router = _build_router(settings, None, None)
+    alert = Alert(
+        kind=AlertKind.INFO,
+        level=AlertLevel.URGENT,
+        at=datetime.now(IST),
+        message="tradedesk test alert: desktop + Telegram channels are wired",
+    )
+    channels = router.route(alert)
+    sent = asyncio.run(router.flush())
+    typer.echo(
+        f"routed to {channels or 'nothing (enable channels in config/alerts.yaml)'}; "
+        f"telegram sent {sent}"
+    )
+
+
+@app.command()
+def dashboard(
+    watchlist: Path | None = typer.Option(None, "--watchlist"),
+    root: Path = ROOT_OPTION,
+) -> None:
+    """Serve the localhost dashboard on its own (the live session can also embed it)."""
+    from tradedesk.dashboard import DashboardState, create_app, serve
+    from tradedesk.scan import load_watchlist
+
+    settings = load_config(root)
+    state = DashboardState()
+    if watchlist is None:
+        found = sorted(Path("data/watchlists").glob("*.json"))
+        watchlist = found[-1] if found else None
+    if watchlist is not None:
+        state.set_watchlist(load_watchlist(watchlist))
+        typer.echo(f"loaded {watchlist}")
+    host, port = settings.alerts.dashboard.host, settings.alerts.dashboard.port
+    typer.echo(f"dashboard at http://{host}:{port}  (Ctrl+C to stop)")
+    asyncio.run(serve(create_app(state), host=host, port=port))
+
+
 def _not_yet(milestone: str) -> None:
     typer.echo(f"not implemented until Milestone {milestone} (see PLAN.md 14)", err=True)
     raise typer.Exit(code=2)
@@ -594,13 +702,16 @@ def live(
     record_dir: Path = typer.Option(Path("data/sessions"), "--record-dir"),
     until: str = typer.Option("15:35", "--until", help="HH:MM IST to stop"),
     all_entries: bool = typer.Option(False, "--all", help="Watch C-grade entries too"),
+    with_dashboard: bool = typer.Option(True, "--dashboard/--no-dashboard"),
     root: Path = ROOT_OPTION,
 ) -> None:
     """Market-hours session: stream prices for the watchlist, confirm triggers on 15-minute
-    closes, watch positions, record the session for replay. Alerts print to the console."""
+    closes, watch positions, route alerts (console, desktop, Telegram, dashboard) and record
+    the session for replay."""
     from tradedesk.broker.indstocks.models import IST
+    from tradedesk.dashboard import DashboardState, create_app, serve
     from tradedesk.live.models import Alert, SessionRules
-    from tradedesk.live.session import run_session, signals_from_watchlist
+    from tradedesk.live.session import apply_decision, run_session, signals_from_watchlist
     from tradedesk.live.trigger_monitor import TriggerMonitor
     from tradedesk.scan import load_watchlist
 
@@ -625,12 +736,49 @@ def live(
     atr = {t.signal.scrip_code: t.signal.atr for t in signals}
     typer.echo(f"watching {len(codes)} instruments from {watchlist} until {until} IST")
 
+    state = DashboardState() if with_dashboard else None
+    if state is not None:
+        state.set_watchlist(wl)
+    router = _build_router(settings, wl, state)
+
     def on_alert(a: Alert) -> None:
         typer.echo(f"{a.at:%H:%M:%S} [{a.level.value.upper():<7}] {a.kind.value:<15} {a.message}")
+        router.route(a)
 
     monitor = TriggerMonitor(rules, signals=signals, atr_by_code=atr)
     today = datetime.now(IST).date()
     recording = record_dir / f"{today.isoformat()}.jsonl"
+
+    async def alert_worker(stop: asyncio.Event) -> None:
+        await router.worker(stop)
+
+    extra: list[Callable[[asyncio.Event], Awaitable[None]]] = [alert_worker]
+    if router.telegram is not None:
+        bot = router.telegram
+
+        def decide(sid: str, action: str) -> None:
+            apply_decision(monitor.signals, sid, action, today)
+
+        async def poll(stop: asyncio.Event) -> None:
+            await bot.poll_forever(decide, stop)
+
+        extra.append(poll)
+    if state is not None:
+        host, port = settings.alerts.dashboard.host, settings.alerts.dashboard.port
+        typer.echo(f"dashboard at http://{host}:{port}")
+
+        async def dash(stop: asyncio.Event) -> None:
+            import uvicorn
+
+            server = uvicorn.Server(
+                uvicorn.Config(create_app(state), host=host, port=port, log_level="warning")
+            )
+            task = asyncio.create_task(server.serve())
+            await stop.wait()
+            server.should_exit = True
+            await task
+
+        extra.append(dash)
 
     async def go(c: IndstocksClient) -> None:
         await run_session(
@@ -641,9 +789,12 @@ def live(
             recording=recording,
             on_alert=on_alert,
             until=datetime.strptime(until, "%H:%M").time(),
+            dashboard=state,
+            extra_tasks=extra,
         )
 
     asyncio.run(_with_client(go))
+    _ = serve
     triggered = [t.signal.symbol for t in monitor.signals if t.state.value == "triggered"]
     typer.echo(f"session over: {len(monitor.alerts)} alerts, triggered {triggered or 'none'}")
     typer.echo(f"recording: {recording}")
@@ -685,15 +836,21 @@ def scan(
         md = prepare_market(store, codes, ref, cfg)
     wl = build_watchlist(md, cfg, settings, day)
     typer.echo(render_text(wl, include_rejected=include_rejected))
-    path = save_watchlist(wl, out_dir)
-    typer.echo(f"saved {path}")
     if charts:
         chart_dir = out_dir / day.isoformat()
-        for e in wl.active:
+        entries = []
+        for e in wl.entries:
+            if not e.on_watchlist:
+                entries.append(e)
+                continue
             code = e.signal.scrip_code
             feats = md.features[code].iloc[: md.pos_by_date[code][day] + 1]
             png = render_signal_chart(feats, e.signal, chart_dir / f"{e.signal.symbol}.png")
             typer.echo(f"  chart {png}")
+            entries.append(e.model_copy(update={"chart_path": str(png)}))
+        wl = wl.model_copy(update={"entries": entries})
+    path = save_watchlist(wl, out_dir)
+    typer.echo(f"saved {path}")
 
 
 @app.command()
@@ -793,6 +950,7 @@ def replay(
     session: Path = typer.Argument(..., exists=True, help="Recorded session JSONL"),
     watchlist: Path = typer.Option(..., "--watchlist", help="Watchlist JSON in force that day"),
     all_entries: bool = typer.Option(False, "--all"),
+    send: bool = typer.Option(False, "--alerts", help="Also send through the enabled channels"),
     root: Path = ROOT_OPTION,
 ) -> None:
     """Replay a recorded session through the trigger monitor and print the alerts."""
@@ -812,10 +970,16 @@ def replay(
     )
     wl = load_watchlist(watchlist)
     signals = signals_from_watchlist(wl, alertable_only=not all_entries)
+    router = _build_router(settings, wl, None) if send else None
     monitor = TriggerMonitor(
-        rules, signals=signals, atr_by_code={t.signal.scrip_code: t.signal.atr for t in signals}
+        rules,
+        signals=signals,
+        atr_by_code={t.signal.scrip_code: t.signal.atr for t in signals},
+        on_alert=(lambda a: None if router is None else (router.route(a), None)[1]),
     )
     result = run_replay(read_session(session), monitor)
+    if router is not None:
+        typer.echo(f"telegram sent {asyncio.run(router.flush())}")
     for a in result.alerts:
         typer.echo(f"{a.at:%H:%M:%S} [{a.level.value.upper():<7}] {a.kind.value:<15} {a.message}")
     typer.echo(

@@ -4,7 +4,7 @@ Short-term momentum scanner for NSE stocks using the INDstocks (INDmoney) API.
 Evening scan on daily charts, live trigger monitoring, trades held hours to 10 sessions.
 It alerts; the human places every order.
 
-**Status: M1-M7 built and unit-tested. Pending live data (needs `tradedesk auth setup`): M2 sign-off (NSE close check), M3 sign-off (quality report on real history). M1 cost model verified against 5 FY25-26 ledger bills (delivery); current-plan intraday notes still wanted; M4 TradingView golden tests pending an export in tests/golden/indicators/.** Next: M8 (alerts: desktop, Telegram; dashboard). Full spec and milestone list: PLAN.md.
+**Status: M1-M8 built and unit-tested. Pending live data (needs `tradedesk auth setup`): M2 sign-off (NSE close check), M3 sign-off (quality report on real history). M1 cost model verified against 5 FY25-26 ledger bills (delivery); current-plan intraday notes still wanted; M4 TradingView golden tests pending an export in tests/golden/indicators/.** Next: M9 (risk manager, order-updates feed, journal, paper book, auto-bench). Full spec and milestone list: PLAN.md.
 
 ## Hard rules
 - NEVER call or implement order placement, modification or cancellation unless the task explicitly says "Milestone M12".
@@ -33,7 +33,8 @@ It alerts; the human places every order.
 - Candles / quote / stream: uv run tradedesk candles NSE_3045 --interval 1day --days 30 | quote NSE_3045 | stream NSE:3045 --seconds 30
 - Data store: uv run tradedesk data sync-instruments | data load [--interval 1day] | data import-actions <nse.csv> | data import-results <nse.csv> | data quality [--out data/reports/q.csv] | data universe [--on YYYY-MM-DD] | data status
 - Live session: uv run tradedesk live [--watchlist data/watchlists/<date>.json] [--until 15:35]   -> records data/sessions/<date>.jsonl
-- Replay: uv run tradedesk replay data/sessions/<date>.jsonl --watchlist data/watchlists/<date>.json
+- Replay: uv run tradedesk replay data/sessions/<date>.jsonl --watchlist data/watchlists/<date>.json [--alerts]
+- Alerts: uv run tradedesk alerts setup-telegram | alerts telegram-chat-id | alerts test ; dashboard: uv run tradedesk dashboard (live embeds it by default at 127.0.0.1:8765)
 - Evening scan: uv run tradedesk scan [--date YYYY-MM-DD] [--setup base_breakout] [--charts]   -> data/watchlists/<date>.json (+ PNGs)
 - Backtest: uv run tradedesk backtest --setup base_breakout --from 2023-09-01 [--to ...] [--split 2025-09-01] [--out data/reports/trades.csv]
 - Train model (shadow): uv run tradedesk train --shadow   (M11+)
@@ -54,6 +55,9 @@ It alerts; the human places every order.
 - Entry confirmation is live/confirmation.py::confirm_trigger (15-minute CLOSE above the level; the 09:15 bar never triggers; bars starting >= 15:00 defer to the daily close; optional volume-vs-slot-norm). The live monitor and the backtester both call it; the backtester uses it whenever 15-minute candles are in the store, else falls back to daily bars (open beyond trigger+1 ATR = chased; open past the stop = out at the open; a bar touching both stop and target = stop). Exits are daily-bar in the backtester either way.
 - live/trigger_monitor.py fails closed: no ticks for 120 s pauses alerts (DATA STALE); alerts raised while paused are delivered marked [delayed] on resume; after a WebSocket reconnect `resync()` checks triggers/stops against REST day high/low before alerts resume.
 - tests/live/test_live.py::test_replay_matches_backtester_triggers is the M7 parity test (same 15-minute bars as ticks -> same triggered ids and fill prices).
+- Alerts (M8): alerts/router.py routes by the entry's grade (A -> desktop+Telegram+dashboard, B -> dashboard, C -> log only) or by level for non-signal alerts; Telegram sends are queued and drained by AlertRouter.worker so the monitor never blocks. Desktop = PowerShell/WinRT toast + winsound (no packages). Telegram = raw Bot API over httpx; token in keychain `tradedesk-telegram`; only alerts.yaml `allowed_chat_id` is answered. Dashboard = FastAPI + SSE on 127.0.0.1 only; DashboardState.publish() pushes every change.
+- Telegram "Took it"/"Skip" -> live/session.py::apply_decision moves TRIGGERED -> TAKEN/SKIPPED (the journal records it in M9).
+- httpx's ASGITransport buffers responses: test SSE against a real uvicorn server on a free port (see tests/alerts).
 - Signal lifecycle is engine/lifecycle.py (ARMED -> TRIGGERED/CHASED/EXPIRED/INVALIDATED -> TAKEN/SKIPPED -> OPEN -> CLOSED); illegal transitions raise.
 - Evening scan = backtest/runner.py::prepare_market + build_snapshot + engine.scan_day, then engine/scoring.py (grade), risk/sizing.py, engine/filters.py. tests/scan proves watchlist signals for a date == the backtester's for that date (given the same exclusion set).
 - Scoring weights are in engine/scoring.py::WEIGHTS; TrackRecord (rolling paper expectancy, benched flag) is supplied by M9 and neutral until 30 trades.

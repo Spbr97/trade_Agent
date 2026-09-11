@@ -85,6 +85,7 @@ class WatchlistEntry(BaseModel):
     atr_pct: float | None
     avg_turnover: float | None
     rejected_for: list[str] = Field(default_factory=list)
+    chart_path: str | None = None  # set by `tradedesk scan --charts`; attached to alerts
 
     @property
     def on_watchlist(self) -> bool:

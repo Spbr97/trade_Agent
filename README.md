@@ -41,7 +41,19 @@ uv run tradedesk data universe --on 2026-09-11
 
 Raw candles live in `data/tradedesk.duckdb`; splits and bonuses are applied when read.
 
-Milestones M1–M3 are built and unit-tested; live sign-off waits on INDstocks credentials.
+## Market hours & alerts (M7-M8)
+
+```
+uv run tradedesk scan --charts                 # evening: watchlist + PNGs
+uv run tradedesk live                          # 09:15-15:35: triggers, position watch, dashboard
+uv run tradedesk replay data/sessions/<d>.jsonl --watchlist data/watchlists/<d>.json [--alerts]
+uv run tradedesk alerts setup-telegram         # @BotFather token -> keychain; prints your chat id
+uv run tradedesk alerts test                   # one alert through every enabled channel
+```
+
+Enable channels in `config/alerts.yaml` (desktop, telegram + allowed_chat_id, dashboard).
+
+Milestones M1–M8 are built and unit-tested; live sign-off waits on INDstocks credentials.
 Note: Windows Smart App Control blocks some brand-new wheels (numpy 2.5, pandas 3) — hence the
 pins in pyproject.toml. See PLAN.md §14.
 

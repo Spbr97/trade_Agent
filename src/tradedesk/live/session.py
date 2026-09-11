@@ -6,14 +6,15 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import Callable, Sequence
+from collections.abc import Awaitable, Callable, Sequence
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
 
 from tradedesk.backtest.fills import Position
 from tradedesk.broker.indstocks import IndstocksClient, PriceFeed, Tick
 from tradedesk.broker.indstocks.models import IST
-from tradedesk.engine.lifecycle import TrackedSignal
+from tradedesk.dashboard.state import DashboardState
+from tradedesk.engine.lifecycle import SignalState, TrackedSignal
 from tradedesk.live.models import Alert, SessionRules
 from tradedesk.live.trigger_monitor import TriggerMonitor
 from tradedesk.replay.recorder import SessionRecorder
@@ -43,6 +44,8 @@ async def run_session(
     until: time = time(15, 35),
     quote_poll_seconds: int = 180,
     today: date | None = None,
+    dashboard: DashboardState | None = None,
+    extra_tasks: Sequence[Callable[[asyncio.Event], Awaitable[None]]] = (),
 ) -> None:
     today = today or datetime.now(IST).date()
     stop_at = datetime.combine(today, until, tzinfo=IST)
@@ -59,7 +62,12 @@ async def run_session(
             return
         if rec:
             rec.tick(t)
-        monitor.on_tick(code, t.timestamp, t.ltp, t.data.get("volume"))
+        alerts = monitor.on_tick(code, t.timestamp, t.ltp, t.data.get("volume"))
+        if dashboard is not None:
+            dashboard.set_price(code, t.ltp, t.timestamp)
+            if alerts:
+                dashboard.set_signals(monitor.signals)
+                dashboard.set_positions(list(monitor.positions.values()), monitor.bars.last_price)
 
     feed = PriceFeed(client.tokens, on_tick, mode="ltp")
     await feed.subscribe([ws_code(c) for c in codes])
@@ -73,6 +81,17 @@ async def run_session(
         monitor.resync(snap, now)
 
     feed.on_reconnect = resync_after_reconnect
+    if dashboard is not None:
+
+        def _down() -> None:
+            dashboard.set_health(feed="disconnected")
+
+        def _up() -> None:
+            dashboard.set_health(feed="connected")
+
+        feed.on_disconnect = _down
+        dashboard.set_health(feed="connecting", token="ok" if client.tokens.token else "unknown")
+        dashboard.set_signals(monitor.signals)
 
     async def housekeeping() -> None:
         nonlocal close_checked
@@ -81,6 +100,13 @@ async def run_session(
             now = datetime.now(IST)
             monitor.flush(now)
             monitor.check_staleness(now)
+            if dashboard is not None:
+                dashboard.set_health(
+                    feed="connected" if feed.connected else "disconnected",
+                    paused=monitor.paused,
+                    last_tick_at=monitor.last_tick_at.isoformat() if monitor.last_tick_at else None,
+                )
+                dashboard.set_signals(monitor.signals)
             if now - last_poll >= timedelta(seconds=quote_poll_seconds):
                 last_poll = now
                 try:
@@ -105,10 +131,19 @@ async def run_session(
             await asyncio.sleep(15)
 
     try:
-        await asyncio.gather(feed.run(stop), housekeeping())
+        await asyncio.gather(feed.run(stop), housekeeping(), *(t(stop) for t in extra_tasks))
     finally:
         if rec:
             rec.close()
+
+
+def apply_decision(signals: Sequence[TrackedSignal], signal_id: str, action: str, on: date) -> bool:
+    """Telegram 'Took it' / 'Skip' -> TAKEN/SKIPPED on the tracked signal."""
+    for t in signals:
+        if t.signal.id == signal_id and t.state is SignalState.TRIGGERED:
+            t.move(SignalState.TAKEN if action == "took" else SignalState.SKIPPED, on, "telegram")
+            return True
+    return False
 
 
 def positions_placeholder() -> list[Position]:

@@ -90,14 +90,18 @@ def render_signal_chart(
         "linewidths": 0.9,
     }
     style = mpf.make_mpf_style(base_mpf_style="yahoo", gridstyle=":", y_on_right=True)
+    extra: dict[str, Any] = {}
+    if plots:
+        extra["addplot"] = plots
+    if alines is not None:
+        extra["alines"] = alines
     fig, axes = mpf.plot(
         view[["open", "high", "low", "close", "volume"]],
         type="candle",
         volume=True,
-        addplot=plots or None,
         hlines=hlines,
-        alines=alines,
         style=style,
+        **extra,
         figsize=(11, 6.5),
         returnfig=True,
         title=title or f"{sig.symbol} · {sig.setup.value} · armed {sig.armed_on}",
