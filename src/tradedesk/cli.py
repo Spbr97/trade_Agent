@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -34,6 +34,12 @@ data_app = typer.Typer(no_args_is_help=True)
 app.add_typer(data_app, name="data", help="Candle store: load history, import events, quality.")
 alerts_app = typer.Typer(no_args_is_help=True)
 app.add_typer(alerts_app, name="alerts", help="Alert channels: Telegram setup, test sends.")
+journal_app = typer.Typer(no_args_is_help=True)
+app.add_typer(journal_app, name="journal", help="Your fills, positions, tags and stats.")
+paper_app = typer.Typer(no_args_is_help=True)
+app.add_typer(paper_app, name="paper", help="Paper book: every triggered signal, simulated.")
+
+JOURNAL_OPTION = typer.Option(Path("data/journal.sqlite"), "--journal", help="SQLite journal.")
 
 DB_OPTION = typer.Option(Path("data/tradedesk.duckdb"), "--db", help="DuckDB file.")
 
@@ -689,6 +695,247 @@ def dashboard(
     asyncio.run(serve(create_app(state), host=host, port=port))
 
 
+# ------------------------------------------------------- M9: journal + paper book
+
+
+def _calendar(store: CandleStore, root: Path, back_days: int = 400) -> list[date]:
+    from tradedesk.broker.indstocks.models import IST
+    from tradedesk.data.universe import trading_days
+
+    ref = _reference_code(store, root)
+    today = datetime.now(IST).date()
+    return trading_days(store, ref, today - timedelta(days=back_days), today)
+
+
+@journal_app.command("fill")
+def journal_fill(
+    signal_id: str = typer.Argument(..., help="Signal id from the watchlist / alert"),
+    qty: int = typer.Option(..., "--qty", min=1),
+    price: float = typer.Option(..., "--price"),
+    on: str | None = typer.Option(None, "--date", help="YYYY-MM-DD; default today"),
+    journal: Path = JOURNAL_OPTION,
+) -> None:
+    """Record your real entry fill for a triggered signal (TAKEN -> OPEN)."""
+    from tradedesk.backtest.fills import Fill, FillReason, Position
+    from tradedesk.broker.indstocks.models import IST
+    from tradedesk.engine.lifecycle import SignalState
+    from tradedesk.journal import Journal
+
+    day = datetime.strptime(on, "%Y-%m-%d").date() if on else datetime.now(IST).date()
+    with Journal(journal) as jn:
+        ts = jn.load_signal(signal_id)
+        if ts is None:
+            raise typer.BadParameter(f"unknown signal {signal_id}")
+        if ts.state is SignalState.TRIGGERED:
+            ts.move(SignalState.TAKEN, day, f"fill {qty} @ {price}")
+        if ts.state is SignalState.TAKEN:
+            ts.move(SignalState.OPEN, day)
+        elif ts.state is not SignalState.OPEN:
+            raise typer.BadParameter(
+                f"signal is {ts.state.value}; only triggered signals can be filled"
+            )
+        pos = Position(
+            signal=ts.signal, entry_date=day, entry_price=price, qty_initial=qty, qty_open=qty,
+            stop=ts.signal.stop, highest_close=price,
+            fills=[Fill(on=day, price=price, qty=qty, reason=FillReason.ENTRY)],
+        )  # fmt: skip
+        jn.upsert_signal(ts)
+        jn.save_position(pos, source="live")
+    typer.echo(f"open: {ts.signal.symbol} {qty} @ {price}, stop {ts.signal.stop}")
+
+
+@journal_app.command("exit")
+def journal_exit(
+    signal_id: str = typer.Argument(...),
+    qty: int = typer.Option(..., "--qty", min=1),
+    price: float = typer.Option(..., "--price"),
+    reason: str = typer.Option(
+        "stop", "--reason", help="stop|gap_stop|partial|trail|time_stop|max_hold|end"
+    ),
+    on: str | None = typer.Option(None, "--date"),
+    journal: Path = JOURNAL_OPTION,
+    root: Path = ROOT_OPTION,
+) -> None:
+    """Record a real exit fill (partial or full). A full exit books the trade with costs."""
+    from tradedesk.backtest.fills import Fill, FillReason
+    from tradedesk.backtest.portfolio import Portfolio
+    from tradedesk.broker.indstocks.models import IST
+    from tradedesk.engine.lifecycle import SignalState
+    from tradedesk.journal import Journal
+
+    settings = load_config(root)
+    day = datetime.strptime(on, "%Y-%m-%d").date() if on else datetime.now(IST).date()
+    with Journal(journal) as jn:
+        pos = next((p for p in jn.open_positions(source="live") if p.signal.id == signal_id), None)
+        if pos is None:
+            raise typer.BadParameter(f"no open live position for {signal_id}")
+        qty = min(qty, pos.qty_open)
+        pos.fills.append(Fill(on=day, price=price, qty=qty, reason=FillReason(reason)))
+        pos.qty_open -= qty
+        if reason == "partial":
+            pos.partial_done = True
+            old = pos.stop
+            pos.stop = max(pos.stop, pos.entry_price)
+            jn.record_stop_update(signal_id, day, old, pos.stop, "partial -> breakeven")
+        if pos.closed:
+            pf = Portfolio(risk=settings.risk, costs=settings.risk.costs, equity=1.0)
+            trade = pf.settle(pos)
+            jn.record_trade(trade, source="live")
+            ts = jn.load_signal(signal_id)
+            if ts is not None and ts.state is SignalState.OPEN:
+                ts.move(SignalState.CLOSED, day, reason)
+                jn.upsert_signal(ts)
+            typer.echo(
+                f"closed: net Rs {trade.net_pnl:,.0f} ({trade.r_multiple:+.2f}R), "
+                f"costs Rs {trade.costs:,.0f}"
+            )
+        else:
+            jn.save_position(pos, source="live")
+            typer.echo(f"partial: {pos.qty_open} left, stop {pos.stop}")
+
+
+@journal_app.command("stop")
+def journal_stop(
+    signal_id: str = typer.Argument(...),
+    new_stop: float = typer.Option(..., "--to"),
+    journal: Path = JOURNAL_OPTION,
+) -> None:
+    """Move a stop (only ever up - PLAN.md 1.2)."""
+    from tradedesk.broker.indstocks.models import IST
+    from tradedesk.journal import Journal
+
+    with Journal(journal) as jn:
+        pos = next((p for p in jn.open_positions(source="live") if p.signal.id == signal_id), None)
+        if pos is None:
+            raise typer.BadParameter(f"no open live position for {signal_id}")
+        if new_stop < pos.stop:
+            raise typer.BadParameter(f"stops are never widened: {new_stop} < {pos.stop}")
+        jn.record_stop_update(signal_id, datetime.now(IST).date(), pos.stop, new_stop, "manual")
+        pos.stop = new_stop
+        jn.save_position(pos, source="live")
+    typer.echo(f"stop -> {new_stop}")
+
+
+@journal_app.command("positions")
+def journal_positions(journal: Path = JOURNAL_OPTION) -> None:
+    """Open live and paper positions."""
+    from tradedesk.journal import Journal
+
+    with Journal(journal) as jn:
+        for source in ("live", "paper"):
+            rows = jn.open_positions(source=source)
+            typer.echo(f"{source}: {len(rows)} open")
+            for p in rows:
+                typer.echo(
+                    f"  {p.signal.symbol:<12}{p.signal.id:<40}qty {p.qty_open:<6}"
+                    f"entry {p.entry_price:<10.2f}stop {p.stop:<10.2f}"
+                    f"sessions {p.sessions_held}{' half' if p.partial_done else ''}"
+                )
+
+
+@journal_app.command("tag")
+def journal_tag(
+    signal_id: str = typer.Argument(...),
+    tag: str = typer.Argument(..., help="rule_break | fomo | revenge | note"),
+    note: str = typer.Argument(""),
+    journal: Path = JOURNAL_OPTION,
+) -> None:
+    """Tag a trade (rule breaks, FOMO entries, revenge trades) for the weekly review."""
+    from tradedesk.journal import Journal
+
+    with Journal(journal) as jn:
+        jn.tag(signal_id, tag, note)
+    typer.echo("tagged")
+
+
+@journal_app.command("stats")
+def journal_stats(journal: Path = JOURNAL_OPTION) -> None:
+    """Paper vs live expectancy, per-setup track records (auto-bench), rule adherence."""
+    import json as _json
+
+    from tradedesk.journal import Journal
+    from tradedesk.journal.stats import summary
+
+    with Journal(journal) as jn:
+        typer.echo(_json.dumps(summary(jn), indent=2))
+
+
+@journal_app.command("orders")
+def journal_orders(journal: Path = JOURNAL_OPTION) -> None:
+    """Raw order updates captured from the broker feed (to match with your fills)."""
+    from tradedesk.journal import Journal
+
+    with Journal(journal) as jn:
+        for r in jn.order_updates():
+            typer.echo(
+                f"  {r['at']}  {r['order_id']:<22}{r['status']:<20}"
+                f"{r['filled_qty']} @ {r['average_price']}"
+            )
+
+
+@paper_app.command("update")
+def paper_update(
+    on: str | None = typer.Option(None, "--date", help="Session to apply; default: last stored"),
+    db: Path = DB_OPTION,
+    journal: Path = JOURNAL_OPTION,
+    root: Path = ROOT_OPTION,
+) -> None:
+    """After the close (and `data load`): mark open paper positions with the session's bar
+    and open paper positions for every signal that triggered that day."""
+    from tradedesk.backtest.runner import prepare_market
+    from tradedesk.broker.indstocks.models import Interval
+    from tradedesk.journal import Journal
+    from tradedesk.paper import PaperBook
+    from tradedesk.paper.book import bar_from_row
+    from tradedesk.scan import scan_config
+
+    settings = load_config(root)
+    with _store(db) as store, Journal(journal) as jn:
+        ref = _reference_code(store, root)
+        day = (
+            datetime.strptime(on, "%Y-%m-%d").date()
+            if on
+            else store.last_ts(ref, Interval.D1).date()  # type: ignore[union-attr]
+        )
+        book = PaperBook(jn, settings.risk, capital=float(settings.risk.trading_capital),
+                         slippage_pct=float(settings.risk.costs.slippage_pct))  # fmt: skip
+        triggered = jn.triggered_between(day, day)
+        codes = sorted(
+            {p.signal.scrip_code for p in book.positions.values()}
+            | {t.signal.scrip_code for t, _, _ in triggered}
+        )
+        if not codes:
+            typer.echo(f"{day}: nothing to do (no open paper positions, no triggers)")
+            raise typer.Exit(code=0)
+        cfg = scan_config(settings, day)
+        cfg.use_intraday = False
+        md = prepare_market(store, codes, ref, cfg)
+        bars = {}
+        for code in codes:
+            i = md.pos_by_date.get(code, {}).get(day)
+            if i is not None:
+                bars[code] = bar_from_row(day, md.features[code].iloc[i])
+        closed = book.mark(day, bars)
+        for t in closed:
+            typer.echo(
+                f"  closed {t.scrip_code}: {t.exit_reason} {t.r_multiple:+.2f}R "
+                f"net Rs {t.net_pnl:,.0f}"
+            )
+        opened = 0
+        for ts, _, fill in triggered:
+            code = ts.signal.scrip_code
+            i = md.pos_by_date.get(code, {}).get(day)
+            if i is None or fill is None:
+                continue
+            feats = md.features[code].iloc[: i + 1]
+            if book.open_from_trigger(ts, day, fill, feats) is not None:
+                opened += 1
+        typer.echo(
+            f"{day}: {len(closed)} closed, {opened} opened, {len(book.positions)} open; "
+            f"paper equity Rs {book.equity:,.0f}"
+        )
+
+
 def _not_yet(milestone: str) -> None:
     typer.echo(f"not implemented until Milestone {milestone} (see PLAN.md 14)", err=True)
     raise typer.Exit(code=2)
@@ -703,13 +950,15 @@ def live(
     until: str = typer.Option("15:35", "--until", help="HH:MM IST to stop"),
     all_entries: bool = typer.Option(False, "--all", help="Watch C-grade entries too"),
     with_dashboard: bool = typer.Option(True, "--dashboard/--no-dashboard"),
+    journal: Path = JOURNAL_OPTION,
     root: Path = ROOT_OPTION,
 ) -> None:
     """Market-hours session: stream prices for the watchlist, confirm triggers on 15-minute
-    closes, watch positions, route alerts (console, desktop, Telegram, dashboard) and record
-    the session for replay."""
+    closes, watch positions, route alerts (console, desktop, Telegram, dashboard), journal
+    everything and record the session for replay."""
     from tradedesk.broker.indstocks.models import IST
     from tradedesk.dashboard import DashboardState, create_app, serve
+    from tradedesk.journal import Journal
     from tradedesk.live.models import Alert, SessionRules
     from tradedesk.live.session import apply_decision, run_session, signals_from_watchlist
     from tradedesk.live.trigger_monitor import TriggerMonitor
@@ -732,9 +981,19 @@ def live(
     if not signals:
         typer.echo(f"{watchlist}: nothing alertable on the watchlist; exiting")
         raise typer.Exit(code=0)
-    codes = sorted({t.signal.scrip_code for t in signals})
+    jn = Journal(journal)
+    positions = jn.open_positions(source="live")
+    for t in signals:
+        jn.upsert_signal(t)
+    codes = sorted(
+        {t.signal.scrip_code for t in signals} | {p.signal.scrip_code for p in positions}
+    )
     atr = {t.signal.scrip_code: t.signal.atr for t in signals}
-    typer.echo(f"watching {len(codes)} instruments from {watchlist} until {until} IST")
+    atr.update({p.signal.scrip_code: p.signal.atr for p in positions})
+    typer.echo(
+        f"watching {len(codes)} instruments ({len(signals)} signals, {len(positions)} positions) "
+        f"from {watchlist} until {until} IST"
+    )
 
     state = DashboardState() if with_dashboard else None
     if state is not None:
@@ -744,8 +1003,12 @@ def live(
     def on_alert(a: Alert) -> None:
         typer.echo(f"{a.at:%H:%M:%S} [{a.level.value.upper():<7}] {a.kind.value:<15} {a.message}")
         router.route(a)
+        jn.record_alert(a)
+        for t in monitor.signals:
+            if t.signal.scrip_code == a.scrip_code:
+                jn.upsert_signal(t)
 
-    monitor = TriggerMonitor(rules, signals=signals, atr_by_code=atr)
+    monitor = TriggerMonitor(rules, signals=signals, positions=positions, atr_by_code=atr)
     today = datetime.now(IST).date()
     recording = record_dir / f"{today.isoformat()}.jsonl"
 
@@ -757,7 +1020,10 @@ def live(
         bot = router.telegram
 
         def decide(sid: str, action: str) -> None:
-            apply_decision(monitor.signals, sid, action, today)
+            if apply_decision(monitor.signals, sid, action, today):
+                for t in monitor.signals:
+                    if t.signal.id == sid:
+                        jn.upsert_signal(t)
 
         async def poll(stop: asyncio.Event) -> None:
             await bot.poll_forever(decide, stop)
@@ -781,6 +1047,12 @@ def live(
         extra.append(dash)
 
     async def go(c: IndstocksClient) -> None:
+        from tradedesk.broker.indstocks import OrderUpdatesFeed
+
+        async def orders(stop: asyncio.Event) -> None:
+            feed = OrderUpdatesFeed(c.tokens, jn.record_order_update)
+            await feed.run(stop)
+
         await run_session(
             c,
             monitor,
@@ -790,10 +1062,17 @@ def live(
             on_alert=on_alert,
             until=datetime.strptime(until, "%H:%M").time(),
             dashboard=state,
-            extra_tasks=extra,
+            extra_tasks=[*extra, orders],
         )
 
-    asyncio.run(_with_client(go))
+    try:
+        asyncio.run(_with_client(go))
+    finally:
+        for t in monitor.signals:
+            jn.upsert_signal(t)
+        for p in monitor.positions.values():
+            jn.save_position(p, source="live")
+        jn.close()
     _ = serve
     triggered = [t.signal.symbol for t in monitor.signals if t.state.value == "triggered"]
     typer.echo(f"session over: {len(monitor.alerts)} alerts, triggered {triggered or 'none'}")
@@ -808,6 +1087,7 @@ def scan(
     include_rejected: bool = typer.Option(True, "--rejected/--no-rejected"),
     out_dir: Path = typer.Option(Path("data/watchlists"), "--out-dir"),
     db: Path = DB_OPTION,
+    journal: Path = JOURNAL_OPTION,
     root: Path = ROOT_OPTION,
 ) -> None:
     """Evening scan: build, print and save tomorrow's watchlist from stored daily candles."""
@@ -834,7 +1114,17 @@ def scan(
         codes = [c for c in store.codes(Interval.D1) if c not in (ref, vix)]
         typer.echo(f"scanning {len(codes)} codes as of {day} with {[k.value for k in cfg.setups]}")
         md = prepare_market(store, codes, ref, cfg)
-    wl = build_watchlist(md, cfg, settings, day)
+    from tradedesk.journal import Journal
+    from tradedesk.journal.stats import track_records
+    from tradedesk.scan import OpenPositionInfo
+
+    with Journal(journal) as jn:
+        held = [
+            OpenPositionInfo(p.signal.scrip_code, p.entry_price, p.stop, p.qty_open)
+            for p in jn.open_positions(source="live")
+        ]
+        records = track_records(jn, [k.value for k in cfg.setups])
+    wl = build_watchlist(md, cfg, settings, day, open_positions=held, track_records=records)
     typer.echo(render_text(wl, include_rejected=include_rejected))
     if charts:
         chart_dir = out_dir / day.isoformat()

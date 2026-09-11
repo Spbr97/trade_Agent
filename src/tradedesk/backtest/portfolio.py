@@ -127,7 +127,7 @@ class Portfolio:
             return
         code = pos.signal.scrip_code
         self.open.pop(code, None)
-        trade = self._settle(pos)
+        trade = self.settle(pos)
         self.closed.append(trade)
         self.equity += trade.net_pnl
         if trade.net_pnl < 0:
@@ -142,7 +142,8 @@ class Portfolio:
         if trade.exit_reason in (FillReason.STOP.value, FillReason.GAP_STOP.value):
             self.last_stop_out[code] = self.session_index
 
-    def _settle(self, pos: Position) -> ClosedTrade:
+    def settle(self, pos: Position) -> ClosedTrade:
+        """Costs, net P&L and R for a fully closed position (also used by the paper book)."""
         sells = [f for f in pos.fills if f.is_sell]
         exit_date = sells[-1].on
         same_day = exit_date == pos.entry_date and all(f.on == pos.entry_date for f in sells)
