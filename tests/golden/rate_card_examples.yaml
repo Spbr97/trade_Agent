@@ -1,0 +1,110 @@
+# Worked examples derived from the DOCUMENTED rate card (IND Pricing screenshots +
+# config/risk.yaml), not from a real contract note or ledger entry.
+#
+# Why this file exists: the current fiscal year has no intraday trades at all (checked
+# against the Equity Transactions Report for both FY24-25 and FY25-26 - every FY25-26 row
+# matches an already-verified delivery note, and the FY24-25 round trips predate an
+# unconfirmed plan change, so neither can be paisa-matched to a real bill yet). Until a
+# real current-plan intraday trade exists, this is the best available check on the
+# intraday-specific code paths in costs.py: STT on the sell leg only, stamp duty on the
+# buy leg at the INTRADAY rate (not delivery), no DP charge.
+#
+# Numbers here were computed independently of costs.py (a standalone Decimal script
+# re-typing the same documented percentages) - so this catches an implementation bug
+# (wrong side, wrong rate, wrong rounding order) even though it cannot catch INDmoney
+# quietly charging something the documentation doesn't mention. THIS IS NOT A SUBSTITUTE
+# for a real note: tests/golden/contract_notes.yaml stays the authority once one exists,
+# and pyproject.toml/CLAUDE.md should keep flagging the intraday gate as provisional
+# until it does. Tolerance is tight (0.01) since these are hand-computed, not real-world
+# rounding noise.
+
+examples:
+  - id: rate-card-intraday-cap-both-legs
+    trade_type: intraday
+    qty: 100
+    buy_price: 250.00
+    sell_price: 253.00
+    note: brokerage hits the Rs 5 cap on both legs (turnover x 0.1% > 5)
+    legs:
+      buy:
+        brokerage: 5.00
+        stt: 0.00
+        exchange_txn: 0.77
+        ipft: 0.03
+        sebi_fee: 0.03
+        stamp_duty: 1.00
+        gst: 1.04
+        dp_charge: 0.00
+        total: 7.87
+      sell:
+        brokerage: 5.00
+        stt: 6.00
+        exchange_txn: 0.78
+        ipft: 0.03
+        sebi_fee: 0.03
+        stamp_duty: 0.00
+        gst: 1.05
+        dp_charge: 0.00
+        total: 12.89
+    combined:
+      total: 20.76
+
+  - id: rate-card-intraday-mid-range-brokerage
+    trade_type: intraday
+    qty: 20
+    buy_price: 150.00
+    sell_price: 147.00
+    note: brokerage strictly between the Rs 2 floor and Rs 5 cap (turnover x 0.1% in between)
+    legs:
+      buy:
+        brokerage: 3.00
+        stt: 0.00
+        exchange_txn: 0.09
+        ipft: 0.00
+        sebi_fee: 0.00
+        stamp_duty: 0.00
+        gst: 0.56
+        dp_charge: 0.00
+        total: 3.65
+      sell:
+        brokerage: 2.94
+        stt: 1.00
+        exchange_txn: 0.09
+        ipft: 0.00
+        sebi_fee: 0.00
+        stamp_duty: 0.00
+        gst: 0.55
+        dp_charge: 0.00
+        total: 4.58
+    combined:
+      total: 8.23
+
+  - id: rate-card-intraday-min-floor-brokerage
+    trade_type: intraday
+    qty: 5
+    buy_price: 100.00
+    sell_price: 99.00
+    note: turnover x 0.1% is below the Rs 2 floor, so brokerage clamps up to Rs 2 both legs
+    legs:
+      buy:
+        brokerage: 2.00
+        stt: 0.00
+        exchange_txn: 0.02
+        ipft: 0.00
+        sebi_fee: 0.00
+        stamp_duty: 0.00
+        gst: 0.36
+        dp_charge: 0.00
+        total: 2.38
+      sell:
+        brokerage: 2.00
+        stt: 0.00
+        exchange_txn: 0.02
+        ipft: 0.00
+        sebi_fee: 0.00
+        stamp_duty: 0.00
+        gst: 0.36
+        dp_charge: 0.00
+        total: 2.38
+    combined:
+      total: 4.76

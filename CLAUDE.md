@@ -4,7 +4,7 @@ Short-term momentum scanner for NSE stocks using the INDstocks (INDmoney) API.
 Evening scan on daily charts, live trigger monitoring, trades held hours to 10 sessions.
 It alerts; the human places every order.
 
-**Status: M1-M11 built and unit-tested. Pending live data (needs `tradedesk auth setup`): M2 sign-off (NSE close check), M3 sign-off (quality report on real history). M1 cost model verified against 5 FY25-26 ledger bills (delivery); current-plan intraday notes still wanted; M4 TradingView golden tests pending an export in tests/golden/indicators/.** Next: Phase 2 with live data (credentials -> M2/M3 sign-off -> paper trading), then M12 (order placement) only after Phase 3. Full spec and milestone list: PLAN.md.
+**Status: M1-M11 built and unit-tested. Pending live data (needs `tradedesk auth setup`): M2 sign-off (NSE close check), M3 sign-off (quality report on real history). M1 cost model verified against 5 FY25-26 ledger bills (delivery, paisa-exact); intraday has NO real note yet (no intraday trades exist in FY24-25 or FY25-26 transaction reports) - provisionally covered by tests/golden/test_rate_card.py (3 hand-computed examples from the documented rate card, not a real bill; replace with a real note the moment one exists - see rate_card_examples.yaml for why). M4 TradingView golden tests pending an export in tests/golden/indicators/.** Next: Phase 2 with live data (credentials -> M2/M3 sign-off -> paper trading), then M12 (order placement) only after Phase 3. Full spec and milestone list: PLAN.md.
 
 ## Hard rules
 - NEVER call or implement order placement, modification or cancellation unless the task explicitly says "Milestone M12".
@@ -48,6 +48,7 @@ It alerts; the human places every order.
 - Net R:R = (gross reward − costs to target) / (gross risk + costs to stop). A stop-out loses more than 1R. PLAN.md §7's worked numbers (1.4R/2.3R, ~₹110) assume ₹20/order; INDmoney actually charges 0.1% capped at ₹5 (min ₹2) per order, so the same card is ₹72 and 1.61R/2.48R.
 - The cost calculator never infers intraday vs delivery; the caller passes `TradeType`. Same-day buy+sell is INTRADAY.
 - Charge rates live in config/risk.yaml under `costs:`. Real contract-note figures live in tests/golden/contract_notes.yaml; if INDmoney changes pricing, update both.
+- tests/golden/rate_card_examples.yaml + test_rate_card.py are a PROVISIONAL stand-in for the missing intraday golden notes: hand-computed from the documented rate card, not a real bill. They are never the M1 done-when count (test_golden_coverage_report reads contract_notes.yaml only) - delete rate_card_examples.yaml once a real intraday note lands there.
 - INDstocks facts baked into broker/indstocks/: REST codes are `NSE_3045`, WebSocket codes `NSE:3045`; candle `ts` is the OPEN time in epoch seconds, requests use epoch ms; ≤5 codes per candle call, ≤1000 per quote call, ≤3000 instruments per WS connection; one TOTP token live at a time (24 h, 1 generation/min).
 - The doc's FAQ section contradicts the endpoint pages (different WS URL, `symbols` param). Follow the endpoint pages and the OpenAPI spec, never the FAQ.
 - Market-data prices are float (pandas/DuckDB bound); accounting money is Decimal.
