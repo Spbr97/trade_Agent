@@ -113,3 +113,61 @@ async def test_failure_raises_and_does_not_retry(
     assert exc.value.status == 401
     assert route.call_count == 1
     assert tp.token is None
+
+
+@respx.mock
+async def test_token_is_shared_across_processes_via_the_store(
+    http: httpx.AsyncClient, store: MemoryStore, clock: FakeClock
+) -> None:
+    """A second TokenProvider (= a second `tradedesk` process) must adopt the persisted
+    token rather than generate its own: generation is 1/min and kills the previous token."""
+    route = respx.post(f"{BASE_URL}/generate/token").mock(
+        side_effect=[
+            httpx.Response(200, json={"token": "tok-A"}),
+            httpx.Response(200, json={"token": "tok-B"}),
+        ]
+    )
+    first = TokenProvider(http=http, store=store, clock=clock)
+    assert await first.get_token() == "tok-A"
+    clock.advance(5)
+    second = TokenProvider(http=http, store=store, clock=clock)  # fresh process, same store
+    assert await second.get_token() == "tok-A"
+    assert route.call_count == 1
+    # after 24 h the second process regenerates, and the first then adopts the new token
+    clock.advance(24 * 3600)
+    assert await second.get_token() == "tok-B"
+    first.invalidate = lambda: None  # type: ignore[method-assign]
+    first._token = None  # simulate the first process noticing its token died
+    assert await first.get_token() == "tok-B"
+    assert route.call_count == 2
+
+
+@respx.mock
+async def test_throttle_is_honoured_across_processes(
+    http: httpx.AsyncClient, store: MemoryStore, clock: FakeClock
+) -> None:
+    respx.post(f"{BASE_URL}/generate/token").mock(
+        side_effect=[
+            httpx.Response(200, json={"token": "tok-A"}),
+            httpx.Response(200, json={"token": "tok-B"}),
+        ]
+    )
+    first = TokenProvider(http=http, store=store, clock=clock)
+    await first.get_token()
+    clock.advance(10)
+    second = TokenProvider(http=http, store=store, clock=clock)
+    slept: list[float] = []
+
+    async def fake_sleep(s: float) -> None:
+        slept.append(s)
+        clock.advance(s)
+
+    import tradedesk.broker.indstocks.auth as auth_mod
+
+    orig = auth_mod.asyncio.sleep
+    auth_mod.asyncio.sleep = fake_sleep  # type: ignore[assignment]
+    try:
+        assert await second.refresh() == "tok-B"
+    finally:
+        auth_mod.asyncio.sleep = orig  # type: ignore[assignment]
+    assert slept and 49 <= slept[0] <= 50  # waited out the remainder of the 60 s gap

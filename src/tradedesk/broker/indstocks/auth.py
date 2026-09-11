@@ -1,7 +1,10 @@
 """Access-token management for INDstocks via TOTP (docs/indstocks-api.md, Users → Method 2).
 
 Secrets (Client ID, MPIN, TOTP secret) live in the OS keychain through `keyring`; they are
-never written to disk by this package. The access token lives only in memory.
+never written to disk by this package. The access token is cached in the same keychain
+(with its issue time) so that every `tradedesk` process reuses the one live token instead
+of generating a new one: generation is throttled to 1/min and each generation kills the
+previous token, so per-process tokens would make back-to-back commands fail.
 
 Doc facts encoded here:
 - POST /generate/token with header `x-api-key: <Client ID>` and body {"mpin", "totp"}.
@@ -26,6 +29,9 @@ KEYRING_SERVICE = "tradedesk-indstocks"
 KEY_CLIENT_ID = "client_id"
 KEY_MPIN = "mpin"
 KEY_TOTP_SECRET = "totp_secret"
+KEY_TOKEN = "token"
+KEY_TOKEN_ISSUED_AT = "token_issued_at"
+KEY_TOKEN_LAST_ATTEMPT = "token_last_attempt"
 
 TOKEN_TTL_SECONDS = 24 * 3600
 GENERATION_MIN_GAP_SECONDS = 60
@@ -114,8 +120,10 @@ def _extract_token(payload: Any) -> str | None:
 class TokenProvider:
     """Caches one access token and regenerates it only when needed.
 
-    `clock` is injectable for tests. Not safe across processes: only one process per
-    account may generate tokens (each generation kills the previous token).
+    `clock` is injectable for tests. The token and its timestamps are persisted in `store`
+    so separate processes share one token; the 60 s throttle is honoured across processes
+    too (the last attempt time is persisted). Only one machine per account should run
+    tradedesk - a second machine generating tokens would kill this one's.
     """
 
     http: httpx.AsyncClient
@@ -134,6 +142,24 @@ class TokenProvider:
     def invalidate(self) -> None:
         self._token = None
         self._issued_at = None
+        self.store.delete(KEY_TOKEN)
+        self.store.delete(KEY_TOKEN_ISSUED_AT)
+
+    def _load_persisted(self) -> None:
+        """Adopt a token another process generated, if it is still inside its 24 h."""
+        if self._token:
+            return
+        token = self.store.get(KEY_TOKEN)
+        issued = _as_float(self.store.get(KEY_TOKEN_ISSUED_AT))
+        if token and issued is not None and self.clock() - issued < TOKEN_TTL_SECONDS:
+            self._token, self._issued_at = token, issued
+        if self._last_attempt is None:
+            self._last_attempt = _as_float(self.store.get(KEY_TOKEN_LAST_ATTEMPT))
+
+    def _persist(self) -> None:
+        if self._token and self._issued_at is not None:
+            self.store.set(KEY_TOKEN, self._token)
+            self.store.set(KEY_TOKEN_ISSUED_AT, repr(self._issued_at))
 
     @property
     def token(self) -> str | None:
@@ -144,6 +170,7 @@ class TokenProvider:
 
     async def get_token(self) -> str:
         async with self._lock:
+            self._load_persisted()
             if self._token and not self._expired():
                 return self._token
             return await self._generate()
@@ -155,6 +182,8 @@ class TokenProvider:
             return await self._generate()
 
     async def _generate(self) -> str:
+        if self._last_attempt is None:
+            self._last_attempt = _as_float(self.store.get(KEY_TOKEN_LAST_ATTEMPT))
         now = self.clock()
         if self._last_attempt is not None:
             wait = GENERATION_MIN_GAP_SECONDS - (now - self._last_attempt)
@@ -162,6 +191,7 @@ class TokenProvider:
                 await asyncio.sleep(wait)
         creds = Credentials.from_store(self.store)
         self._last_attempt = self.clock()
+        self.store.set(KEY_TOKEN_LAST_ATTEMPT, repr(self._last_attempt))
         resp = await self.http.post(
             "/generate/token",
             headers={"x-api-key": creds.client_id, "Content-Type": "application/json"},
@@ -179,4 +209,12 @@ class TokenProvider:
             raise TokenGenerationError(resp.status_code, f"no token in response: {payload}")
         self._token = token
         self._issued_at = self.clock()
+        self._persist()
         return token
+
+
+def _as_float(v: str | None) -> float | None:
+    try:
+        return float(v) if v else None
+    except ValueError:
+        return None

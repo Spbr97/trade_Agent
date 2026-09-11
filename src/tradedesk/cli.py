@@ -258,12 +258,22 @@ def auth_clear() -> None:
     from tradedesk.broker.indstocks.auth import (
         KEY_CLIENT_ID,
         KEY_MPIN,
+        KEY_TOKEN,
+        KEY_TOKEN_ISSUED_AT,
+        KEY_TOKEN_LAST_ATTEMPT,
         KEY_TOTP_SECRET,
         KeyringStore,
     )
 
     store = KeyringStore()
-    for k in (KEY_CLIENT_ID, KEY_MPIN, KEY_TOTP_SECRET):
+    for k in (
+        KEY_CLIENT_ID,
+        KEY_MPIN,
+        KEY_TOTP_SECRET,
+        KEY_TOKEN,
+        KEY_TOKEN_ISSUED_AT,
+        KEY_TOKEN_LAST_ATTEMPT,
+    ):
         store.delete(k)
     typer.echo("cleared")
 
