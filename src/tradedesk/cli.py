@@ -598,11 +598,94 @@ def scan(date: str = typer.Option("today", "--date")) -> None:
 
 @app.command()
 def backtest(
-    setup: str = typer.Option(..., "--setup"),
-    from_: str = typer.Option(..., "--from"),
+    setup: list[str] = typer.Option(
+        ["base_breakout"], "--setup", help="Setup name; repeat for several"
+    ),
+    from_: str = typer.Option(..., "--from", help="YYYY-MM-DD"),
+    to: str | None = typer.Option(None, "--to", help="YYYY-MM-DD; default today"),
+    split: str | None = typer.Option(
+        None, "--split", help="Walk-forward split date: report in/out of sample separately"
+    ),
+    capital: float | None = typer.Option(None, "--capital", help="Default: config trading_capital"),
+    codes: list[str] = typer.Option(None, "--code", help="Restrict to these scrip codes"),
+    out: Path | None = typer.Option(None, "--out", help="Write trades CSV"),
+    db: Path = DB_OPTION,
+    root: Path = ROOT_OPTION,
 ) -> None:
-    """Event-driven backtest (M5)."""
-    _not_yet("M5")
+    """Event-driven backtest on stored daily candles (gap-aware fills, portfolio limits)."""
+    from tradedesk.backtest import (
+        BacktestConfig,
+        build_report,
+        prepare_market,
+        run_backtest,
+        walk_forward,
+    )
+    from tradedesk.broker.indstocks.models import IST, Interval
+    from tradedesk.data.universe import UniverseRules
+    from tradedesk.engine.signals import SetupKind
+
+    settings = load_config(root)
+    kinds = [SetupKind(s) for s in setup]
+    start = datetime.strptime(from_, "%Y-%m-%d").date()
+    end = datetime.strptime(to, "%Y-%m-%d").date() if to else datetime.now(IST).date()
+    cfg = BacktestConfig(
+        setups=kinds,
+        start=start,
+        end=end,
+        capital=capital or float(settings.risk.trading_capital),
+        risk=settings.risk,
+        engine=settings.engine,
+        setup_params={k: v.model_dump() for k, v in settings.setups.setups.items()},
+        universe_rules=UniverseRules(
+            min_avg_turnover_inr=float(settings.universe.min_avg_daily_turnover_inr),
+            min_price=float(settings.universe.min_price),
+        ),
+        slippage_pct=float(settings.risk.costs.slippage_pct),
+    )
+    with _store(db) as store:
+        ref = _reference_code(store, root)
+        vix = store.index_code(settings.universe.volatility_index)
+        cfg.vix_code = vix
+        universe = (
+            list(codes) if codes else [c for c in store.codes(Interval.D1) if c != ref and c != vix]
+        )
+        typer.echo(
+            f"preparing {len(universe)} codes, {start} -> {end}, setups {[k.value for k in kinds]}"
+        )
+        md = prepare_market(store, universe, ref, cfg)
+    typer.echo(f"{len(md.features)} codes with history; {len(md.calendar)} sessions loaded")
+    result = run_backtest(md, cfg)
+    if split:
+        split_date = datetime.strptime(split, "%Y-%m-%d").date()
+        ins, outs = walk_forward(result, split_date)
+        typer.echo(f"=== in sample (< {split_date}) ===")
+        typer.echo(ins.text())
+        typer.echo(f"=== out of sample (>= {split_date}) ===")
+        typer.echo(outs.text())
+    else:
+        typer.echo(build_report(result).text())
+    typer.echo(
+        "caveat: universe is built from the candles on hand; stocks the API no longer serves "
+        "are missing (survivorship bias) - treat results as optimistic."
+    )
+    if out is not None:
+        import pandas as pd
+
+        rows = [
+            {
+                "setup": t.setup, "code": t.scrip_code, "entry": t.entry_date, "exit": t.exit_date,
+                "sessions": t.sessions_held, "qty": t.position.qty_initial,
+                "entry_px": round(t.position.entry_price, 2),
+                "stop": round(t.position.signal.stop, 2),
+                "net_pnl": round(t.net_pnl, 2), "r": round(t.r_multiple, 2),
+                "costs": round(t.costs, 2),
+                "exit_reason": t.exit_reason,
+            }
+            for t in result.portfolio.closed
+        ]  # fmt: skip
+        out.parent.mkdir(parents=True, exist_ok=True)
+        pd.DataFrame(rows).to_csv(out, index=False)
+        typer.echo(f"written {out}")
 
 
 @app.command()

@@ -40,21 +40,30 @@ class Pivot(Geometry):
 def swing_pivots(df: pd.DataFrame, bars: int = 3) -> list[Pivot]:
     """Fractal pivots: a high greater than the `bars` highs on each side (lows mirrored).
     Only pivots whose right side has fully printed by the last bar are returned."""
+    n = len(df)
+    if n < 2 * bars + 1:
+        return []
     highs = df["high"].to_numpy(dtype=float)
     lows = df["low"].to_numpy(dtype=float)
-    n = len(df)
+    hs, ls = pd.Series(highs), pd.Series(lows)
+    left_max = hs.shift(1).rolling(bars).max().to_numpy()
+    right_max = hs[::-1].shift(1).rolling(bars).max()[::-1].to_numpy()
+    left_min = ls.shift(1).rolling(bars).min().to_numpy()
+    right_min = ls[::-1].shift(1).rolling(bars).min()[::-1].to_numpy()
     out: list[Pivot] = []
-    for i in range(bars, n - bars):
-        left = slice(i - bars, i)
-        right = slice(i + 1, i + bars + 1)
-        if highs[i] > highs[left].max() and highs[i] > highs[right].max():
-            out.append(
-                Pivot(index=i, price=float(highs[i]), kind=PivotKind.HIGH, confirmed_at=i + bars)
+    for i in np.flatnonzero((highs > left_max) & (highs > right_max)):
+        out.append(
+            Pivot(
+                index=int(i), price=float(highs[i]), kind=PivotKind.HIGH, confirmed_at=int(i) + bars
             )
-        if lows[i] < lows[left].min() and lows[i] < lows[right].min():
-            out.append(
-                Pivot(index=i, price=float(lows[i]), kind=PivotKind.LOW, confirmed_at=i + bars)
+        )
+    for i in np.flatnonzero((lows < left_min) & (lows < right_min)):
+        out.append(
+            Pivot(
+                index=int(i), price=float(lows[i]), kind=PivotKind.LOW, confirmed_at=int(i) + bars
             )
+        )
+    out.sort(key=lambda p: (p.index, p.kind.value))
     return out
 
 

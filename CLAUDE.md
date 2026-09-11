@@ -4,7 +4,7 @@ Short-term momentum scanner for NSE stocks using the INDstocks (INDmoney) API.
 Evening scan on daily charts, live trigger monitoring, trades held hours to 10 sessions.
 It alerts; the human places every order.
 
-**Status: M1-M4 built and unit-tested. Pending live data (needs `tradedesk auth setup`): M2 sign-off (NSE close check), M3 sign-off (quality report on real history). M1 golden tests pending contract-note figures; M4 TradingView golden tests pending an export in tests/golden/indicators/.** Next: M5 (three setups + event-driven backtester). Full spec and milestone list: PLAN.md.
+**Status: M1-M5 built and unit-tested. Pending live data (needs `tradedesk auth setup`): M2 sign-off (NSE close check), M3 sign-off (quality report on real history). M1 golden tests pending contract-note figures; M4 TradingView golden tests pending an export in tests/golden/indicators/.** Next: M6 (evening scan pipeline, watchlist report, chart rendering). Full spec and milestone list: PLAN.md.
 
 ## Hard rules
 - NEVER call or implement order placement, modification or cancellation unless the task explicitly says "Milestone M12".
@@ -34,7 +34,7 @@ It alerts; the human places every order.
 - Data store: uv run tradedesk data sync-instruments | data load [--interval 1day] | data import-actions <nse.csv> | data import-results <nse.csv> | data quality [--out data/reports/q.csv] | data universe [--on YYYY-MM-DD] | data status
 - Live session: uv run tradedesk live            (M7+)
 - Evening scan: uv run tradedesk scan --date today   (M6+)
-- Backtest: uv run tradedesk backtest --setup base_breakout --from 2023-09-01   (M5+)
+- Backtest: uv run tradedesk backtest --setup base_breakout --from 2023-09-01 [--to ...] [--split 2025-09-01] [--out data/reports/trades.csv]
 - Train model (shadow): uv run tradedesk train --shadow   (M11+)
 
 ## Conventions
@@ -49,6 +49,11 @@ It alerts; the human places every order.
 - Indicators (engine/indicators.py) are hand-written pandas with TradingView conventions (ema seeded on first value; rma = Wilder, SMA-seeded, na until n finite values; population stdev). No TA-Lib: its C DLL would hit Smart App Control.
 - Pattern detectors (engine/patterns.py) evaluate the LAST bar of the frame they receive and return geometry models; look-ahead freedom comes from slicing the frame to the evaluation date. Pivots carry `confirmed_at`.
 - tests/engine/test_indicators.py::test_daily_features_have_no_look_ahead is the leakage test for every feature column; extend `daily_features` and it is covered automatically.
+- engine/engine.py::scan_day is THE scan. The backtester (backtest/runner.py) calls it with frames sliced to each session; the live evening scan (M6) calls it with today's frames. Never add signal logic anywhere else.
+- Backtest fills use daily bars as a stand-in for the 15-minute confirmation until intraday history exists (M7): open beyond trigger+1 ATR = chased; open past the stop = out at the open; a bar touching both stop and target = stop.
+- Signal lifecycle is engine/lifecycle.py (ARMED -> TRIGGERED/CHASED/EXPIRED/INVALIDATED -> TAKEN/SKIPPED -> OPEN -> CLOSED); illegal transitions raise.
+- Portfolio limits live in backtest/portfolio.py::Portfolio.can_enter and are the same object the paper book and live risk manager will use (M9).
+- Backtest e2e fixtures live in tests/backtest/synth_universe.py; the ATR stop rule (2x) is deliberately relaxed to 3x there because ATR decays inside a synthetic tight base.
 - Candle store keeps RAW candles; split/bonus adjustment is applied on read (`CandleStore.load(adjusted=True)`) from the corporate_actions table. Never write adjusted prices back.
 - The trading calendar is the benchmark index's daily candle dates (config/universe.yaml `benchmark`); universe membership is computed as-of-date from stored candles (survivorship caveat stays in every backtest report).
 - Windows Smart App Control is ON on this machine: it blocks unsigned DLLs in brand-new wheels (numpy 2.5 / pandas 3 failed). Pins in pyproject.toml exist for that reason; if a new package fails with "Application Control policy has blocked this file", pin an older, widely-distributed version.
