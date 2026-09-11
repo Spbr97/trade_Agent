@@ -209,6 +209,22 @@ class CandleStore:
         ).fetchone()
         return row[0] if row else None
 
+    def custom_symbols(self, scrip_codes: Sequence[str]) -> dict[str, str]:
+        """scrip_code -> `name` (upsert_instruments stores Instrument.custom_symbol there,
+        falling back to trading_symbol) for whichever of `scrip_codes` have one set. For
+        CoinDCX instruments this is the CoinDCX `pair` (e.g. "I-BTC_INR") - see
+        broker/coindcx/instruments.py - which candles_history() needs to resolve a
+        scrip_code like "CDX_BTCINR" back to the identifier the API actually wants."""
+        if not scrip_codes:
+            return {}
+        placeholders = ",".join("?" * len(scrip_codes))
+        rows = self.con.execute(
+            f"SELECT scrip_code, name FROM instruments "
+            f"WHERE scrip_code IN ({placeholders}) AND name != ''",
+            list(scrip_codes),
+        ).fetchall()
+        return {r[0]: r[1] for r in rows}
+
     def scrip_code_for(self, symbol: str, exch: str = "NSE", kind: str = "equity") -> str | None:
         row = self.con.execute(
             "SELECT scrip_code FROM instruments WHERE trading_symbol = ? AND exch = ? AND kind = ?",

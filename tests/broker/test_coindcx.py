@@ -166,7 +166,7 @@ async def test_candles_history_always_sends_both_time_params_together(
     respx.get(CANDLES).mock(side_effect=handler)
     end = datetime(2026, 9, 11, tzinfo=UTC)
     start = end - timedelta(days=5)
-    await client.candles_history(Interval.D1, ["I-BTC_INR"], start, end)
+    await client.candles_history_by_pair(Interval.D1, ["I-BTC_INR"], start, end)
     assert seen  # at least one call happened
     for p in seen:
         assert "startTime" in p and "endTime" in p
@@ -192,7 +192,7 @@ async def test_candles_history_pages_backwards_and_stops_on_empty_page(
         return httpx.Response(200, json=rows)
 
     respx.get(CANDLES).mock(side_effect=handler)
-    got = await client.candles_history(Interval.D1, ["I-BTC_INR"], start, end)
+    got = await client.candles_history_by_pair(Interval.D1, ["I-BTC_INR"], start, end)
     assert calls["n"] == 2  # one page with data, one empty page that stops the loop
     ts = [c.ts for c in got["I-BTC_INR"]]
     assert len(ts) == 3 and ts == sorted(ts)
@@ -221,7 +221,7 @@ async def test_candles_history_dedups_overlapping_boundary_bars(client: CoinDcxC
         return httpx.Response(200, json=rows)
 
     respx.get(CANDLES).mock(side_effect=handler)
-    got = await client.candles_history(Interval.D1, ["I-BTC_INR"], start, end)
+    got = await client.candles_history_by_pair(Interval.D1, ["I-BTC_INR"], start, end)
     ts = [c.ts for c in got["I-BTC_INR"]]
     assert ts == sorted(ts) and len(ts) == len(set(ts))
     assert ts[0] >= real_start
@@ -247,3 +247,53 @@ async def test_instruments_end_to_end(client: CoinDcxClient) -> None:
     )
     instruments = await client.instruments()
     assert [i.scrip_code for i in instruments] == ["CDX_BTCINR"]
+
+
+# --------------------------------------------- candles_history (scrip-code keyed)
+
+
+@respx.mock
+async def test_candles_history_resolves_scrip_codes_to_pairs(client: CoinDcxClient) -> None:
+    """The bug this test exists to catch: data/history_loader.py (and the `data load
+    --market crypto` CLI path) call candles_history() with tradedesk scrip codes, not
+    CoinDCX pairs - a real bug found running `tradedesk data load --market crypto`
+    against the live API (every call 422'd, "Invalid pair CDX_BTCINR"), not caught by
+    the pair-keyed tests above."""
+    t0 = datetime(2026, 9, 10, tzinfo=UTC)
+    t1 = datetime(2026, 9, 11, tzinfo=UTC)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        pair = request.url.params["pair"]
+        assert pair in ("I-BTC_INR", "I-DOT_INR")  # never the raw scrip code
+        d = t0 if pair == "I-BTC_INR" else t1
+        return httpx.Response(200, json=[candle_row(d)])
+
+    respx.get(CANDLES).mock(side_effect=handler)
+    client.register_pairs({"CDX_BTCINR": "I-BTC_INR", "CDX_DOTINR": "I-DOT_INR"})
+    got = await client.candles_history(
+        Interval.D1, ["CDX_BTCINR", "CDX_DOTINR"], t0, t1 + timedelta(days=1)
+    )
+    assert set(got) == {"CDX_BTCINR", "CDX_DOTINR"}
+    assert [c.ts for c in got["CDX_BTCINR"]] == [t0]
+    assert [c.ts for c in got["CDX_DOTINR"]] == [t1]
+
+
+async def test_candles_history_unregistered_code_returns_empty_not_an_error(
+    client: CoinDcxClient,
+) -> None:
+    """A code with no registered pair (e.g. delisted, or sync-instruments never ran)
+    degrades the same way an unknown code does elsewhere - empty history, no crash."""
+    got = await client.candles_history(
+        Interval.D1,
+        ["CDX_NOPE"],
+        datetime(2026, 1, 1, tzinfo=UTC),
+        datetime(2026, 1, 2, tzinfo=UTC),
+    )
+    assert got == {"CDX_NOPE": []}
+
+
+def test_register_pairs_constructor_arg_and_method_both_populate_the_map() -> None:
+    c1 = CoinDcxClient(pair_for_code={"CDX_BTCINR": "I-BTC_INR"})
+    assert c1.pair_for_code == {"CDX_BTCINR": "I-BTC_INR"}
+    c1.register_pairs({"CDX_DOTINR": "I-DOT_INR"})
+    assert c1.pair_for_code == {"CDX_BTCINR": "I-BTC_INR", "CDX_DOTINR": "I-DOT_INR"}

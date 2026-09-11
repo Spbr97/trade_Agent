@@ -1,12 +1,24 @@
-"""Pull candle history from INDstocks into the CandleStore, incrementally.
+"""Pull candle history into the CandleStore, incrementally, from any market's client
+(M13 Phase 3: this used to be INDstocks-only).
 
 For each code the request starts at the last stored open time (so the most recent bar,
 which may have been partial when fetched, is refreshed) or at `start` for a fresh code.
-Codes with the same start are batched five per call (the API maximum); batches run with
-bounded concurrency and the client's rate limiter does the pacing.
+Codes with the same start are batched `max_codes_per_call` per call; batches run with
+bounded concurrency and the client's own rate limiter does the pacing.
 
 Budget check (PLAN.md 5.4): 500 stocks × 10 y daily ≈ 1,000 calls; × 2 y of 15-minute
 candles ≈ 10,500 calls; × 2 y hourly ≈ 4,900 - about 16k calls, one evening at 5/s.
+
+Market differences this now has to absorb:
+- INDstocks batches up to 5 codes into one candles_history call (`MAX_CANDLE_CODES_PER_CALL`).
+  CoinDCX's candles endpoint takes exactly one pair per call - `max_codes_per_call=1` gets
+  the same "one call per code, several codes in flight at once" behaviour by way of the
+  concurrency semaphore instead of server-side batching. Either way,
+  `client.candles_history(interval, codes, start, end)` is the same shape.
+- The two clients raise different exception types on a bad call (ApiError vs
+  CoinDcxError) - `error_types` says which ones this call is allowed to record per-batch
+  and continue past, rather than letting the whole load crash. Anything not in that tuple
+  still propagates, same as before this file supported more than one market.
 """
 
 from __future__ import annotations
@@ -16,10 +28,21 @@ from collections import defaultdict
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+from typing import Protocol
 
 from tradedesk.broker.indstocks.models import IST, Candle, Interval
-from tradedesk.broker.indstocks.rest import MAX_CANDLE_CODES_PER_CALL, ApiError, IndstocksClient
+from tradedesk.broker.indstocks.rest import MAX_CANDLE_CODES_PER_CALL, ApiError
 from tradedesk.data.candle_store import CandleStore
+
+
+class MarketDataClient(Protocol):
+    """The one method this module needs from a market's REST client. Both
+    IndstocksClient and CoinDcxClient already satisfy this structurally - no explicit
+    inheritance needed."""
+
+    async def candles_history(
+        self, interval: Interval, codes: Sequence[str], start: datetime, end: datetime
+    ) -> dict[str, list[Candle]]: ...
 
 
 @dataclass
@@ -56,7 +79,7 @@ def plan_starts(
 
 
 async def load_history(
-    client: IndstocksClient,
+    client: MarketDataClient,
     store: CandleStore,
     codes: Sequence[str],
     interval: Interval,
@@ -64,6 +87,8 @@ async def load_history(
     start: datetime,
     end: datetime | None = None,
     concurrency: int = 4,
+    max_codes_per_call: int = MAX_CANDLE_CODES_PER_CALL,
+    error_types: tuple[type[Exception], ...] = (ApiError,),
     progress: Callable[[LoadResult], None] | None = None,
 ) -> LoadSummary:
     end = end or datetime.now(IST)
@@ -78,8 +103,8 @@ async def load_history(
 
     batches: list[tuple[datetime, list[str]]] = []
     for s, group in groups.items():
-        for i in range(0, len(group), MAX_CANDLE_CODES_PER_CALL):
-            batches.append((s, group[i : i + MAX_CANDLE_CODES_PER_CALL]))
+        for i in range(0, len(group), max_codes_per_call):
+            batches.append((s, group[i : i + max_codes_per_call]))
 
     summary = LoadSummary()
     sem = asyncio.Semaphore(concurrency)
@@ -95,7 +120,7 @@ async def load_history(
                 for r in results:
                     candles = got.get(r.scrip_code, [])
                     r.fetched = store.upsert_candles(candles)
-            except ApiError as exc:
+            except error_types as exc:
                 for r in results:
                     r.error = str(exc)
             summary.results.extend(results)

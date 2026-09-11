@@ -166,3 +166,20 @@ def test_indstocks_feed_default_never_double_adjusts(store: CandleStore) -> None
     assert adj["close"].tolist() == raw["close"].tolist()
     assert adj["volume"].tolist() == raw["volume"].tolist()
     assert store.corporate_actions("SBIN"), "the action is still stored, just not applied"
+
+
+def test_custom_symbols_maps_scrip_code_to_the_stored_name(store: CandleStore) -> None:
+    """Needed to resolve a crypto scrip_code ("CDX_BTCINR") back to CoinDCX's own `pair`
+    identifier ("I-BTC_INR") - see broker/coindcx/rest.py::CoinDcxClient.candles_history."""
+    crypto = Instrument(
+        exch="CDX", segment="crypto", security_id="BTCINR", instrument_name="CRYPTO",
+        trading_symbol="BTCINR", symbol_name="Bitcoin", series="INR",
+        custom_symbol="I-BTC_INR",
+    )  # fmt: skip
+    store.upsert_instruments([crypto])
+    assert store.custom_symbols(["CDX_BTCINR"]) == {"CDX_BTCINR": "I-BTC_INR"}
+    # SBIN (the module fixture) has no custom_symbol set, so it falls back to
+    # trading_symbol - present, not an empty string, so it's still returned.
+    assert store.custom_symbols(["NSE_3045"]) == {"NSE_3045": "SBIN"}
+    assert store.custom_symbols(["CDX_BTCINR", "NSE_NOPE"]) == {"CDX_BTCINR": "I-BTC_INR"}
+    assert store.custom_symbols([]) == {}

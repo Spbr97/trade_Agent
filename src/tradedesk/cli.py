@@ -47,6 +47,21 @@ DB_OPTION = typer.Option(Path("data/tradedesk.duckdb"), "--db", help="DuckDB fil
 ROOT_OPTION = typer.Option(Path("."), "--root", help="Project root containing config/.")
 
 
+MARKET_OPTION = typer.Option(
+    "nse", "--market", help="nse|crypto - crypto uses CoinDCX (M13), no credentials needed"
+)
+CRYPTO_DB = Path("data/crypto.duckdb")
+CRYPTO_REFERENCE_CODE = "CDX_BTCINR"  # trades every calendar day; stands in for an index
+
+
+def _resolve_db(db: Path, market: str) -> Path:
+    """`--db` explicitly given wins; otherwise crypto defaults to its own store so a
+    `data load --market crypto` never touches the NSE duckdb file."""
+    if market == "crypto" and db == DB_OPTION.default:
+        return CRYPTO_DB
+    return db
+
+
 @config_app.command("check")
 def config_check(root: Path = ROOT_OPTION) -> None:
     """Load every config file and print a summary; non-zero exit on validation errors."""
@@ -427,8 +442,22 @@ def _reference_code(store: CandleStore, root: Path) -> str:
 
 
 @data_app.command("sync-instruments")
-def data_sync_instruments(db: Path = DB_OPTION) -> None:
-    """Download the equity and index masters into the store's instruments table."""
+def data_sync_instruments(db: Path = DB_OPTION, market: str = MARKET_OPTION) -> None:
+    """Download the instrument master into the store's instruments table."""
+    db = _resolve_db(db, market)
+
+    if market == "crypto":
+        from tradedesk.broker.coindcx import CoinDcxClient
+
+        async def go_crypto() -> None:
+            async with CoinDcxClient() as c:
+                instruments = await c.instruments()
+                with _store(db) as store:
+                    n = store.upsert_instruments(instruments)
+                typer.echo(f"{n} active INR pairs stored in {db}")
+
+        asyncio.run(go_crypto())
+        return
 
     async def go(c: IndstocksClient) -> None:
         from tradedesk.broker.indstocks.instruments import nse_cash_equities
@@ -451,14 +480,66 @@ def data_load(
     ),
     db: Path = DB_OPTION,
     root: Path = ROOT_OPTION,
+    market: str = MARKET_OPTION,
 ) -> None:
     """Pull candle history into the store (incremental: only new bars are fetched)."""
     from tradedesk.broker.indstocks.models import IST, Interval
     from tradedesk.data.history_loader import LoadResult, default_start, load_history
 
+    db = _resolve_db(db, market)
     iv = Interval(interval)
     now = datetime.now(IST)
     start = now - timedelta(days=365 * years) if years else default_start(iv, now)
+
+    def make_progress(targets: list[str]) -> Callable[[LoadResult], None]:
+        done = 0
+
+        def progress(r: LoadResult) -> None:
+            nonlocal done
+            done += 1
+            if done % 25 == 0 or r.error:
+                typer.echo(
+                    f"  {done}/{len(targets)} {r.scrip_code}: {r.fetched} bars {r.error or ''}"
+                )
+
+        return progress  # fmt: skip
+
+    if market == "crypto":
+        from tradedesk.broker.coindcx import CoinDcxClient
+        from tradedesk.broker.coindcx.rest import CoinDcxError
+
+        async def go_crypto() -> None:
+            async with CoinDcxClient() as c:
+                with _store(db) as store:
+                    targets = list(codes) if codes else store.instrument_codes(
+                        kind="equity", exch="CDX", series="INR"
+                    )  # fmt: skip
+                    if not targets:
+                        raise typer.BadParameter(
+                            "no codes: pass scrip codes or run "
+                            "data sync-instruments --market crypto"
+                        )
+                    # candles_history() takes scrip codes, but CoinDCX's own API wants
+                    # its `pair` identifier ("I-BTC_INR", not "CDX_BTCINR") - the
+                    # instruments table already has that mapping from sync-instruments,
+                    # no extra API call needed. A code with none registered (never
+                    # synced, or delisted since) just fetches nothing for that code.
+                    c.register_pairs(store.custom_symbols(targets))
+                    typer.echo(
+                        f"loading {iv.value} for {len(targets)} pairs "
+                        f"from {start:%Y-%m-%d} into {db}"
+                    )
+                    summary = await load_history(
+                        c, store, targets, iv, start=start, end=now,
+                        max_codes_per_call=1, error_types=(CoinDcxError,),
+                        progress=make_progress(targets),
+                    )  # fmt: skip
+                    typer.echo(f"fetched {summary.fetched} bars; {len(summary.errors)} errors")
+                    for r in summary.errors[:20]:
+                        typer.echo(f"  ERROR {r.scrip_code}: {r.error}")
+
+        asyncio.run(go_crypto())
+        return
 
     async def go(c: IndstocksClient) -> None:
         with _store(db) as store:
@@ -468,21 +549,11 @@ def data_load(
                 targets.append(ref)
             if not targets:
                 raise typer.BadParameter("no codes: pass scrip codes or run data sync-instruments")
-            done = 0
-
-            def progress(r: LoadResult) -> None:
-                nonlocal done
-                done += 1
-                if done % 25 == 0 or r.error:
-                    typer.echo(
-                        f"  {done}/{len(targets)} {r.scrip_code}: {r.fetched} bars {r.error or ''}"
-                    )
-
             typer.echo(
                 f"loading {iv.value} for {len(targets)} codes from {start:%Y-%m-%d} into {db}"
             )
             summary = await load_history(
-                c, store, targets, iv, start=start, end=now, progress=progress
+                c, store, targets, iv, start=start, end=now, progress=make_progress(targets)
             )
             typer.echo(f"fetched {summary.fetched} bars; {len(summary.errors)} errors")
             for r in summary.errors[:20]:
@@ -533,13 +604,17 @@ def data_quality(
     out: Path | None = typer.Option(None, "--out", help="Write the full issue list as CSV"),
     db: Path = DB_OPTION,
     root: Path = ROOT_OPTION,
+    market: str = MARKET_OPTION,
 ) -> None:
     """Data-quality report: gaps, bad bars, big jumps, suspected unadjusted splits, staleness."""
     from tradedesk.broker.indstocks.models import Interval
     from tradedesk.data.health import run_quality_report
 
+    db = _resolve_db(db, market)
     with _store(db) as store:
-        ref = _reference_code(store, root)
+        # Crypto trades every calendar day, so a liquid pair stands in for an index -
+        # there's no synthetic "crypto benchmark" instrument to resolve via config.
+        ref = CRYPTO_REFERENCE_CODE if market == "crypto" else _reference_code(store, root)
         targets = list(codes) if codes else [c for c in store.codes(Interval.D1) if c != ref]
         rep = run_quality_report(store, targets, ref)
     typer.echo(f"{rep.codes_checked} codes checked; {len(rep.issues)} issues")
@@ -559,18 +634,30 @@ def data_universe(
     on: str | None = typer.Option(None, "--on", help="YYYY-MM-DD; default today"),
     db: Path = DB_OPTION,
     root: Path = ROOT_OPTION,
+    market: str = MARKET_OPTION,
 ) -> None:
     """List the liquid universe as of a date, from the rules in config/universe.yaml."""
     from tradedesk.broker.indstocks.models import IST
     from tradedesk.data.universe import UniverseRules, universe_on
 
-    cfg = load_config(root).universe
-    rules = UniverseRules(
-        min_avg_turnover_inr=float(cfg.min_avg_daily_turnover_inr), min_price=float(cfg.min_price)
-    )
+    db = _resolve_db(db, market)
+    if market == "crypto":
+        # min_price=0: NSE's Rs 50 floor has no crypto equivalent (tokens span paise to
+        # lakhs); turnover alone (close * volume, in INR) does the liquidity filtering.
+        # No config/markets/crypto.yaml yet (M13 Phase 4) - hardcoded here for now.
+        rules = UniverseRules(min_avg_turnover_inr=5e7, min_price=0.0)
+        candidates = "CDX", "INR"
+    else:
+        cfg = load_config(root).universe
+        rules = UniverseRules(
+            min_avg_turnover_inr=float(cfg.min_avg_daily_turnover_inr),
+            min_price=float(cfg.min_price),
+        )
+        candidates = "NSE", "EQ"
     day = datetime.strptime(on, "%Y-%m-%d").date() if on else datetime.now(IST).date()
     with _store(db) as store:
-        members = universe_on(store, store.instrument_codes(kind="equity"), day, rules)
+        codes = store.instrument_codes(kind="equity", exch=candidates[0], series=candidates[1])
+        members = universe_on(store, codes, day, rules)
         names = [f"{c} {store.symbol_for(c) or ''}" for c in members]
     typer.echo(f"{len(members)} members on {day}")
     for n in names:
@@ -578,10 +665,11 @@ def data_universe(
 
 
 @data_app.command("status")
-def data_status(db: Path = DB_OPTION) -> None:
+def data_status(db: Path = DB_OPTION, market: str = MARKET_OPTION) -> None:
     """What the store holds."""
     from tradedesk.broker.indstocks.models import Interval
 
+    db = _resolve_db(db, market)
     with _store(db) as store:
         for iv in (Interval.D1, Interval.H1, Interval.M15):
             codes = store.codes(iv)
