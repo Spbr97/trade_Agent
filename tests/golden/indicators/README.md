@@ -1,5 +1,17 @@
 # TradingView golden files for indicators (PLAN.md M4 "done when")
 
+## No TradingView premium (current state)
+
+TradingView's chart-data CSV export needs a paid plan, unavailable on this account.
+`manifest.yaml` currently points at `sbin_daily_reference.csv`, built by
+`scripts/build_indicator_reference.py` instead: an independent, from-scratch
+implementation of the documented conventions (not importing engine/indicators.py), run
+on real already-loaded NSE history. It still catches an implementation bug (wrong seed,
+off-by-one, wrong smoothing), but two independent implementations agreeing on the same
+documented formula is not the same as matching what TradingView itself actually plots -
+replace this entry with a real export (steps below) the moment premium access exists.
+
+
 1. On TradingView open a daily NSE chart (e.g. SBIN), add the indicators you want to check
    (EMA 20, RSI 14, ATR 14, ADX 14, MACD 12/26/9, BB 20/2 ...), then
    *chart menu → Export chart data* (CSV, ISO time).

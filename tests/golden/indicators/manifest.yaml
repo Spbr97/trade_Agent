@@ -1,0 +1,24 @@
+# PROVISIONAL - see README.md "No TradingView premium" section.
+#
+# sbin_daily_reference.csv was NOT exported from TradingView. TradingView's chart-data
+# export needs a paid plan, which this account doesn't have. Instead
+# scripts/build_indicator_reference.py computes the same documented conventions
+# (EMA span-seeded on the first value; RMA/Wilder SMA-seeded, NaN until n finite values;
+# ADX/DMI built on that RMA) from scratch, independently of engine/indicators.py, on real
+# already-loaded NSE history (SBIN, NSE_3045, 2,478 sessions). Regenerate with:
+#   uv run python scripts/build_indicator_reference.py
+#
+# This still catches an implementation bug in engine/indicators.py (wrong seed, off-by-
+# one, wrong smoothing constant) - two independently written implementations of the same
+# formula agreeing is real evidence. It cannot catch both implementations sharing a
+# misreading of what TradingView itself actually plots. Replace this entry with a real
+# TradingView export (see README.md steps 1-2) if premium access ever becomes available.
+
+- file: sbin_daily_reference.csv
+  columns:
+    EMA20: ema:20
+    RSI14: rsi:14
+    ATR14: atr:14
+    ADX14: adx:14
+  warmup: 250
+  rtol: 0.0001
