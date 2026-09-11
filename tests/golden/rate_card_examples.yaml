@@ -19,6 +19,29 @@
 # rounding noise.
 
 examples:
+  - id: 2024-08-22-real-intraday-sell-leg
+    trade_type: intraday
+    qty: 8
+    sell_price: 534.15
+    note: >
+      Real executed order (INDmoney order confirmation, NSE Order ID 1000000013361741,
+      22 Aug 2024 10:26 AM, order value Rs 4273.20 = 8 x 534.15). Only the SELL leg is
+      known - the confirmation has no buy price and no charge breakdown, so this checks
+      the documented rate-card formula against a real qty/price, not a real bill. Predates
+      the current pricing-plan confirmation window (see CLAUDE.md), so treat this as a
+      real-data sanity check, not proof the plan matches.
+    legs:
+      sell:
+        brokerage: 4.27
+        stt: 1.00
+        exchange_txn: 0.13
+        ipft: 0.00
+        sebi_fee: 0.00
+        stamp_duty: 0.00
+        gst: 0.79
+        dp_charge: 0.00
+        total: 6.19
+
   - id: rate-card-intraday-cap-both-legs
     trade_type: intraday
     qty: 100

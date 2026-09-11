@@ -35,28 +35,37 @@ EXAMPLES = _load_examples()
 @pytest.mark.golden
 @pytest.mark.parametrize("example", EXAMPLES, ids=[str(e["id"]) for e in EXAMPLES])
 def test_rate_card_example(schedule: ChargeSchedule, example: dict[str, Any]) -> None:
+    """Mirrors test_contract_notes.py::test_contract_note's shape: a leg is only checked
+    when both its price and its expected lines are present, so a real order confirmation
+    with just one known leg (see 2024-08-22-real-intraday-sell-leg) still works."""
     trade_type = TradeType(example["trade_type"])
     qty = int(example["qty"])
-    legs = example["legs"]
-    buy = leg_cost(
-        schedule,
-        side=Side.BUY,
-        trade_type=trade_type,
-        qty=qty,
-        price=Decimal(str(example["buy_price"])),
-    )
-    sell = leg_cost(
-        schedule,
-        side=Side.SELL,
-        trade_type=trade_type,
-        qty=qty,
-        price=Decimal(str(example["sell_price"])),
-    )
-    problems = _compare("buy", legs["buy"], _lines(buy), TOL)
-    problems += _compare("sell", legs["sell"], _lines(sell), TOL)
-    if "combined" in example:
+    legs = example.get("legs") or {}
+    problems: list[str] = []
+    buy = sell = None
+    if "buy" in legs and "buy_price" in example:
+        buy = leg_cost(
+            schedule,
+            side=Side.BUY,
+            trade_type=trade_type,
+            qty=qty,
+            price=Decimal(str(example["buy_price"])),
+        )
+        problems += _compare("buy", legs["buy"], _lines(buy), TOL)
+    if "sell" in legs and "sell_price" in example:
+        sell = leg_cost(
+            schedule,
+            side=Side.SELL,
+            trade_type=trade_type,
+            qty=qty,
+            price=Decimal(str(example["sell_price"])),
+        )
+        problems += _compare("sell", legs["sell"], _lines(sell), TOL)
+    if "combined" in example and buy is not None and sell is not None:
         combined = {k: _lines(buy)[k] + _lines(sell)[k] for k in _lines(buy)}
         problems += _compare("combined", example["combined"], combined, TOL)
+    if buy is None and sell is None:
+        problems.append("example has neither a buy nor a sell leg to check")
     assert not problems, "\n".join(problems)
 
 
