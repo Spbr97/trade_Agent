@@ -139,6 +139,7 @@ def scan_config(
         costs=market.costs,
         qty_step=market.qty_step,
         min_notional=market.min_notional_inr,
+        vix_required=market.vix_required,
     )
 
 

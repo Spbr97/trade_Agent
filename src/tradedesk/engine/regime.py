@@ -55,11 +55,23 @@ def classify_regime(
     vix: pd.Series | None,
     cfg: RegimeConfig,
     on: date | None = None,
+    vix_required: bool = False,
 ) -> RegimeSnapshot:
     """Classify using the last bar of `benchmark` (daily OHLCV) and the latest breadth/VIX.
 
     Only the information available at that close is used; callers must slice inputs to the
-    evaluation date before calling (look-ahead test enforces this)."""
+    evaluation date before calling (look-ahead test enforces this).
+
+    `vix_required` (Market.vix_required: True for NSE, False for crypto) says whether a
+    missing `vix` is a DATA FAILURE for this market, as opposed to a fact about it (crypto
+    has no VIX). Without this distinction, `vix_calm = vix_last is None or ...` below
+    treats "no data" the same as "confirmed calm" - which is how NSE's regime silently ran
+    without its volatility input for the project's whole history (a case-mismatched lookup
+    left vix_code unresolved, no error anywhere). CLAUDE.md's hard rule is explicit: "Fail
+    closed: stale data ... pause alerts" - so when this market is supposed to have a VIX
+    reading and does not, the regime fails to RISK_OFF rather than falling through to a
+    classification that never checked the one thing it was told it must check.
+    """
     close = benchmark["close"]
     e = ema(close, cfg.nifty_ema)
     last_close = float(close.iloc[-1])
@@ -76,6 +88,21 @@ def classify_regime(
         vix_last = float(v.iloc[-1])
         if len(v) > 5:
             vix_chg = (vix_last / float(v.iloc[-6]) - 1) * 100
+
+    if vix_required and vix_last is None:
+        return RegimeSnapshot(
+            on=when,
+            regime=Regime.RISK_OFF,
+            benchmark_close=last_close,
+            benchmark_ema=last_ema,
+            ema_rising=rising,
+            above_ema=above,
+            breadth_pct=breadth_pct,
+            vix=None,
+            vix_change_5d_pct=None,
+            size_multiplier=0.0,
+            reasons=["VIX data missing for a market that requires it - failing closed"],
+        )
 
     reasons: list[str] = []
     vix_spike = vix_last is not None and (

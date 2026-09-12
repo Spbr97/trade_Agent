@@ -42,6 +42,20 @@ class Market:
     atr_pct_band: AtrBand | None = None  # None: engine/filters.py skips the ATR-band check
     qty_step: float = 1.0  # smallest tradeable increment; 1.0 = whole units (NSE shares)
     min_notional_inr: float = 0.0  # exchange minimum order value; 0 = no minimum
+    vix_required: bool = False
+    """True when a missing VIX reading must fail the regime closed (RISK_OFF) rather than
+    degrade quietly. NSE's regime is defined in terms of VIX (PLAN.md 6.1: "risk_on ...
+    VIX calm"), so a missing reading there is a data problem, not a fact about the market -
+    the hard rule ("fail closed: stale data ... pause alerts") applies. Crypto has no VIX
+    by design (not a data gap), so it stays False and `vix=None` there means exactly what
+    it says: no such index exists. See engine/regime.py::classify_regime.
+
+    Found as a real bug 2026-09-12: a case-mismatched instrument lookup silently left NSE's
+    own vix_code unresolved, and classify_regime's `vix_calm = vix_last is None or ...`
+    treated the missing reading as calm - so the VIX risk_off trigger could never fire for
+    the project's entire history, and no error surfaced it. The lookup is now
+    case-insensitive, but this flag exists so a FUTURE data gap (a failed load, a renamed
+    index) fails safe instead of silently reverting to the same fail-open behaviour."""
 
 
 def nse_market(settings: Settings) -> Market:
@@ -61,6 +75,7 @@ def nse_market(settings: Settings) -> Market:
         ),
         benchmark_name=settings.universe.benchmark,
         atr_pct_band=settings.universe.atr_pct_band,
+        vix_required=True,
     )
 
 

@@ -1444,6 +1444,7 @@ def backtest(
         costs=mkt.costs,
         qty_step=mkt.qty_step,
         min_notional=mkt.min_notional_inr,
+        vix_required=mkt.vix_required,
     )
     with _store(db) as store:
         if market == "crypto":

@@ -54,6 +54,7 @@ class BacktestConfig:
     slippage_pct: float = 0.0005
     warmup_sessions: int = 260
     vix_code: str | None = None
+    vix_required: bool = False  # NSE: True (fail the regime closed if vix_code has no data)
     session_rules: SessionRules = SessionRules()
     use_intraday: bool = True  # confirm on 15-minute bars when the store has them
     costs: CostModel | None = (
@@ -281,6 +282,7 @@ def regime_on(md: MarketData, on: date, cfg: BacktestConfig) -> RegimeSnapshot |
         vix=vix,
         cfg=cfg.engine.regime,
         on=on,
+        vix_required=cfg.vix_required,
     )
 
 

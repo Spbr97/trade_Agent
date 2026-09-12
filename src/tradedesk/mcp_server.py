@@ -125,6 +125,12 @@ def analyze(code: str, on: str | None = None) -> str:
             return _dump({"error": f"no daily candles for {code}"})
         day = datetime.strptime(on, "%Y-%m-%d").date() if on else last.date()
         cfg = scan_config(settings, day)
+        # Every other NSE caller (cli.py's scan/backtest/train) resolves and sets this;
+        # this tool never did, so its regime always ran on vix=None - now that
+        # scan_config's vix_required=True (nse_market default) fails closed on that,
+        # skipping this line would silently turn every analyze() call into a forced
+        # RISK_OFF instead of an honest reading. Resolve it like everyone else instead.
+        cfg.vix_code = store.index_code(settings.universe.volatility_index)
         md = prepare_market(store, [code], ref, cfg)
     if code not in md.features or day not in md.pos_by_date[code]:
         return _dump({"error": f"no bar for {code} on {day}"})

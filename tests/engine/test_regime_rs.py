@@ -50,6 +50,42 @@ def test_neutral_when_mixed() -> None:
     assert snap.regime is Regime.NEUTRAL
 
 
+def test_missing_vix_fails_closed_when_required() -> None:
+    """The real bug (2026-09-12): a case-mismatched instrument lookup left NSE's vix_code
+    unresolved, and `vix_calm = vix_last is None or ...` treated that as calm - so a
+    strong trend + strong breadth still classified RISK_ON without ever checking VIX.
+    With `vix_required=True` (Market.vix_required, True for NSE) the same missing-VIX
+    input must now force RISK_OFF instead, per the "fail closed" hard rule."""
+    bench = frame(trend(120, start=20000, step_pct=0.003, seed=1))  # strong uptrend
+    without_flag = classify_regime(bench, breadth_pct=65.0, vix=None, cfg=CFG)
+    assert without_flag.regime is Regime.RISK_ON  # unchanged default: not required
+
+    failed_closed = classify_regime(bench, breadth_pct=65.0, vix=None, cfg=CFG, vix_required=True)
+    assert failed_closed.regime is Regime.RISK_OFF
+    assert failed_closed.size_multiplier == 0.0
+    assert failed_closed.vix is None
+    assert any("failing closed" in r for r in failed_closed.reasons)
+
+
+def test_vix_required_is_a_noop_once_real_vix_data_is_present() -> None:
+    """vix_required only changes behaviour when vix is missing - a market that requires
+    VIX and HAS it classifies exactly as before."""
+    bench = frame(trend(120, start=20000, step_pct=0.003, seed=1))
+    a = classify_regime(bench, breadth_pct=65.0, vix=_vix(13), cfg=CFG, vix_required=False)
+    b = classify_regime(bench, breadth_pct=65.0, vix=_vix(13), cfg=CFG, vix_required=True)
+    assert a == b
+    assert b.regime is Regime.RISK_ON
+
+
+def test_crypto_market_never_requires_vix_nse_always_does() -> None:
+    from tradedesk.config import load_config
+    from tradedesk.markets import crypto_market, nse_market
+
+    settings = load_config(".")
+    assert nse_market(settings).vix_required is True
+    assert crypto_market(settings).vix_required is False
+
+
 def test_regime_uses_only_bars_up_to_evaluation_date() -> None:
     bench = frame(trend(150, start=20000, step_pct=0.003, seed=3))
     on = bench.index[99].date()
