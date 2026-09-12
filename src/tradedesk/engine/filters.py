@@ -19,7 +19,7 @@ from decimal import Decimal
 from tradedesk.config.models import AtrBand
 from tradedesk.engine.signals import Signal
 from tradedesk.markets.costs import CostModel
-from tradedesk.models import TradeType
+from tradedesk.models import TradeType, price_decimal
 
 
 @dataclass(frozen=True)
@@ -40,7 +40,7 @@ def net_rr(sig: Signal, qty: int, costs: CostModel) -> tuple[float | None, float
 
 
 def _d(x: float) -> Decimal:
-    return Decimal(str(round(x, 2)))
+    return price_decimal(x)
 
 
 def apply_filters(

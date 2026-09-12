@@ -11,13 +11,12 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import date
-from decimal import Decimal
 
 from tradedesk.backtest.fills import Fill, FillReason, Position
 from tradedesk.config.models import RiskConfig
 from tradedesk.engine.signals import Signal
 from tradedesk.markets.costs import CostModel
-from tradedesk.models import Side, TradeType
+from tradedesk.models import Side, TradeType, price_decimal
 
 
 @dataclass
@@ -152,7 +151,7 @@ class Portfolio:
             side=Side.BUY,
             trade_type=trade_type,
             qty=pos.qty_initial,
-            price=Decimal(str(round(pos.entry_price, 2))),
+            price=price_decimal(pos.entry_price),
         ).total
         seen_days: set[date] = set()
         for f in sells:
@@ -160,7 +159,7 @@ class Portfolio:
                 side=Side.SELL,
                 trade_type=trade_type,
                 qty=f.qty,
-                price=Decimal(str(round(f.price, 2))),
+                price=price_decimal(f.price),
                 dp_applies=f.on not in seen_days,
             ).total
             seen_days.add(f.on)

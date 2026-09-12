@@ -45,7 +45,7 @@ from tradedesk.engine.scoring import (
 )
 from tradedesk.engine.signals import SetupKind, Signal
 from tradedesk.markets import Market, nse_market
-from tradedesk.models import Side, TradeType
+from tradedesk.models import Side, TradeType, price_decimal
 from tradedesk.risk.sizing import SizeInputs, gap95_pct, position_size
 
 
@@ -153,13 +153,13 @@ def _round_trip_cost(sig: Signal, qty: int, market: Market) -> float:
         side=Side.BUY,
         trade_type=TradeType.DELIVERY,
         qty=qty,
-        price=Decimal(str(round(sig.trigger, 2))),
+        price=price_decimal(sig.trigger),
     )
     sell = market.costs.leg_cost(
         side=Side.SELL,
         trade_type=TradeType.DELIVERY,
         qty=qty,
-        price=Decimal(str(round(sig.t1, 2))),
+        price=price_decimal(sig.t1),
     )
     return float(buy.total + sell.total)
 
