@@ -23,7 +23,8 @@ to keep collecting evidence, not because it's expected to work.
 | M3 data layer | **Signed off live.** Quality report reviewed across 2,639 codes; universe-by-date clean. |
 | M4 indicators | Passing against an independent hand-derived reference (TradingView's CSV export is paywalled). |
 | M5–M11 | Built and unit-tested: setups, scan, backtester, live monitor, alerts, journal, paper book, Claude advisor, prediction layer. |
-| M13 crypto + BSE | Live full-universe monitoring on all three markets. Prediction layer (shadow-only) has hyperparameter tuning, per-setup breakdown, and a closed calibration-drift loop as of 2026-09-13 — honest current finding: no threshold shows a real edge yet (`has_edge=False`). |
+| M13 crypto + BSE | Live full-universe monitoring on all three markets. |
+| M11 prediction layer | Shadow-only (never places or sizes a trade). Purged walk-forward validation, a locked final-test set, per-model hyperparameter tuning, per-setup breakdown, sector-return features, and a closed calibration-drift loop (`tradedesk ml check-drift`) as of 2026-09-13. Honest current finding: OOS ROC-AUC ~0.55, no threshold shows a real edge yet (`has_edge=False`) — it's a rigorous pipeline, not (yet) a profitable one. |
 
 Details: [docs/signoff-m2-m3.md](docs/signoff-m2-m3.md), [docs/signoff-crypto-phase4.md](docs/signoff-crypto-phase4.md).
 

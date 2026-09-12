@@ -32,12 +32,21 @@ def _read_call_log(log_path: Path, limit: int) -> list[dict[str, Any]]:
     return rows[:limit]
 
 
-def create_app(state: DashboardState, journal_path: Path | None = None) -> FastAPI:
+def create_app(
+    state: DashboardState, journal_path: Path | None = None, *, bse_state: DashboardState | None = None  # noqa: E501
+) -> FastAPI:
     """`journal_path` is optional and keyword-only-by-convention so every existing caller
     (both CLI commands, and tests/alerts's `create_app(state)`) is unaffected; pass it to
     light up /api/eod and /api/performance, which read the paper book directly rather than
     through DashboardState (that stays purely the in-memory live-session state pushed over
-    SSE - EOD/weekly/monthly are persisted history, a different kind of read)."""
+    SSE - EOD/weekly/monthly are persisted history, a different kind of read).
+
+    `bse_state` (added 2026-09-13) gives BSE the same live "today's plan vs what actually
+    happened" view NSE has always had via `/api/state`/`/events` - BSE now runs the same
+    full-universe live-session shape as NSE (tradedesk-bse-live-session mirrors
+    tradedesk-live-session), so the dashboard should not leave it with only the historical
+    resolved-calls log while NSE gets a live view too. Optional and additive: omitting it
+    makes `/api/state/bse`/`/events/bse` 404, every existing caller unaffected."""
     app = FastAPI(title="tradedesk", docs_url=None, redoc_url=None)
 
     @app.get("/", response_class=HTMLResponse)
@@ -47,6 +56,12 @@ def create_app(state: DashboardState, journal_path: Path | None = None) -> FastA
     @app.get("/api/state")
     async def api_state() -> JSONResponse:
         return JSONResponse(state.snapshot())
+
+    @app.get("/api/state/bse")
+    async def api_state_bse() -> JSONResponse:
+        if bse_state is None:
+            return JSONResponse({"error": "no BSE live state configured for this dashboard"}, 404)
+        return JSONResponse(bse_state.snapshot())
 
     @app.get("/api/eod")
     async def api_eod(on: str | None = Query(None, alias="date")) -> JSONResponse:
@@ -151,13 +166,12 @@ def create_app(state: DashboardState, journal_path: Path | None = None) -> FastA
             return JSONResponse({"error": "not found"}, status_code=404)
         return FileResponse(p, media_type="image/png")
 
-    @app.get("/events")
-    async def events() -> StreamingResponse:
-        q = state.subscribe()
+    def _sse_stream(st: DashboardState) -> StreamingResponse:
+        q = st.subscribe()
 
         async def gen() -> AsyncIterator[bytes]:
             try:
-                yield _sse(state.snapshot())
+                yield _sse(st.snapshot())
                 while True:
                     try:
                         snap = await asyncio.wait_for(q.get(), timeout=15)
@@ -165,9 +179,19 @@ def create_app(state: DashboardState, journal_path: Path | None = None) -> FastA
                     except TimeoutError:
                         yield b": keepalive\n\n"
             finally:
-                state.unsubscribe(q)
+                st.unsubscribe(q)
 
         return StreamingResponse(gen(), media_type="text/event-stream")
+
+    @app.get("/events")
+    async def events() -> StreamingResponse:
+        return _sse_stream(state)
+
+    @app.get("/events/bse", response_model=None)
+    async def events_bse() -> StreamingResponse | JSONResponse:
+        if bse_state is None:
+            return JSONResponse({"error": "no BSE live state configured for this dashboard"}, 404)
+        return _sse_stream(bse_state)
 
     return app
 

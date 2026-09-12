@@ -127,6 +127,24 @@
 <main id="tab-bse" hidden>
   <section class="perf-controls">
     <div class="group">
+      <label for="bsetoday-filter-setup">Setup</label>
+      <select id="bsetoday-filter-setup"><option value="">All</option></select>
+    </div>
+    <div class="group">
+      <label for="bsetoday-filter-grade">Grade</label>
+      <select id="bsetoday-filter-grade"><option value="">All</option></select>
+    </div>
+    <div class="group">
+      <label for="bsetoday-filter-status">Status</label>
+      <select id="bsetoday-filter-status"><option value="">All</option></select>
+    </div>
+    <span class="muted" id="bsetoday-filter-count"></span>
+  </section>
+  <section><h2>Today's calls (BSE) <span class="muted" style="text-transform:none;">- full-universe live session, same as NSE's Calls tab; triggers are journaled but there's no BSE paper book to grade them yet</span></h2><table id="bsetoday-calls"></table></section>
+  <section><h2>Open positions (BSE)</h2><table id="bsetoday-positions"></table></section>
+
+  <section class="perf-controls">
+    <div class="group">
       <label for="bse-filter-symbol">Stock</label>
       <select id="bse-filter-symbol"><option value="">All</option></select>
     </div>
@@ -155,7 +173,7 @@
     <span class="muted" id="bse-filter-count"></span>
   </section>
   <section>
-    <h2>BSE calls <span class="muted" style="text-transform:none;">- 5-stock tracker watchlist + backfilled history, own dataset, not pooled with NSE/crypto</span></h2>
+    <h2>BSE call history <span class="muted" style="text-transform:none;">- 5-stock tracker watchlist + backfilled history, own dataset, not pooled with NSE/crypto</span></h2>
     <table id="bse-calls"></table>
   </section>
 </main>
@@ -236,54 +254,68 @@ function rows(table, header, body) {
   table.innerHTML = '<tr>' + header.map(h => `<th class="${h.startsWith('#')?'num':''}">${h.replace('#','')}</th>`).join('') + '</tr>' + (body.length ? body.join('') : `<tr><td colspan="${header.length}" class="empty-note">nothing to show</td></tr>`);
 }
 
-// ---------------------------------------------------------------- Calls tab (SSE)
-let todayCalled = [];  // merged watchlist+signal rows from the latest snapshot, filtered client-side
-function render(s) {
-  $('regime').textContent = s.regime ? `${s.regime.regime} x${s.regime.size_multiplier}` : '-';
-  $('updated').textContent = s.updated_at ? 'updated ' + s.updated_at.slice(11,19) : '';
-
+// ------------------------------------------------------ Calls tabs (SSE) - NSE + BSE
+// NSE uses ids 'today-*'/'calls'/'positions' (unchanged, predates BSE parity); BSE
+// mirrors it 1:1 with a 'bsetoday' prefix - same live "plan vs what actually happened"
+// view, since BSE now runs the same full-universe live session NSE does.
+const todayCalled = { today: [], bsetoday: [] };
+function render(prefix, s) {
+  if (prefix === 'today') {
+    $('regime').textContent = s.regime ? `${s.regime.regime} x${s.regime.size_multiplier}` : '-';
+    $('updated').textContent = s.updated_at ? 'updated ' + s.updated_at.slice(11,19) : '';
+  }
   // merge the agent's plan (watchlist) with what actually happened to it (signals lifecycle)
   const byId = {};
   (s.signals||[]).forEach(t => { byId[t.symbol] = t; });
-  todayCalled = (s.watchlist||[]).filter(e => !e.rejected_for.length).map(e => {
+  todayCalled[prefix] = (s.watchlist||[]).filter(e => !e.rejected_for.length).map(e => {
     const sig = byId[e.symbol];
     return { ...e, state: sig ? sig.state : 'planned', note: sig ? sig.last : '' };
   });
-  populateTodayFilters();
-  renderTodayCalls();
-  rows($('positions'), ['Sym','#Qty','#Entry','#Stop','#Price','#P&L','#R','#Sessions'],
+  populateTodayFilters(prefix);
+  renderTodayCalls(prefix);
+  const posTable = prefix === 'today' ? 'positions' : `${prefix}-positions`;
+  rows($(posTable), ['Sym','#Qty','#Entry','#Stop','#Price','#P&L','#R','#Sessions'],
     (s.positions||[]).map(p => `<tr><td>${p.symbol}${p.partial?' ½':''}</td><td class="num">${p.qty}</td><td class="num">${fmt(p.entry)}</td><td class="num">${fmt(p.stop)}</td><td class="num">${fmt(p.price)}</td><td class="num ${p.pnl>=0?'pos':'neg'}">${fmt(p.pnl,0)}</td><td class="num">${fmt(p.r,1)}</td><td class="num">${p.sessions}</td></tr>`));
 }
-function populateTodayFilters() {
+function populateTodayFilters(prefix) {
   const fill = (id, values) => {
     const cur = $(id).value;
     $(id).innerHTML = '<option value="">All</option>' + values.map(v => `<option value="${v}">${v}</option>`).join('');
     if (values.includes(cur)) $(id).value = cur;
   };
-  fill('today-filter-setup', [...new Set(todayCalled.map(e => e.setup))].sort());
-  fill('today-filter-grade', [...new Set(todayCalled.map(e => e.grade))].sort());
-  fill('today-filter-status', [...new Set(todayCalled.map(e => e.state))].sort());
+  const data = todayCalled[prefix];
+  fill(`${prefix}-filter-setup`, [...new Set(data.map(e => e.setup))].sort());
+  fill(`${prefix}-filter-grade`, [...new Set(data.map(e => e.grade))].sort());
+  fill(`${prefix}-filter-status`, [...new Set(data.map(e => e.state))].sort());
 }
-function renderTodayCalls() {
-  const setupF = $('today-filter-setup').value;
-  const gradeF = $('today-filter-grade').value;
-  const statusF = $('today-filter-status').value;
-  const data = todayCalled.filter(e =>
+function renderTodayCalls(prefix) {
+  const setupF = $(`${prefix}-filter-setup`).value;
+  const gradeF = $(`${prefix}-filter-grade`).value;
+  const statusF = $(`${prefix}-filter-status`).value;
+  const all = todayCalled[prefix];
+  const data = all.filter(e =>
     (!setupF || e.setup === setupF) && (!gradeF || e.grade === gradeF) && (!statusF || e.state === statusF)
   );
-  rows($('calls'), ['Sym','Setup','Grade','Trigger','#Stop','#T1','#T2','Status','Note'],
+  const callsTable = prefix === 'today' ? 'calls' : `${prefix}-calls`;
+  rows($(callsTable), ['Sym','Setup','Grade','Trigger','#Stop','#T1','#T2','Status','Note'],
     data.map(e => `<tr><td>${e.symbol}</td><td>${e.setup}</td><td class="${e.grade}">${e.grade} ${e.score}</td><td class="num">${fmt(e.trigger)}</td><td class="num">${fmt(e.stop)}</td><td class="num">${fmt(e.t1)}</td><td class="num">${fmt(e.t2)}</td><td class="${e.state}">${e.state}</td><td>${e.note}${e.chart?` <a href="/chart?path=${encodeURIComponent(e.chart)}" target="_blank">chart</a>`:''}</td></tr>`));
-  $('today-filter-count').textContent = `${data.length} of ${todayCalled.length} shown`;
+  $(`${prefix}-filter-count`).textContent = `${data.length} of ${all.length} shown`;
 }
-['today-filter-setup', 'today-filter-grade', 'today-filter-status'].forEach(id => {
-  $(id).addEventListener('change', renderTodayCalls);
+['today', 'bsetoday'].forEach(prefix => {
+  ['setup', 'grade', 'status'].forEach(kind => {
+    $(`${prefix}-filter-${kind}`).addEventListener('change', () => renderTodayCalls(prefix));
+  });
 });
-function connect() {
-  const es = new EventSource('/events');
-  es.onmessage = (ev) => render(JSON.parse(ev.data));
-  es.onerror = () => { es.close(); setTimeout(connect, 3000); };
+function connect(prefix, path) {
+  const es = new EventSource(path);
+  es.onmessage = (ev) => render(prefix, JSON.parse(ev.data));
+  es.onerror = () => { es.close(); setTimeout(() => connect(prefix, path), 3000); };
 }
-fetch('/api/state').then(r => r.json()).then(render).then(connect);
+fetch('/api/state').then(r => r.json()).then(s => render('today', s)).then(() => connect('today', '/events'));
+// BSE's live state 404s when the dashboard wasn't given a BSE session to replay (e.g. the
+// embedded dashboard inside `tradedesk live --market bse`'s own session, which has no
+// analogous split) - fail quiet, the "Today's calls (BSE)" table just stays empty.
+fetch('/api/state/bse').then(r => r.ok ? r.json() : null).then(s => { if (s) { render('bsetoday', s); connect('bsetoday', '/events/bse'); } });
 
 // ---------------------------------------------------------------- tabs
 const TAB_IDS = ['today', 'performance', 'crypto', 'bse', 'lookup', 'review'];

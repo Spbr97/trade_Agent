@@ -183,3 +183,27 @@ def test_custom_symbols_maps_scrip_code_to_the_stored_name(store: CandleStore) -
     assert store.custom_symbols(["NSE_3045"]) == {"NSE_3045": "SBIN"}
     assert store.custom_symbols(["CDX_BTCINR", "NSE_NOPE"]) == {"CDX_BTCINR": "I-BTC_INR"}
     assert store.custom_symbols([]) == {}
+
+
+def test_search_codes_ranks_an_exact_match_first(store: CandleStore) -> None:
+    """Real bug, found running the dashboard's Lookup tab: searching the exact symbol
+    "SBIN" returned "SBINEQWETF" first, because the old query ordered by scrip_code
+    (a string) rather than match quality - "NSE_24524" sorts before "NSE_3045" as a
+    string even though SBIN is the exact match. The dashboard's Analyze button takes
+    result [0], so the wrong instrument would have been silently analyzed. Reproduces
+    that exact pair: SBINEQWETF's scrip_code sorts first, but SBIN must still rank first
+    in search results."""
+    etf = Instrument(
+        exch="NSE", segment="E", security_id="24524", instrument_name="EQUITY",
+        trading_symbol="SBINEQWETF", symbol_name="SBINEQWETF", series="EQ",
+        tick_size=0.05, lot_units=1,
+    )  # fmt: skip
+    store.upsert_instruments([etf])
+    days = sessions(date(2026, 1, 5), 5)
+    store.upsert_candles(daily("NSE_3045", days))  # SBIN
+    store.upsert_candles(daily("NSE_24524", days))  # SBINEQWETF - scrip_code sorts first
+    results = store.search_codes(Interval.D1, query="SBIN")
+    assert results[0] == ("NSE_3045", "SBIN")  # exact match wins despite the code order
+    assert results[1] == ("NSE_24524", "SBINEQWETF")
+    # a non-exact substring query still returns both, shortest/alphabetical among ties
+    assert {r[0] for r in store.search_codes(Interval.D1, query="SBI")} == {"NSE_3045", "NSE_24524"}  # noqa: E501

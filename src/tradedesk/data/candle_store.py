@@ -144,17 +144,32 @@ class CandleStore:
     ) -> list[tuple[str, str]]:
         """(scrip_code, display symbol) pairs with candle data, for a lookup/navigation UI -
         matches on either the code or the instrument's trading_symbol (case-insensitive
-        substring), restricted to a code prefix (e.g. "CDX_" for crypto)."""
+        substring), restricted to a code prefix (e.g. "CDX_" for crypto).
+
+        Ranked by match quality (exact symbol match, then prefix, then substring; shortest
+        symbol wins ties), NOT by scrip_code - a real bug found running this: searching the
+        exact symbol "SBIN" returned "SBINEQWETF" first (an ETF) because `ORDER BY
+        scrip_code` sorts "NSE_24524" before "NSE_3045" as strings, and the dashboard's
+        Analyze button takes result [0] - so the wrong instrument would have been silently
+        analyzed for an exact-match query."""
+        sym = "coalesce(i.trading_symbol, c.scrip_code)"
         rows = self.con.execute(
-            """
-            SELECT DISTINCT c.scrip_code, coalesce(i.trading_symbol, c.scrip_code)
+            f"""
+            SELECT DISTINCT c.scrip_code, {sym} AS sym
             FROM candles c LEFT JOIN instruments i ON i.scrip_code = c.scrip_code
             WHERE c.interval = ? AND c.scrip_code LIKE ?
-              AND (? = '' OR upper(c.scrip_code) LIKE upper(?)
-                   OR upper(coalesce(i.trading_symbol, '')) LIKE upper(?))
-            ORDER BY 1 LIMIT ?
+              AND (? = '' OR upper(c.scrip_code) LIKE upper(?) OR upper({sym}) LIKE upper(?))
+            ORDER BY
+              CASE
+                WHEN upper({sym}) = upper(?) THEN 0
+                WHEN upper({sym}) LIKE upper(?) || '%' THEN 1
+                ELSE 2
+              END,
+              length(sym),
+              sym
+            LIMIT ?
             """,
-            [interval.value, f"{prefix}%", query, f"%{query}%", f"%{query}%", limit],
+            [interval.value, f"{prefix}%", query, f"%{query}%", f"%{query}%", query, query, limit],  # noqa: E501
         ).fetchall()
         return [(r[0], r[1]) for r in rows]
 

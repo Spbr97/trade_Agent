@@ -944,33 +944,48 @@ def dashboard(
 
     settings = load_config(root)
     state = DashboardState()
-    auto_discover = watchlist is None and session is None
-    last_loaded: tuple[float | None, float | None] = (None, None)
+    # BSE now runs the exact same full-universe live-session shape as NSE
+    # (tradedesk-bse-live-session mirrors tradedesk-live-session) - the dashboard's "Today's
+    # calls" view auto-discovers BSE's own watchlist/session dir the same way it already
+    # does for NSE, so BSE gets the same live-plan-vs-actual view NSE has always had,
+    # instead of only the historical resolved-calls log the BSE tab already showed.
+    bse_state = DashboardState()
+    last_loaded: dict[str, tuple[float | None, float | None]] = {
+        "nse": (None, None), "bse": (None, None),
+    }  # fmt: skip
 
-    def _resolve() -> tuple[Path | None, Path | None]:
-        wl_path = watchlist
+    def _resolve(
+        wl_dir: Path, sess_dir: Path, wl_override: Path | None, sess_override: Path | None
+    ) -> tuple[Path | None, Path | None]:
+        wl_path = wl_override
         if wl_path is None:
-            found = sorted(Path("data/watchlists").glob("*.json"))
+            found = sorted(wl_dir.glob("*.json"))
             wl_path = found[-1] if found else None
-        sess_path = session
+        sess_path = sess_override
         if sess_path is None and wl_path is not None:
-            candidate = Path("data/sessions") / f"{load_watchlist(wl_path).on.isoformat()}.jsonl"
+            candidate = sess_dir / f"{load_watchlist(wl_path).on.isoformat()}.jsonl"
             sess_path = candidate if candidate.exists() else None
         return wl_path, sess_path
 
-    def _load_once() -> None:
-        nonlocal last_loaded
-        wl_path, sess_path = _resolve()
+    def _load_once_for(
+        market: str,
+        st: DashboardState,
+        wl_dir: Path,
+        sess_dir: Path,
+        wl_override: Path | None,
+        sess_override: Path | None,
+    ) -> None:
+        wl_path, sess_path = _resolve(wl_dir, sess_dir, wl_override, sess_override)
         wl_mtime = wl_path.stat().st_mtime if wl_path and wl_path.exists() else None
         sess_mtime = sess_path.stat().st_mtime if sess_path and sess_path.exists() else None
-        if (wl_mtime, sess_mtime) == last_loaded and last_loaded != (None, None):
+        if (wl_mtime, sess_mtime) == last_loaded[market] and last_loaded[market] != (None, None):
             return
-        last_loaded = (wl_mtime, sess_mtime)
+        last_loaded[market] = (wl_mtime, sess_mtime)
         if wl_path is None:
             return
         wl = load_watchlist(wl_path)
-        state.set_watchlist(wl)
-        typer.echo(f"loaded {wl_path}")
+        st.set_watchlist(wl)
+        typer.echo(f"[{market}] loaded {wl_path}")
         if sess_path is not None:
             entry_rules = settings.setups.entry
             rules = SessionRules(
@@ -986,8 +1001,12 @@ def dashboard(
                 on_alert=lambda a: None,
             )
             run_replay(read_session(sess_path), monitor)
-            state.set_signals(monitor.signals)
-            typer.echo(f"replayed {sess_path} ({len(monitor.signals)} signals)")
+            st.set_signals(monitor.signals)
+            typer.echo(f"[{market}] replayed {sess_path} ({len(monitor.signals)} signals)")
+
+    def _load_once() -> None:
+        _load_once_for("nse", state, Path("data/watchlists"), Path("data/sessions"), watchlist, session)  # noqa: E501
+        _load_once_for("bse", bse_state, Path("data/watchlists/bse"), Path("data/sessions/bse"), None, None)  # noqa: E501
 
     _load_once()
     host, port = settings.alerts.dashboard.host, settings.alerts.dashboard.port
@@ -1000,10 +1019,11 @@ def dashboard(
                 _load_once()
 
         tasks = []
-        if auto_discover and refresh_seconds > 0:
+        if refresh_seconds > 0:
             tasks.append(asyncio.create_task(_refresher()))
         try:
-            await serve(create_app(state, journal_path=journal), host=host, port=port)
+            app = create_app(state, journal_path=journal, bse_state=bse_state)
+            await serve(app, host=host, port=port)
         finally:
             for t in tasks:
                 t.cancel()
