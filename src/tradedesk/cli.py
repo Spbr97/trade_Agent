@@ -824,6 +824,13 @@ def dashboard(
         None, "--session", help="Recorded session JSONL; default: today's in data/sessions"
     ),
     journal: Path = JOURNAL_OPTION,
+    refresh_seconds: int = typer.Option(
+        60,
+        "--refresh-seconds",
+        help="Re-scan for the newest watchlist/session and reload if changed; 0 disables "
+        "(pinning both --watchlist and --session also disables, since there is nothing "
+        "left to discover)",
+    ),
     root: Path = ROOT_OPTION,
 ) -> None:
     """Serve the localhost dashboard on its own (the live session can also embed it).
@@ -832,7 +839,10 @@ def dashboard(
     `tradedesk live` session running right now. Loads the newest watchlist and, if a
     session recording for that date exists, replays it (same engine as `tradedesk replay`,
     no alerts sent) purely to populate the signal states - opening this after `tradedesk
-    live` has run today shows what actually happened, not just what was planned.
+    live` has run today shows what actually happened, not just what was planned. Meant to
+    be left running all day (e.g. as its own scheduled task) rather than started fresh
+    each time: by default it re-checks for a newer watchlist/session every 60s so a call
+    that triggers mid-session shows up without restarting the process.
     """
     from tradedesk.dashboard import DashboardState, create_app, serve
     from tradedesk.live.models import SessionRules
@@ -844,17 +854,34 @@ def dashboard(
 
     settings = load_config(root)
     state = DashboardState()
-    if watchlist is None:
-        found = sorted(Path("data/watchlists").glob("*.json"))
-        watchlist = found[-1] if found else None
-    if watchlist is not None:
-        wl = load_watchlist(watchlist)
+    auto_discover = watchlist is None and session is None
+    last_loaded: tuple[float | None, float | None] = (None, None)
+
+    def _resolve() -> tuple[Path | None, Path | None]:
+        wl_path = watchlist
+        if wl_path is None:
+            found = sorted(Path("data/watchlists").glob("*.json"))
+            wl_path = found[-1] if found else None
+        sess_path = session
+        if sess_path is None and wl_path is not None:
+            candidate = Path("data/sessions") / f"{load_watchlist(wl_path).on.isoformat()}.jsonl"
+            sess_path = candidate if candidate.exists() else None
+        return wl_path, sess_path
+
+    def _load_once() -> None:
+        nonlocal last_loaded
+        wl_path, sess_path = _resolve()
+        wl_mtime = wl_path.stat().st_mtime if wl_path and wl_path.exists() else None
+        sess_mtime = sess_path.stat().st_mtime if sess_path and sess_path.exists() else None
+        if (wl_mtime, sess_mtime) == last_loaded and last_loaded != (None, None):
+            return
+        last_loaded = (wl_mtime, sess_mtime)
+        if wl_path is None:
+            return
+        wl = load_watchlist(wl_path)
         state.set_watchlist(wl)
-        typer.echo(f"loaded {watchlist}")
-        if session is None:
-            candidate = Path("data/sessions") / f"{wl.on.isoformat()}.jsonl"
-            session = candidate if candidate.exists() else None
-        if session is not None:
+        typer.echo(f"loaded {wl_path}")
+        if sess_path is not None:
             entry_rules = settings.setups.entry
             rules = SessionRules(
                 no_entry_before=datetime.strptime(settings.risk.no_entry_window.end, "%H:%M").time(),  # noqa: E501
@@ -868,12 +895,30 @@ def dashboard(
                 atr_by_code={t.signal.scrip_code: t.signal.atr for t in signals},
                 on_alert=lambda a: None,
             )
-            run_replay(read_session(session), monitor)
+            run_replay(read_session(sess_path), monitor)
             state.set_signals(monitor.signals)
-            typer.echo(f"replayed {session} ({len(monitor.signals)} signals)")
+            typer.echo(f"replayed {sess_path} ({len(monitor.signals)} signals)")
+
+    _load_once()
     host, port = settings.alerts.dashboard.host, settings.alerts.dashboard.port
     typer.echo(f"dashboard at http://{host}:{port}  (Ctrl+C to stop)")
-    asyncio.run(serve(create_app(state, journal_path=journal), host=host, port=port))
+
+    async def _run() -> None:
+        async def _refresher() -> None:
+            while True:
+                await asyncio.sleep(refresh_seconds)
+                _load_once()
+
+        tasks = []
+        if auto_discover and refresh_seconds > 0:
+            tasks.append(asyncio.create_task(_refresher()))
+        try:
+            await serve(create_app(state, journal_path=journal), host=host, port=port)
+        finally:
+            for t in tasks:
+                t.cancel()
+
+    asyncio.run(_run())
 
 
 # ------------------------------------------------------- M9: journal + paper book
