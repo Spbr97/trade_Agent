@@ -1,10 +1,18 @@
 # tradedesk
 
-Short-term momentum scanner for NSE stocks on the INDstocks (INDmoney) API.
+Short-term momentum scanner across **NSE, BSE, and crypto (CoinDCX)**.
 Evening scan on daily charts, live trigger monitoring, holds of hours to 10 sessions.
 
 **It alerts; a human places every order.** Order placement is not implemented and is
 deliberately gated behind a milestone that hasn't been started. Full spec: [PLAN.md](PLAN.md).
+
+NSE and BSE trade through the INDstocks (INDmoney) API; crypto reads CoinDCX's public
+endpoints (no credentials needed). Crypto and BSE are research/paper-only — their own
+call logs (`data/reports/crypto_signal_tracking.jsonl`, `.../bse_signal_tracking.jsonl`)
+track every signal and grade it later, since neither has a paper book like NSE's. **Crypto's
+own backtest verdict is honestly negative** (-0.515R expectancy on 22 large caps, 2018-2026 —
+CoinDCX's 1% TDS on every sell leg is structural, not a tuning problem); it stays live purely
+to keep collecting evidence, not because it's expected to work.
 
 ## Status
 
@@ -15,8 +23,9 @@ deliberately gated behind a milestone that hasn't been started. Full spec: [PLAN
 | M3 data layer | **Signed off live.** Quality report reviewed across 2,639 codes; universe-by-date clean. |
 | M4 indicators | Passing against an independent hand-derived reference (TradingView's CSV export is paywalled). |
 | M5–M11 | Built and unit-tested: setups, scan, backtester, live monitor, alerts, journal, paper book, Claude advisor, prediction layer. |
+| M13 crypto + BSE | Live full-universe monitoring on all three markets. Prediction layer (shadow-only) has hyperparameter tuning, per-setup breakdown, and a closed calibration-drift loop as of 2026-09-13 — honest current finding: no threshold shows a real edge yet (`has_edge=False`). |
 
-Details: [docs/signoff-m2-m3.md](docs/signoff-m2-m3.md).
+Details: [docs/signoff-m2-m3.md](docs/signoff-m2-m3.md), [docs/signoff-crypto-phase4.md](docs/signoff-crypto-phase4.md).
 
 ## Quickstart
 
@@ -42,16 +51,32 @@ written to a file — secrets live in the OS keychain via `keyring`.
 ## Daily use
 
 ```bash
-uv run tradedesk data load                  # incremental daily candles
+uv run tradedesk data load                  # incremental daily candles (--market crypto|bse for the others)
 uv run tradedesk scan --charts              # evening watchlist + PNGs
 uv run tradedesk live                       # 09:15-15:35: triggers, position watch, dashboard
-uv run tradedesk paper update               # after the close
+uv run tradedesk paper update               # after the close (NSE only - no paper book for crypto/BSE)
 uv run tradedesk journal stats
 uv run tradedesk backtest --setup base_breakout --from 2023-09-01
 uv run tradedesk train --from 2023-09-01    # prediction layer, shadow only
+uv run tradedesk ml check-drift             # calibration drift -> review queue, never auto-acts
+uv run tradedesk dashboard                  # http://127.0.0.1:8765 - Calls/Report/Crypto/BSE/Lookup/Review
 ```
 
-`uv run tradedesk --help` lists the rest (replay, alerts, review, dashboard, mcp).
+`uv run tradedesk --help` lists the rest (replay, alerts, review, mcp).
+
+### Unattended automation
+
+9 Windows Scheduled Tasks (`Get-ScheduledTask -TaskName tradedesk-*`) run this without you:
+evening scan + `ml check-drift` after each NSE/BSE close, live monitoring during market
+hours on all three markets, a crypto check every 3h from 09:00 to 00:00 IST, and a NIFTY
+options-chain snapshot daily (forward-only data collection - see `CLAUDE.md` for why). To
+run any check manually right now instead of waiting for its schedule:
+
+```powershell
+Start-ScheduledTask -TaskName tradedesk-after-close       # NSE
+Start-ScheduledTask -TaskName tradedesk-bse-tracker        # BSE
+Start-ScheduledTask -TaskName tradedesk-crypto-tracker     # crypto
+```
 
 ## Notes that bite
 
