@@ -139,6 +139,25 @@ class CandleStore:
         ).fetchall()
         return [r[0] for r in rows]
 
+    def search_codes(
+        self, interval: Interval, query: str = "", prefix: str = "", limit: int = 20
+    ) -> list[tuple[str, str]]:
+        """(scrip_code, display symbol) pairs with candle data, for a lookup/navigation UI -
+        matches on either the code or the instrument's trading_symbol (case-insensitive
+        substring), restricted to a code prefix (e.g. "CDX_" for crypto)."""
+        rows = self.con.execute(
+            """
+            SELECT DISTINCT c.scrip_code, coalesce(i.trading_symbol, c.scrip_code)
+            FROM candles c LEFT JOIN instruments i ON i.scrip_code = c.scrip_code
+            WHERE c.interval = ? AND c.scrip_code LIKE ?
+              AND (? = '' OR upper(c.scrip_code) LIKE upper(?)
+                   OR upper(coalesce(i.trading_symbol, '')) LIKE upper(?))
+            ORDER BY 1 LIMIT ?
+            """,
+            [interval.value, f"{prefix}%", query, f"%{query}%", f"%{query}%", limit],
+        ).fetchall()
+        return [(r[0], r[1]) for r in rows]
+
     def count(self, scrip_code: str, interval: Interval) -> int:
         row = self.con.execute(
             "SELECT count(*) FROM candles WHERE scrip_code = ? AND interval = ?",

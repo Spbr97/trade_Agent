@@ -102,68 +102,15 @@ def get_position(code: str) -> str:
 
 
 @server.tool()
-def analyze(code: str, on: str | None = None) -> str:
+def analyze(code: str, on: str | None = None, market: str = "nse") -> str:
     """Run the setups and indicators on one scrip as of a date (default: latest stored bar):
-    trend, RS, ATR, patterns found and any signal that would arm, with its score."""
-    from tradedesk.backtest.runner import build_snapshot, prepare_market, regime_on
-    from tradedesk.data.candle_store import CandleStore
-    from tradedesk.engine.engine import scan_day
-    from tradedesk.engine.patterns import find_base, find_flag, find_pullback, volatility_squeeze
-    from tradedesk.scan import scan_config
+    trend, RS, ATR, patterns found and any signal that would arm, with its score, its
+    recommended hold (sessions), and that setup's historical hit rate. `market` is "nse"
+    (default) or "crypto"; crypto scrip codes look like CDX_BTCINR."""
+    from tradedesk.analysis import analyze_symbol
 
     settings = load_config(ROOT)
-    with CandleStore(DB) as store:
-        ref = store.index_code(settings.universe.benchmark)
-        if ref is None:
-            return _dump(
-                {"error": "benchmark not in instruments table; run tradedesk data sync-instruments"}
-            )
-        from tradedesk.broker.indstocks.models import Interval
-
-        last = store.last_ts(code, Interval.D1)
-        if last is None:
-            return _dump({"error": f"no daily candles for {code}"})
-        day = datetime.strptime(on, "%Y-%m-%d").date() if on else last.date()
-        cfg = scan_config(settings, day)
-        # Every other NSE caller (cli.py's scan/backtest/train) resolves and sets this;
-        # this tool never did, so its regime always ran on vix=None - now that
-        # scan_config's vix_required=True (nse_market default) fails closed on that,
-        # skipping this line would silently turn every analyze() call into a forced
-        # RISK_OFF instead of an honest reading. Resolve it like everyone else instead.
-        cfg.vix_code = store.index_code(settings.universe.volatility_index)
-        md = prepare_market(store, [code], ref, cfg)
-    if code not in md.features or day not in md.pos_by_date[code]:
-        return _dump({"error": f"no bar for {code} on {day}"})
-    feats = md.features[code].iloc[: md.pos_by_date[code][day] + 1]
-    last_row = feats.iloc[-1]
-    pcfg = settings.engine.patterns
-    regime = regime_on(md, day, cfg)
-    snap = build_snapshot(md, day, cfg, regime=regime)
-    signals = scan_day(snap, list(cfg.setups), cfg.setup_params)
-    return _dump(
-        {
-            "code": code,
-            "symbol": md.symbols.get(code, code),
-            "on": day,
-            "close": float(last_row["close"]),
-            "ema20": float(last_row["ema20"]),
-            "ema50": float(last_row["ema50"]),
-            "ema200": float(last_row["ema200"]),
-            "adx14": float(last_row["adx14"]) if last_row["adx14"] == last_row["adx14"] else None,
-            "atr_pct": float(last_row["atr_pct"])
-            if last_row["atr_pct"] == last_row["atr_pct"]
-            else None,
-            "rs_percentile": snap.rs_percentile.get(code),
-            "regime": regime.regime.value if regime else None,
-            "patterns": {
-                "base": (b.model_dump() if (b := find_base(feats, pcfg)) else None),
-                "flag": (f.model_dump() if (f := find_flag(feats, pcfg)) else None),
-                "pullback": (p.model_dump() if (p := find_pullback(feats, pcfg)) else None),
-                "squeeze": volatility_squeeze(feats, pcfg).model_dump(),
-            },
-            "signals": [s.model_dump(mode="json") for s in signals],
-        }
-    )
+    return _dump(analyze_symbol(settings, market, code, on))
 
 
 @server.tool()

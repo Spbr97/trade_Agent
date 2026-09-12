@@ -93,6 +93,18 @@ def save_log(rows: dict[str, TrackedSignal]) -> None:
             fh.write(json.dumps(asdict(r)) + "\n")
 
 
+def setup_hit_rate(setup: str, rows: dict[str, TrackedSignal] | None = None) -> dict[str, float | int | None]:  # noqa: E501
+    """Historical "hit T1 before the stop" rate for one setup, from crypto's own resolved
+    log - kept separate from NSE's paper-book win rate (journal.stats.track_record) since
+    the two datasets are deliberately independent (different market, different costs)."""
+    rows = rows if rows is not None else load_log()
+    done = [r for r in rows.values() if r.outcome is not None and r.setup == setup]
+    if not done:
+        return {"n": 0, "hit_rate": None}
+    wins = sum(1 for r in done if r.outcome == "target")
+    return {"n": len(done), "hit_rate": wins / len(done)}
+
+
 def resolve_outcomes(store: CandleStore, rows: dict[str, TrackedSignal]) -> list[TrackedSignal]:
     """Grade every unresolved signal against real price history since it armed, using the
     exact triple-barrier rule prediction/labeling.py trains on."""

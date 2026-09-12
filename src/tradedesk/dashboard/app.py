@@ -58,6 +58,56 @@ def create_app(state: DashboardState, journal_path: Path | None = None) -> FastA
         with Journal(journal_path) as jn:
             return JSONResponse(performance_rollup(jn, period=period, n=n))
 
+    @app.get("/api/symbols")
+    async def api_symbols(
+        market: Literal["nse", "crypto"] = "nse", q: str = "", limit: int = 20
+    ) -> JSONResponse:
+        """Lookup/navigation: codes+symbols matching `q`, for the dashboard's search box -
+        doesn't touch the engine, so it's cheap enough to run on the event loop directly."""
+        from tradedesk.analysis import db_for
+        from tradedesk.broker.indstocks.models import Interval
+        from tradedesk.data.candle_store import CandleStore
+
+        prefix = "CDX_" if market == "crypto" else ""
+        db = db_for(market)
+        if not db.exists():
+            return JSONResponse([])
+        with CandleStore(db) as store:
+            hits = store.search_codes(Interval.D1, query=q, prefix=prefix, limit=limit)
+        return JSONResponse([{"code": c, "symbol": s} for c, s in hits])
+
+    @app.get("/api/analyze")
+    async def api_analyze(
+        code: str, market: Literal["nse", "crypto"] = "nse", on: str | None = None
+    ) -> JSONResponse:
+        """On-demand buy/hold call for one symbol, either market - same engine and same
+        code path as the `analyze` MCP tool (tradedesk/analysis.py), just reachable from
+        the dashboard's search box instead of an MCP client. CPU/DB work off the event
+        loop per the project's no-blocking-the-loop rule."""
+        from tradedesk.analysis import analyze_symbol
+        from tradedesk.config import load_config
+
+        settings = load_config(".")
+        result = await asyncio.to_thread(analyze_symbol, settings, market, code, on)
+        return JSONResponse(json.loads(json.dumps(result, default=str)))
+
+    @app.get("/api/crypto/calls")
+    async def api_crypto_calls(limit: int = 50) -> JSONResponse:
+        """Crypto's own call log (data/reports/crypto_signal_tracking.jsonl) - kept as a
+        separate dataset from NSE's paper-book /api/eod on purpose (different market,
+        different costs, no shared population to pool)."""
+        from tradedesk.analysis import CRYPTO_LOG
+
+        if not CRYPTO_LOG.exists():
+            return JSONResponse([])
+        rows = [
+            json.loads(line)
+            for line in CRYPTO_LOG.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        rows.sort(key=lambda r: r["logged_at"], reverse=True)
+        return JSONResponse(rows[:limit])
+
     @app.get("/chart")
     async def chart(path: str) -> Any:
         p = Path(path)

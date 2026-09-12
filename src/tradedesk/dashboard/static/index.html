@@ -62,11 +62,39 @@
 <nav class="tabs">
   <button class="tab-btn active" data-tab="today">Calls</button>
   <button class="tab-btn" data-tab="performance">Report</button>
+  <button class="tab-btn" data-tab="crypto">Crypto</button>
+  <button class="tab-btn" data-tab="lookup">Lookup</button>
 </nav>
 
 <main id="tab-today">
-  <section><h2>Today's calls</h2><table id="calls"></table></section>
+  <section><h2>Today's calls (NSE)</h2><table id="calls"></table></section>
   <section><h2>Open positions</h2><table id="positions"></table></section>
+</main>
+
+<main id="tab-crypto" hidden>
+  <section>
+    <h2>Crypto calls <span class="muted" style="text-transform:none;">- research/paper only, own dataset, not pooled with NSE</span></h2>
+    <table id="crypto-calls"></table>
+  </section>
+</main>
+
+<main id="tab-lookup" hidden>
+  <section class="perf-controls">
+    <div class="group">
+      <label>Market</label>
+      <div class="seg" id="lookup-market">
+        <button data-market="nse" class="active">NSE</button>
+        <button data-market="crypto">Crypto</button>
+      </div>
+    </div>
+    <div class="group" style="flex:1; min-width:200px;">
+      <label for="lookup-code">Symbol</label>
+      <input list="lookup-options" id="lookup-code" placeholder="type to search e.g. SBIN or BTC" style="width:100%; background:#0c0e12; color:var(--fg); border:1px solid var(--line); border-radius:5px; padding:4px 8px; font:inherit;">
+      <datalist id="lookup-options"></datalist>
+    </div>
+    <button class="seg" id="lookup-go" style="background:var(--accent); color:#08111f; border:none; padding:6px 16px; font:inherit; font-weight:600; cursor:pointer; border-radius:6px;">Analyze</button>
+  </section>
+  <section id="lookup-result"><div class="empty-note">pick a symbol and hit Analyze</div></section>
 </main>
 
 <main id="tab-performance" hidden>
@@ -141,16 +169,77 @@ function connect() {
 fetch('/api/state').then(r => r.json()).then(render).then(connect);
 
 // ---------------------------------------------------------------- tabs
+const TAB_IDS = ['today', 'performance', 'crypto', 'lookup'];
 document.querySelectorAll('.tab-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     const target = btn.dataset.tab;
-    $('tab-today').hidden = target !== 'today';
-    $('tab-performance').hidden = target !== 'performance';
+    TAB_IDS.forEach(id => { $('tab-' + id).hidden = target !== id; });
     if (target === 'performance') loadPerformance();
+    if (target === 'crypto') loadCryptoCalls();
   });
 });
+
+// ---------------------------------------------------------------- Crypto tab
+async function loadCryptoCalls() {
+  const r = await fetch('/api/crypto/calls?limit=100');
+  const data = r.ok ? await r.json() : [];
+  const resolved = data.filter(d => d.outcome);
+  const byId = (o) => o === 'target' ? 'closed' : (o ? 'stopped' : '');
+  rows($('crypto-calls'), ['Sym','Setup','Grade','Armed','Tradeable','Status','#R'],
+    data.map(d => `<tr><td>${d.symbol}</td><td>${d.setup}</td><td class="${d.grade}">${d.grade}</td><td>${d.armed_on}</td><td>${d.rejected_for.length ? 'no' : 'yes'}</td><td class="${byId(d.outcome)}">${d.outcome || 'pending'}</td><td class="num">${d.r_multiple!=null?fmt(d.r_multiple,2):'-'}</td></tr>`));
+  if (resolved.length) {
+    const wins = resolved.filter(d => d.outcome === 'target').length;
+    $('crypto-calls').insertAdjacentHTML('afterbegin', `<caption style="caption-side:top; text-align:left; color:var(--dim); padding-bottom:6px;">${wins}/${resolved.length} resolved calls hit target (${pct(wins/resolved.length)})</caption>`);
+  }
+}
+
+// ---------------------------------------------------------------- Lookup tab
+let lookupMarket = 'nse';
+document.querySelectorAll('#lookup-market button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#lookup-market button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    lookupMarket = btn.dataset.market;
+    $('lookup-code').value = '';
+  });
+});
+let searchTimer = null;
+$('lookup-code').addEventListener('input', () => {
+  clearTimeout(searchTimer);
+  const q = $('lookup-code').value;
+  searchTimer = setTimeout(async () => {
+    const r = await fetch(`/api/symbols?market=${lookupMarket}&q=${encodeURIComponent(q)}`);
+    const opts = r.ok ? await r.json() : [];
+    $('lookup-options').innerHTML = opts.map(o => `<option value="${o.symbol}" label="${o.code}">`).join('');
+  }, 200);
+});
+$('lookup-go').addEventListener('click', runLookup);
+async function runLookup() {
+  const q = $('lookup-code').value.trim();
+  if (!q) return;
+  $('lookup-result').innerHTML = '<div class="empty-note">looking up...</div>';
+  const search = await fetch(`/api/symbols?market=${lookupMarket}&q=${encodeURIComponent(q)}&limit=1`);
+  const opts = search.ok ? await search.json() : [];
+  const code = opts.length ? opts[0].code : q.toUpperCase();
+  const r = await fetch(`/api/analyze?market=${lookupMarket}&code=${encodeURIComponent(code)}`);
+  const d = await r.json();
+  if (d.error) { $('lookup-result').innerHTML = `<div class="empty-note">${d.error}</div>`; return; }
+  const track = (d.track_record||[]).map(t => `${t.setup}: ${t.hit_rate!=null ? pct(t.hit_rate)+' over '+t.n+' resolved' : 'no history yet'}`).join('<br>') || 'no setup armed, nothing to show a hit rate for';
+  const callClass = d.call && d.call.startsWith('BUY') ? 'triggered' : 'planned';
+  $('lookup-result').innerHTML = `
+    <h2>${d.symbol} <span class="muted">(${d.code})</span></h2>
+    <div class="cards">
+      <div class="card"><div class="label">Call</div><div class="value ${callClass}" style="font-size:18px;">${d.call}</div></div>
+      <div class="card"><div class="label">Suggested hold</div><div class="value">${d.hold_days} days</div></div>
+      <div class="card"><div class="label">Close</div><div class="value">${fmt(d.close)}</div></div>
+      <div class="card"><div class="label">Regime</div><div class="value" style="font-size:16px;">${d.regime||'-'}</div></div>
+    </div>
+    <p><b>Historical hit rate for this setup</b> (this market's own dataset, not a guarantee for this specific call):<br>${track}</p>
+    <p class="muted">as of ${d.on} - ema20 ${fmt(d.ema20)} / ema50 ${fmt(d.ema50)} / ema200 ${fmt(d.ema200)}, adx14 ${fmt(d.adx14,1)}, atr% ${pct(d.atr_pct)}</p>
+  `;
+}
 
 // ---------------------------------------------------------------- Report tab
 let currentPeriod = 'week';
