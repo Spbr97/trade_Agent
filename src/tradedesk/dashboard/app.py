@@ -18,6 +18,20 @@ from tradedesk.dashboard.state import DashboardState
 STATIC = Path(__file__).with_name("static")
 
 
+def _read_call_log(log_path: Path, limit: int) -> list[dict[str, Any]]:
+    """Shared reader for the crypto/BSE JSONL call logs (signal_tracker.py's output) -
+    newest-first, capped at `limit`."""
+    if not log_path.exists():
+        return []
+    rows = [
+        json.loads(line)
+        for line in log_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    rows.sort(key=lambda r: r["logged_at"], reverse=True)
+    return rows[:limit]
+
+
 def create_app(state: DashboardState, journal_path: Path | None = None) -> FastAPI:
     """`journal_path` is optional and keyword-only-by-convention so every existing caller
     (both CLI commands, and tests/alerts's `create_app(state)`) is unaffected; pass it to
@@ -98,15 +112,15 @@ def create_app(state: DashboardState, journal_path: Path | None = None) -> FastA
         different costs, no shared population to pool)."""
         from tradedesk.analysis import CRYPTO_LOG
 
-        if not CRYPTO_LOG.exists():
-            return JSONResponse([])
-        rows = [
-            json.loads(line)
-            for line in CRYPTO_LOG.read_text(encoding="utf-8").splitlines()
-            if line.strip()
-        ]
-        rows.sort(key=lambda r: r["logged_at"], reverse=True)
-        return JSONResponse(rows[:limit])
+        return JSONResponse(_read_call_log(CRYPTO_LOG, limit))
+
+    @app.get("/api/bse/calls")
+    async def api_bse_calls(limit: int = 50) -> JSONResponse:
+        """BSE's own call log (data/reports/bse_signal_tracking.jsonl) - same reasoning as
+        crypto's: no BSE paper book exists, so this JSONL is the only track record."""
+        from tradedesk.analysis import BSE_LOG
+
+        return JSONResponse(_read_call_log(BSE_LOG, limit))
 
     @app.get("/api/review")
     async def api_review_list() -> JSONResponse:

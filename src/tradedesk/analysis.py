@@ -24,6 +24,7 @@ CRYPTO_DB = Path("data/crypto.duckdb")
 BSE_DB = Path("data/bse.duckdb")
 NSE_JOURNAL = Path("data/journal.sqlite")
 CRYPTO_LOG = Path("data/reports/crypto_signal_tracking.jsonl")
+BSE_LOG = Path("data/reports/bse_signal_tracking.jsonl")
 
 
 def db_for(market: str) -> Path:
@@ -41,11 +42,16 @@ def setup_hit_rate(market: str, setup: str) -> dict[str, float | int | None]:
     which already scores every triggered signal); crypto reads its own resolved JSONL log
     since it has no paper book. Returns {"n": 0, "hit_rate": None} if nothing has resolved
     yet - not a guarantee for the NEXT trade, just what history says about this setup."""
-    if market == "crypto":
-        if not CRYPTO_LOG.exists():
+    if market in ("crypto", "bse"):
+        # Both markets have no paper book (paper/book.py stays NSE-only) so they log every
+        # call to their own JSONL and grade it via triple-barrier instead - see
+        # signal_tracker.py. Never pooled with NSE's or each other's numbers: different
+        # exchange, different costs, different universe.
+        log_path = CRYPTO_LOG if market == "crypto" else BSE_LOG
+        if not log_path.exists():
             return {"n": 0, "hit_rate": None}
         done = []
-        for line in CRYPTO_LOG.read_text(encoding="utf-8").splitlines():
+        for line in log_path.read_text(encoding="utf-8").splitlines():
             if not line.strip():
                 continue
             row = json.loads(line)
@@ -55,11 +61,6 @@ def setup_hit_rate(market: str, setup: str) -> dict[str, float | int | None]:
             return {"n": 0, "hit_rate": None}
         wins = sum(1 for r in done if r["outcome"] == "target")
         return {"n": len(done), "hit_rate": wins / len(done)}
-    if market == "bse":
-        # No paper book or call log for BSE yet (paper/book.py stays NSE-only, and there's
-        # no BSE equivalent of crypto_signal_tracker.py) - honestly nothing to report,
-        # rather than borrowing NSE's numbers for a different exchange's stocks.
-        return {"n": 0, "hit_rate": None}
     from tradedesk.journal import Journal
     from tradedesk.journal.stats import track_record
 
