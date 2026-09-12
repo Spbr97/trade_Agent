@@ -13,6 +13,7 @@ import yaml
 
 from tradedesk.config.models import (
     AlertsConfig,
+    BseMarketConfig,
     ChargeSchedule,
     ClaudeConfig,
     CryptoMarketConfig,
@@ -40,6 +41,7 @@ _FILES: dict[str, tuple[str, type[Any], bool]] = {
     "ml": ("ml.yaml", MlConfig, False),
     "engine": ("engine.yaml", EngineConfig, False),
     "crypto_market": ("markets/crypto.yaml", CryptoMarketConfig, False),
+    "bse_market": ("markets/bse.yaml", BseMarketConfig, False),
 }
 
 

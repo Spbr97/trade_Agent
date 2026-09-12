@@ -21,12 +21,17 @@ from tradedesk.config import Settings
 
 NSE_DB = Path("data/tradedesk.duckdb")
 CRYPTO_DB = Path("data/crypto.duckdb")
+BSE_DB = Path("data/bse.duckdb")
 NSE_JOURNAL = Path("data/journal.sqlite")
 CRYPTO_LOG = Path("data/reports/crypto_signal_tracking.jsonl")
 
 
 def db_for(market: str) -> Path:
-    return CRYPTO_DB if market == "crypto" else NSE_DB
+    if market == "crypto":
+        return CRYPTO_DB
+    if market == "bse":
+        return BSE_DB
+    return NSE_DB
 
 
 def setup_hit_rate(market: str, setup: str) -> dict[str, float | int | None]:
@@ -50,6 +55,11 @@ def setup_hit_rate(market: str, setup: str) -> dict[str, float | int | None]:
             return {"n": 0, "hit_rate": None}
         wins = sum(1 for r in done if r["outcome"] == "target")
         return {"n": len(done), "hit_rate": wins / len(done)}
+    if market == "bse":
+        # No paper book or call log for BSE yet (paper/book.py stays NSE-only, and there's
+        # no BSE equivalent of crypto_signal_tracker.py) - honestly nothing to report,
+        # rather than borrowing NSE's numbers for a different exchange's stocks.
+        return {"n": 0, "hit_rate": None}
     from tradedesk.journal import Journal
     from tradedesk.journal.stats import track_record
 
@@ -61,19 +71,26 @@ def setup_hit_rate(market: str, setup: str) -> dict[str, float | int | None]:
 def analyze_symbol(
     settings: Settings, market: str, code: str, on: str | None = None
 ) -> dict[str, Any]:
-    """`market` is "nse" or "crypto"; `code` is a scrip code (NSE_3045 / CDX_BTCINR)."""
+    """`market` is "nse", "crypto" or "bse"; `code` is a scrip code (NSE_3045 / CDX_BTCINR /
+    BSE_500325)."""
     from tradedesk.backtest.runner import build_snapshot, prepare_market, regime_on
     from tradedesk.broker.indstocks.models import Interval
     from tradedesk.data.candle_store import CandleStore
     from tradedesk.engine.engine import scan_day
     from tradedesk.engine.patterns import find_base, find_flag, find_pullback, volatility_squeeze
-    from tradedesk.markets import crypto_market, nse_market
+    from tradedesk.markets import bse_market, crypto_market, nse_market
     from tradedesk.scan import scan_config
 
-    mkt = crypto_market(settings) if market == "crypto" else nse_market(settings)
+    mkt = {"crypto": crypto_market, "bse": bse_market}.get(market, nse_market)(settings)
+    ref: str | None
     with CandleStore(db_for(market)) as store:
         if market == "crypto":
             ref = f"{mkt.code_prefix}{mkt.benchmark_name}"
+            vix = None
+        elif market == "bse":
+            ref = store.index_code(mkt.benchmark_name, exch="BSE")
+            if ref is None:
+                return {"error": "benchmark not in instruments table; run data sync-instruments --market bse"}  # noqa: E501
             vix = None
         else:
             ref = store.index_code(settings.universe.benchmark)

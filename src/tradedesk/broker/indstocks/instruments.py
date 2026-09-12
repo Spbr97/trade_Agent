@@ -72,3 +72,26 @@ def parse_index_csv(text: str) -> list[IndexInstrument]:
 
 def nse_cash_equities(instruments: list[Instrument]) -> list[Instrument]:
     return [i for i in instruments if i.exch.upper() == "NSE" and i.is_cash_equity]
+
+
+def bse_cash_equities(instruments: list[Instrument]) -> list[Instrument]:
+    """Same instrument-master CSV as NSE (`source=equity` returns both exchanges in one
+    file - see docs/indstocks-api.md's Get Instrument List), filtered to EXCH=BSE.
+
+    Can't reuse `is_cash_equity` (series == "EQ"): BSE has no single equity series like
+    NSE, it uses GROUP codes instead. Sampled real rows 2026-09-12 (12,880 BSE "EQUITY"
+    rows, 10 distinct series): A (PIIND, AVANTEL, NATIONALUM - large/liquid) and B
+    (MOM50, JAYAGROGN - the rest of the regular cash segment) are genuine actively-traded
+    equities. F (796PIL29, KTKFMP48D) and G (GS06NOV58, SGBJAN30IX) are coupon/maturity-
+    coded bonds and government securities respectively - the WRONG ASSET CLASS entirely,
+    not just illiquid, so they must never enter a technical-analysis universe. X/XT/M/MT/T
+    are real equities but restricted/SME/trade-for-trade subgroups - excluded from v1 as a
+    deliberate simplification (existing turnover/price floors would filter most of them
+    out anyway); revisit only if BSE's universe needs to grow past A/B."""
+    return [
+        i
+        for i in instruments
+        if i.exch.upper() == "BSE"
+        and i.instrument_name.upper() == "EQUITY"
+        and i.series.upper() in {"A", "B"}
+    ]

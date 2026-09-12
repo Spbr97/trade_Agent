@@ -1,0 +1,23 @@
+# BSE equities via the same INDstocks broker as NSE (no new adapter - verified live
+# 2026-09-12: `BSE_500325` quotes and `BSE_40000006` (SENSEX) daily candles both work
+# through the existing client/credentials). Optional - absent is fine, defaults match this.
+#
+# Costs deliberately have NO bse.yaml override: STT/stamp duty/GST/SEBI charges are set by
+# Indian law and the broker's own rate card, not the exchange - BSE reuses risk.yaml's
+# `costs:` (EquityCostModel) unchanged. If INDmoney's real contract notes ever show a BSE-
+# specific difference, that is the ledger evidence to add one - not before.
+#
+# Universe floor is INHERITED from NSE's, not re-measured against BSE's own turnover
+# distribution - most BSE-only-listed names are thin, and dual-listed names mostly trade on
+# their NSE leg. Revisit after a real `data quality`/`data universe --market bse` run.
+universe:
+  min_avg_daily_turnover_inr: 50000000  # 5 crore, same as NSE
+  min_price: 50
+
+benchmark: SENSEX
+
+# No volatility_index yet (see BseMarketConfig docstring): BSE's own duckdb store has no
+# VIX candles loaded into it. Wiring this half-way (setting the config without the data
+# load fetching it) reproduces the exact fail-open bug CLAUDE.md's 2026-09-12 health check
+# found for NSE - leave unset until `data load --market bse` also fetches VIX bars.
+volatility_index: null

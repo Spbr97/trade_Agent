@@ -2,13 +2,14 @@
 just as importantly, what it deliberately is not yet."""
 
 from tradedesk.markets.costs import CostModel, CryptoCostModel, EquityCostModel
-from tradedesk.markets.market import Market, crypto_market, nse_market
+from tradedesk.markets.market import Market, bse_market, crypto_market, nse_market
 
 __all__ = [
     "CostModel",
     "CryptoCostModel",
     "EquityCostModel",
     "Market",
+    "bse_market",
     "crypto_market",
     "nse_market",
 ]

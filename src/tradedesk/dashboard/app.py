@@ -60,7 +60,7 @@ def create_app(state: DashboardState, journal_path: Path | None = None) -> FastA
 
     @app.get("/api/symbols")
     async def api_symbols(
-        market: Literal["nse", "crypto"] = "nse", q: str = "", limit: int = 20
+        market: Literal["nse", "crypto", "bse"] = "nse", q: str = "", limit: int = 20
     ) -> JSONResponse:
         """Lookup/navigation: codes+symbols matching `q`, for the dashboard's search box -
         doesn't touch the engine, so it's cheap enough to run on the event loop directly."""
@@ -78,7 +78,7 @@ def create_app(state: DashboardState, journal_path: Path | None = None) -> FastA
 
     @app.get("/api/analyze")
     async def api_analyze(
-        code: str, market: Literal["nse", "crypto"] = "nse", on: str | None = None
+        code: str, market: Literal["nse", "crypto", "bse"] = "nse", on: str | None = None
     ) -> JSONResponse:
         """On-demand buy/hold call for one symbol, either market - same engine and same
         code path as the `analyze` MCP tool (tradedesk/analysis.py), just reachable from

@@ -185,6 +185,34 @@ class CryptoMarketConfig(Strict):
     benchmark: str = "BTCINR"  # CDX_BTCINR: trades every day, stands in for an index
 
 
+# --------------------------------------------------------------- markets/bse.yaml
+
+
+class BseUniverseConfig(Strict):
+    """Unlike crypto, BSE's statutory costs and price scale are IDENTICAL to NSE's (same
+    STT/stamp/GST/SEBI rules, same rupee-priced equities) - see markets/market.py::bse_market.
+    The only real unknown is liquidity: most of BSE's ~5,000 listings trade a fraction of
+    their NSE-listed counterpart's volume (many are NSE-dual-listed and the NSE leg absorbs
+    most flow), so NSE's turnover floor is inherited as a starting point, not re-derived -
+    unlike crypto.yaml's floor, which WAS measured against real data before being set.
+    Revisit once a real `data quality`/universe run on BSE's actual distribution exists."""
+
+    min_avg_daily_turnover_inr: Money = Decimal("50000000")
+    min_price: Money = Decimal("50")
+
+
+class BseMarketConfig(Strict):
+    universe: BseUniverseConfig = BseUniverseConfig()
+    benchmark: str = "SENSEX"
+    volatility_index: str | None = None
+    """None on purpose (not yet True): BSE's own duckdb store starts with no VIX candles
+    loaded into it, even though INDIA VIX itself is an NSE-domiciled index available in the
+    same instrument master (verified 2026-09-12: `BSE_40000006` SENSEX candles fetch fine
+    through the same broker/credentials as NSE). Wiring VIX into BSE mirrors the exact bug
+    class CLAUDE.md's health check found for NSE (fail-open on a missing reading) if done
+    half-way - set this once `data load --market bse` actually fetches VIX bars too."""
+
+
 # ------------------------------------------------------------------------- setups.yaml
 
 
@@ -348,3 +376,4 @@ class Settings(Strict):
     ml: MlConfig = MlConfig()
     engine: EngineConfig = EngineConfig()
     crypto_market: CryptoMarketConfig = CryptoMarketConfig()
+    bse_market: BseMarketConfig = BseMarketConfig()

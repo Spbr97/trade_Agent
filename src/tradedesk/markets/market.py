@@ -79,6 +79,33 @@ def nse_market(settings: Settings) -> Market:
     )
 
 
+def bse_market(settings: Settings) -> Market:
+    """BSE equities (added 2026-09-12), via the SAME INDstocks broker/credentials as NSE -
+    verified live: `BSE_500325` quotes and `BSE_40000006` (SENSEX) daily candles both work
+    unchanged through the existing client. Unlike crypto, this needed NO new adapter, no
+    new cost model (same STT/stamp/GST/SEBI rules - EquityCostModel is reused verbatim) and
+    no new session rules (same 09:15-15:30 IST cash-market hours as NSE).
+
+    `vix_required` stays False (unlike NSE) because BSE's own duckdb store has no VIX
+    candles loaded into it yet - see config/models.py::BseMarketConfig.volatility_index's
+    docstring for why setting this early would reproduce the exact fail-open bug the
+    2026-09-12 health check found and fixed for NSE."""
+    cfg = settings.bse_market
+    return Market(
+        name="bse",
+        code_prefix="BSE_",
+        costs=EquityCostModel(settings.risk.costs),
+        session_rules=SessionRules(),
+        universe_rules=UniverseRules(
+            min_avg_turnover_inr=float(cfg.universe.min_avg_daily_turnover_inr),
+            min_price=float(cfg.universe.min_price),
+        ),
+        benchmark_name=cfg.benchmark,
+        atr_pct_band=settings.universe.atr_pct_band,
+        vix_required=False,
+    )
+
+
 def crypto_market(settings: Settings) -> Market:
     """M13 Phase 4. `session_rules` here is a placeholder 24/7 stand-in
     (00:00-23:59, no-entry/late-trigger windows disabled) - not yet meaningfully

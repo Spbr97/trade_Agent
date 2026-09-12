@@ -48,17 +48,25 @@ ROOT_OPTION = typer.Option(Path("."), "--root", help="Project root containing co
 
 
 MARKET_OPTION = typer.Option(
-    "nse", "--market", help="nse|crypto - crypto uses CoinDCX (M13), no credentials needed"
+    "nse",
+    "--market",
+    help="nse|crypto|bse - crypto uses CoinDCX (M13), no credentials needed; bse uses the "
+    "same INDstocks broker/credentials as nse, just a different exchange prefix",
 )
 CRYPTO_DB = Path("data/crypto.duckdb")
 CRYPTO_REFERENCE_CODE = "CDX_BTCINR"  # trades every calendar day; stands in for an index
+BSE_DB = Path("data/bse.duckdb")
 
 
 def _resolve_db(db: Path, market: str) -> Path:
-    """`--db` explicitly given wins; otherwise crypto defaults to its own store so a
-    `data load --market crypto` never touches the NSE duckdb file."""
-    if market == "crypto" and db == DB_OPTION.default:
+    """`--db` explicitly given wins; otherwise crypto/bse default to their own store so a
+    `data load --market crypto|bse` never touches the NSE duckdb file."""
+    if db != DB_OPTION.default:
+        return db
+    if market == "crypto":
         return CRYPTO_DB
+    if market == "bse":
+        return BSE_DB
     return db
 
 
@@ -431,9 +439,19 @@ def _store(db: Path) -> CandleStore:
     return CandleStore(db)
 
 
-def _reference_code(store: CandleStore, root: Path) -> str:
-    name = load_config(root).universe.benchmark
-    code = store.index_code(name)
+def _reference_code(
+    store: CandleStore, root: Path, benchmark: str | None = None, exch: str = "NSE"
+) -> str:
+    """`benchmark`/`exch` override config/universe.yaml's NSE defaults - pass a market's
+    `benchmark_name` and code_prefix's exchange (e.g. bse_market(settings).benchmark_name
+    == "SENSEX", exch="BSE") for a market whose reference index needs the same
+    instruments-table name lookup NSE's does (unlike crypto, whose scrip codes are
+    deterministic slugs, not opaque numeric ids). `CandleStore.index_code` defaults to
+    exch="NSE" same as `instrument_codes` - passing the wrong exchange here silently
+    returns "not found" instead of an error, the exact bug shape CLAUDE.md's 2026-09-12
+    health check found for the VIX lookup, so this is deliberately an explicit parameter."""
+    name = benchmark or load_config(root).universe.benchmark
+    code = store.index_code(name, exch=exch)
     if code is None:
         raise typer.BadParameter(
             f"benchmark {name!r} not in instruments table; run `tradedesk data sync-instruments`"
@@ -460,12 +478,13 @@ def data_sync_instruments(db: Path = DB_OPTION, market: str = MARKET_OPTION) -> 
         return
 
     async def go(c: IndstocksClient) -> None:
-        from tradedesk.broker.indstocks.instruments import nse_cash_equities
+        from tradedesk.broker.indstocks.instruments import bse_cash_equities, nse_cash_equities
 
         eq = await c.equity_instruments()
         idx = await c.index_instruments()
+        cash = bse_cash_equities(eq) if market == "bse" else nse_cash_equities(eq)
         with _store(db) as store:
-            n = store.upsert_instruments([*nse_cash_equities(eq), *idx])
+            n = store.upsert_instruments([*cash, *idx])
         typer.echo(f"{n} instruments stored ({len(idx)} indices) in {db}")
 
     asyncio.run(_with_client(go))
@@ -543,16 +562,30 @@ def data_load(
 
     async def go(c: IndstocksClient) -> None:
         with _store(db) as store:
-            targets = list(codes) if codes else store.instrument_codes(kind="equity")
-            universe_cfg = load_config(root).universe
-            ref = store.index_code(universe_cfg.benchmark)
+            # instrument_codes() defaults to exch="NSE" - the BSE store only ever has
+            # exch="BSE" rows in it (data_sync_instruments filters at write time), so the
+            # default would silently return zero targets for `--market bse`.
+            # instrument_codes()'s series="EQ" default is NSE's single equity series - BSE
+            # has no such series (it's filtered to A/B groups at sync time instead, see
+            # bse_cash_equities), so the filter must be dropped, not just re-pointed.
+            exch = "BSE" if market == "bse" else "NSE"
+            series = None if market == "bse" else "EQ"
+            targets = list(codes) if codes else store.instrument_codes(
+                kind="equity", exch=exch, series=series
+            )  # fmt: skip
+            settings = load_config(root)
+            benchmark_name = settings.bse_market.benchmark if market == "bse" else settings.universe.benchmark  # noqa: E501
+            vix_name = None if market == "bse" else settings.universe.volatility_index
+            ref = store.index_code(benchmark_name, exch=exch)
             if ref and ref not in targets:
                 targets.append(ref)
             # The volatility index was never added here, so India VIX sat in the
             # instruments table with zero candles and engine/regime.py always saw
             # vix=None - it degrades gracefully, which is exactly why nothing ever
             # surfaced the gap. The regime has been running on benchmark+breadth only.
-            vix_code = store.index_code(universe_cfg.volatility_index)
+            # BSE has no volatility_index configured yet (see BseMarketConfig) - fetching
+            # one without also flipping vix_required would just be dead weight.
+            vix_code = store.index_code(vix_name) if vix_name else None
             if vix_code and vix_code not in targets:
                 targets.append(vix_code)
             if not targets:
@@ -648,7 +681,15 @@ def data_quality(
     with _store(db) as store:
         # Crypto trades every calendar day, so a liquid pair stands in for an index -
         # there's no synthetic "crypto benchmark" instrument to resolve via config.
-        ref = CRYPTO_REFERENCE_CODE if market == "crypto" else _reference_code(store, root)
+        if market == "crypto":
+            ref = CRYPTO_REFERENCE_CODE
+        elif market == "bse":
+            from tradedesk.markets import bse_market
+
+            mkt = bse_market(load_config(root))
+            ref = _reference_code(store, root, mkt.benchmark_name, exch="BSE")
+        else:
+            ref = _reference_code(store, root)
         targets = list(codes) if codes else [c for c in store.codes(Interval.D1) if c != ref]
         rep = run_quality_report(store, targets, ref)
     typer.echo(f"{rep.codes_checked} codes checked; {len(rep.issues)} issues")
@@ -675,12 +716,19 @@ def data_universe(
     from tradedesk.data.universe import UniverseRules, universe_on
 
     db = _resolve_db(db, market)
+    candidates: tuple[str, str | None]
     if market == "crypto":
-        # min_price=0: NSE's Rs 50 floor has no crypto equivalent (tokens span paise to
-        # lakhs); turnover alone (close * volume, in INR) does the liquidity filtering.
-        # No config/markets/crypto.yaml yet (M13 Phase 4) - hardcoded here for now.
-        rules = UniverseRules(min_avg_turnover_inr=5e7, min_price=0.0)
+        from tradedesk.markets import crypto_market
+
+        mkt = crypto_market(load_config(root))
+        rules = mkt.universe_rules
         candidates = "CDX", "INR"
+    elif market == "bse":
+        from tradedesk.markets import bse_market
+
+        mkt = bse_market(load_config(root))
+        rules = mkt.universe_rules
+        candidates = "BSE", None  # bse_cash_equities() already filtered to series A/B at sync time
     else:
         cfg = load_config(root).universe
         rules = UniverseRules(
@@ -1394,17 +1442,20 @@ def scan(
     from tradedesk.backtest.runner import prepare_market as prep_market
     from tradedesk.broker.indstocks.models import Interval
     from tradedesk.engine.signals import SetupKind
-    from tradedesk.markets import crypto_market, nse_market
+    from tradedesk.markets import bse_market, crypto_market, nse_market
     from tradedesk.scan import build_watchlist, render_text, save_watchlist, scan_config
 
     settings = load_config(root)
     db = _resolve_db(db, market)
-    mkt = crypto_market(settings) if market == "crypto" else nse_market(settings)
+    mkt = {"crypto": crypto_market, "bse": bse_market}.get(market, nse_market)(settings)
     kinds = [SetupKind(k) for k in setup] if setup else None
     with _store(db) as store:
         if market == "crypto":
             ref = f"{mkt.code_prefix}{mkt.benchmark_name}"  # CDX_BTCINR - trades every day
             vix = None
+        elif market == "bse":
+            ref = _reference_code(store, root, mkt.benchmark_name, exch="BSE")  # SENSEX
+            vix = None  # bse_market.vix_required is False - see its docstring
         else:
             ref = _reference_code(store, root)
             vix = store.index_code(settings.universe.volatility_index)
@@ -1486,8 +1537,8 @@ def scan(
     # made `tradedesk dashboard` load BTC/ETH as "today's watchlist"). Give crypto its
     # own subfolder so the flat data/watchlists/ stays NSE-only, matching what those
     # commands assume.
-    if market == "crypto":
-        out_dir = out_dir / "crypto"
+    if market in ("crypto", "bse"):
+        out_dir = out_dir / market
     path = save_watchlist(wl, out_dir)
     typer.echo(f"saved {path}")
 
@@ -1519,11 +1570,11 @@ def backtest(
     )
     from tradedesk.broker.indstocks.models import IST, Interval
     from tradedesk.engine.signals import SetupKind
-    from tradedesk.markets import crypto_market, nse_market
+    from tradedesk.markets import bse_market, crypto_market, nse_market
 
     settings = load_config(root)
     db = _resolve_db(db, market)
-    mkt = crypto_market(settings) if market == "crypto" else nse_market(settings)
+    mkt = {"crypto": crypto_market, "bse": bse_market}.get(market, nse_market)(settings)
     kinds = [SetupKind(s) for s in setup]
     start = datetime.strptime(from_, "%Y-%m-%d").date()
     end = datetime.strptime(to, "%Y-%m-%d").date() if to else datetime.now(IST).date()
@@ -1545,6 +1596,9 @@ def backtest(
     with _store(db) as store:
         if market == "crypto":
             ref = f"{mkt.code_prefix}{mkt.benchmark_name}"
+            vix = None
+        elif market == "bse":
+            ref = _reference_code(store, root, mkt.benchmark_name, exch="BSE")
             vix = None
         else:
             ref = _reference_code(store, root)
