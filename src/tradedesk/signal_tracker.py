@@ -27,11 +27,14 @@ from pathlib import Path
 
 import pandas as pd
 
+from tradedesk.backtest.runner import BacktestConfig, MarketData
 from tradedesk.broker.indstocks.models import IST, Interval
+from tradedesk.config import Settings
 from tradedesk.data.candle_store import CandleStore
 from tradedesk.engine.signals import Signal
+from tradedesk.markets import Market
 from tradedesk.prediction.labeling import triple_barrier
-from tradedesk.scan.evening_scan import Watchlist
+from tradedesk.scan.evening_scan import Watchlist, build_watchlist
 
 
 @dataclass
@@ -266,6 +269,31 @@ def log_new_signals(wl: Watchlist, rows: dict[str, TrackedSignal]) -> list[Track
         )  # fmt: skip
         rows[sig.id] = row
         new_rows.append(row)
+    return new_rows
+
+
+def backfill_watchlists(
+    md: MarketData,
+    cfg: BacktestConfig,
+    settings: Settings,
+    mkt: Market,
+    rows: dict[str, TrackedSignal],
+) -> list[TrackedSignal]:
+    """Backfill a real historical track record from data already on disk, instead of
+    starting a market's log at zero and waiting weeks of daily runs to accumulate one
+    (crypto already had years of history loaded; BSE just needs its watchlist's history
+    loaded first - see scripts/backfill_signal_tracker.py). Replays the exact same
+    build_watchlist step the daily job runs, once per session in `cfg.start..cfg.end`,
+    against ONE `prepare_market` call (cheap: the features are computed once, not per day).
+
+    Only NEW signal ids get logged - existing rows are left untouched - so running this
+    after the daily incremental job has already logged today's calls is safe and won't
+    double-count or overwrite anything."""
+    sessions = [d for d in md.calendar if cfg.start <= d <= cfg.end]
+    new_rows: list[TrackedSignal] = []
+    for day in sessions:
+        wl = build_watchlist(md, cfg, settings, day, market=mkt)
+        new_rows.extend(log_new_signals(wl, rows))
     return new_rows
 
 

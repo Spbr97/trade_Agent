@@ -20,6 +20,7 @@ import json
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
+from uuid import uuid4
 
 from tradedesk.broker.indstocks.models import IST
 
@@ -56,9 +57,18 @@ def add_item(
     market: str, title: str, detail: str, proposal: str, *, path: Path = QUEUE
 ) -> ReviewItem:
     rows = load_queue(path)
+    created_at = datetime.now(IST).isoformat()
+    item_id = f"{market}:{created_at}"
+    # A timestamp-only id collides when two items are added within the same clock tick
+    # (real bug, found 2026-09-12: flag_setup_failures() flagging 3 setups in one loop lost
+    # one of them - the second add_item() call's identical id silently overwrote the
+    # first's dict entry before either was saved). uuid4 suffix makes collision practically
+    # impossible without changing the human-readable id shape callers already rely on.
+    if item_id in rows:
+        item_id = f"{item_id}:{uuid4().hex[:8]}"
     item = ReviewItem(
-        id=f"{market}:{datetime.now(IST).isoformat()}",
-        created_at=datetime.now(IST).isoformat(),
+        id=item_id,
+        created_at=created_at,
         market=market,
         title=title,
         detail=detail,
