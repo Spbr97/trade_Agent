@@ -1262,18 +1262,27 @@ def _not_yet(milestone: str) -> None:
 @app.command()
 def live(
     watchlist: Path | None = typer.Option(
-        None, "--watchlist", help="Watchlist JSON; default: newest in data/watchlists"
+        None, "--watchlist", help="Watchlist JSON; default: newest for --market's folder"
     ),
-    record_dir: Path = typer.Option(Path("data/sessions"), "--record-dir"),
+    record_dir: Path | None = typer.Option(
+        None, "--record-dir", help="Default: data/sessions, or data/sessions/<market> if not nse"
+    ),
     until: str = typer.Option("15:35", "--until", help="HH:MM IST to stop"),
     all_entries: bool = typer.Option(False, "--all", help="Watch C-grade entries too"),
     with_dashboard: bool = typer.Option(True, "--dashboard/--no-dashboard"),
-    journal: Path = JOURNAL_OPTION,
+    journal: Path | None = typer.Option(
+        None, "--journal", help="Default: data/journal.sqlite, or data/<market>_journal.sqlite"
+    ),
+    market: str = MARKET_OPTION,
     root: Path = ROOT_OPTION,
 ) -> None:
     """Market-hours session: stream prices for the watchlist, confirm triggers on 15-minute
     closes, watch positions, route alerts (console, desktop, Telegram, dashboard), journal
-    everything and record the session for replay."""
+    everything and record the session for replay. `--market bse` uses the same INDstocks
+    broker/feed as NSE (verified: ws_code()'s EXCH:TOKEN split is already market-agnostic) -
+    it just needs its own watchlist folder, journal and session recordings so it never mixes
+    with NSE's (paper/book.py and `review week` stay NSE-only, so a BSE journal is a plain
+    trigger record for now, not something a paper book grades yet)."""
     from tradedesk.broker.indstocks.models import IST
     from tradedesk.dashboard import DashboardState, create_app, serve
     from tradedesk.journal import Journal
@@ -1283,6 +1292,10 @@ def live(
     from tradedesk.scan import load_watchlist
 
     settings = load_config(root)
+    if journal is None:
+        journal = Path(f"data/{market}_journal.sqlite") if market != "nse" else JOURNAL_OPTION.default  # noqa: E501
+    if record_dir is None:
+        record_dir = Path("data/sessions") / market if market != "nse" else Path("data/sessions")
     entry_rules = settings.setups.entry
     rules = SessionRules(
         no_entry_before=datetime.strptime(settings.risk.no_entry_window.end, "%H:%M").time(),
@@ -1290,9 +1303,10 @@ def live(
         bar_minutes=entry_rules.confirm_timeframe_minutes,
     )
     if watchlist is None:
-        candidates = sorted(Path("data/watchlists").glob("*.json"))
+        wl_dir = Path("data/watchlists") / market if market != "nse" else Path("data/watchlists")
+        candidates = sorted(wl_dir.glob("*.json"))
         if not candidates:
-            raise typer.BadParameter("no watchlist found; run `tradedesk scan` first")
+            raise typer.BadParameter(f"no watchlist found in {wl_dir}; run `tradedesk scan --market {market}` first")  # noqa: E501
         watchlist = candidates[-1]
     wl = load_watchlist(watchlist)
     signals = signals_from_watchlist(wl, alertable_only=not all_entries)

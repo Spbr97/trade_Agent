@@ -57,7 +57,11 @@ async def run_session(
     monitor.on_alert = on_alert
 
     def on_tick(t: Tick) -> None:
-        code = token_to_code.get(t.instrument, f"NSE_{t.instrument}")
+        # Defensive only - every subscribed instrument's token is in token_to_code, so this
+        # should never actually miss. It used to guess "NSE_<token>" on a miss, which would
+        # silently mislabel a BSE (or any other market's) tick as NSE instead of just
+        # leaving it unresolved - now it does the latter.
+        code = token_to_code.get(t.instrument, t.instrument)
         if t.ltp is None:
             return
         if rec:
