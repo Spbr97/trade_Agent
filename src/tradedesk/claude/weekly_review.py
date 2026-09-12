@@ -89,4 +89,14 @@ def run_weekly_review(
     start, _ = week_bounds(on)
     path = out_dir / f"{start.isoformat()}.md"
     path.write_text(render(review, on, stats), encoding="utf-8")
+    # Feed the approve/reject queue (review_queue.py): "one thing to change" is exactly
+    # the kind of proposal that must wait for a human decision, never apply itself.
+    from tradedesk.review_queue import add_item
+
+    add_item(
+        market="nse",
+        title=f"Week of {start.isoformat()}: {review.one_change_next_week}",
+        detail=review.summary,
+        proposal=review.one_change_next_week,
+    )
     return path, review

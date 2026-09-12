@@ -64,6 +64,7 @@
   <button class="tab-btn" data-tab="performance">Report</button>
   <button class="tab-btn" data-tab="crypto">Crypto</button>
   <button class="tab-btn" data-tab="lookup">Lookup</button>
+  <button class="tab-btn" data-tab="review">Review</button>
 </nav>
 
 <main id="tab-today">
@@ -96,6 +97,17 @@
     <button class="seg" id="lookup-go" style="background:var(--accent); color:#08111f; border:none; padding:6px 16px; font:inherit; font-weight:600; cursor:pointer; border-radius:6px;">Analyze</button>
   </section>
   <section id="lookup-result"><div class="empty-note">pick a symbol and hit Analyze</div></section>
+</main>
+
+<main id="tab-review" hidden>
+  <section>
+    <h2>Pending review <span class="muted" style="text-transform:none;">- proposals from `tradedesk review week`, never applied automatically</span></h2>
+    <div id="review-pending"></div>
+  </section>
+  <section>
+    <h2>Decided</h2>
+    <div id="review-decided"></div>
+  </section>
 </main>
 
 <main id="tab-performance" hidden>
@@ -170,7 +182,7 @@ function connect() {
 fetch('/api/state').then(r => r.json()).then(render).then(connect);
 
 // ---------------------------------------------------------------- tabs
-const TAB_IDS = ['today', 'performance', 'crypto', 'lookup'];
+const TAB_IDS = ['today', 'performance', 'crypto', 'lookup', 'review'];
 document.querySelectorAll('.tab-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -179,8 +191,34 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     TAB_IDS.forEach(id => { $('tab-' + id).hidden = target !== id; });
     if (target === 'performance') loadPerformance();
     if (target === 'crypto') loadCryptoCalls();
+    if (target === 'review') loadReview();
   });
 });
+
+// ---------------------------------------------------------------- Review tab
+function reviewCard(item) {
+  const buttons = item.status === 'pending'
+    ? `<button onclick="decideReview('${item.id}','approved')" style="background:var(--ok); color:#08111f; border:none; padding:5px 14px; font:inherit; font-weight:600; cursor:pointer; border-radius:6px; margin-right:8px;">Approve</button>
+       <button onclick="decideReview('${item.id}','rejected')" style="background:var(--bad); color:#08111f; border:none; padding:5px 14px; font:inherit; font-weight:600; cursor:pointer; border-radius:6px;">Reject</button>`
+    : `<span class="${item.status === 'approved' ? 'closed' : 'stopped'}">${item.status}</span> <span class="muted">${(item.decided_at||'').slice(0,10)}</span>`;
+  return `<div style="border-bottom:1px solid var(--line); padding:10px 0;">
+    <div style="font-weight:600;">${item.title}</div>
+    <div class="muted" style="margin:4px 0;">${item.detail}</div>
+    <div style="margin-top:6px;">${buttons}</div>
+  </div>`;
+}
+async function loadReview() {
+  const r = await fetch('/api/review');
+  const items = r.ok ? await r.json() : [];
+  const pending = items.filter(i => i.status === 'pending');
+  const decided = items.filter(i => i.status !== 'pending');
+  $('review-pending').innerHTML = pending.length ? pending.map(reviewCard).join('') : '<div class="empty-note">nothing pending - run `tradedesk review week` to generate one</div>';
+  $('review-decided').innerHTML = decided.length ? decided.map(reviewCard).join('') : '<div class="empty-note">no decisions yet</div>';
+}
+async function decideReview(id, status) {
+  await fetch(`/api/review/decide?item_id=${encodeURIComponent(id)}&status=${status}`, {method: 'POST'});
+  loadReview();
+}
 
 // ---------------------------------------------------------------- Crypto tab
 async function loadCryptoCalls() {

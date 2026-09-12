@@ -108,6 +108,28 @@ def create_app(state: DashboardState, journal_path: Path | None = None) -> FastA
         rows.sort(key=lambda r: r["logged_at"], reverse=True)
         return JSONResponse(rows[:limit])
 
+    @app.get("/api/review")
+    async def api_review_list() -> JSONResponse:
+        """Pending/decided review-queue items (review_queue.py) - proposals from `tradedesk
+        review week`, waiting for a human decision. Never auto-applied; see the module
+        docstring for why that's a hard rule, not a missing feature."""
+        from tradedesk.review_queue import load_queue
+
+        items = sorted(load_queue().values(), key=lambda i: i.created_at, reverse=True)
+        return JSONResponse([vars(i) for i in items])
+
+    @app.post("/api/review/decide")
+    async def api_review_decide(item_id: str, status: str) -> JSONResponse:
+        from tradedesk.review_queue import decide
+
+        try:
+            item = decide(item_id, status)
+        except ValueError as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400)
+        if item is None:
+            return JSONResponse({"error": f"no review item {item_id!r}"}, status_code=404)
+        return JSONResponse(vars(item))
+
     @app.get("/chart")
     async def chart(path: str) -> Any:
         p = Path(path)
