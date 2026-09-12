@@ -820,10 +820,26 @@ def alerts_test(root: Path = ROOT_OPTION) -> None:
 @app.command()
 def dashboard(
     watchlist: Path | None = typer.Option(None, "--watchlist"),
+    session: Path | None = typer.Option(
+        None, "--session", help="Recorded session JSONL; default: today's in data/sessions"
+    ),
+    journal: Path = JOURNAL_OPTION,
     root: Path = ROOT_OPTION,
 ) -> None:
-    """Serve the localhost dashboard on its own (the live session can also embed it)."""
+    """Serve the localhost dashboard on its own (the live session can also embed it).
+
+    Standalone use - checking the morning's plan, or the day's trigger states, without a
+    `tradedesk live` session running right now. Loads the newest watchlist and, if a
+    session recording for that date exists, replays it (same engine as `tradedesk replay`,
+    no alerts sent) purely to populate the signal states - opening this after `tradedesk
+    live` has run today shows what actually happened, not just what was planned.
+    """
     from tradedesk.dashboard import DashboardState, create_app, serve
+    from tradedesk.live.models import SessionRules
+    from tradedesk.live.session import signals_from_watchlist
+    from tradedesk.live.trigger_monitor import TriggerMonitor
+    from tradedesk.replay import read_session
+    from tradedesk.replay import replay as run_replay
     from tradedesk.scan import load_watchlist
 
     settings = load_config(root)
@@ -832,11 +848,32 @@ def dashboard(
         found = sorted(Path("data/watchlists").glob("*.json"))
         watchlist = found[-1] if found else None
     if watchlist is not None:
-        state.set_watchlist(load_watchlist(watchlist))
+        wl = load_watchlist(watchlist)
+        state.set_watchlist(wl)
         typer.echo(f"loaded {watchlist}")
+        if session is None:
+            candidate = Path("data/sessions") / f"{wl.on.isoformat()}.jsonl"
+            session = candidate if candidate.exists() else None
+        if session is not None:
+            entry_rules = settings.setups.entry
+            rules = SessionRules(
+                no_entry_before=datetime.strptime(settings.risk.no_entry_window.end, "%H:%M").time(),  # noqa: E501
+                late_trigger_after=datetime.strptime(entry_rules.late_trigger_after, "%H:%M").time(),  # noqa: E501
+                bar_minutes=entry_rules.confirm_timeframe_minutes,
+            )  # fmt: skip
+            signals = signals_from_watchlist(wl, alertable_only=False)
+            monitor = TriggerMonitor(
+                rules,
+                signals=signals,
+                atr_by_code={t.signal.scrip_code: t.signal.atr for t in signals},
+                on_alert=lambda a: None,
+            )
+            run_replay(read_session(session), monitor)
+            state.set_signals(monitor.signals)
+            typer.echo(f"replayed {session} ({len(monitor.signals)} signals)")
     host, port = settings.alerts.dashboard.host, settings.alerts.dashboard.port
     typer.echo(f"dashboard at http://{host}:{port}  (Ctrl+C to stop)")
-    asyncio.run(serve(create_app(state), host=host, port=port))
+    asyncio.run(serve(create_app(state, journal_path=journal), host=host, port=port))
 
 
 # ------------------------------------------------------- M9: journal + paper book
@@ -1244,7 +1281,12 @@ def live(
             import uvicorn
 
             server = uvicorn.Server(
-                uvicorn.Config(create_app(state), host=host, port=port, log_level="warning")
+                uvicorn.Config(
+                    create_app(state, journal_path=journal),
+                    host=host,
+                    port=port,
+                    log_level="warning",
+                )
             )
             task = asyncio.create_task(server.serve())
             await stop.wait()
@@ -1392,6 +1434,15 @@ def scan(
             f"model {bundle.version} ({label}): "
             + ", ".join(f"{k} {v:.2f}" for k, v in probs.items())
         )
+    # Filenames are date-only ("{date}.json"), and `dashboard`/`live`'s auto-discovery
+    # just takes the newest file in the folder with no market check - a crypto scan and
+    # an NSE scan sharing a date would silently overwrite or shadow each other (found
+    # 2026-09-12 while building the dashboard's Performance tab: a manual crypto scan
+    # made `tradedesk dashboard` load BTC/ETH as "today's watchlist"). Give crypto its
+    # own subfolder so the flat data/watchlists/ stays NSE-only, matching what those
+    # commands assume.
+    if market == "crypto":
+        out_dir = out_dir / "crypto"
     path = save_watchlist(wl, out_dir)
     typer.echo(f"saved {path}")
 

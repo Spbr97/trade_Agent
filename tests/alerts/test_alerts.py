@@ -252,6 +252,56 @@ async def test_dashboard_state_and_endpoints() -> None:
         assert (await c.get("/chart", params={"path": "nope.png"})).status_code == 404
 
 
+async def test_dashboard_eod_and_performance_endpoints(tmp_path: Path) -> None:
+    """/api/eod and /api/performance (dashboard follow-up) read the paper book through a
+    fresh Journal connection per request - a plain JSON GET, so unlike /events this needs
+    no real uvicorn server (httpx's ASGITransport only buffers STREAMING responses)."""
+    from decimal import Decimal
+
+    from tradedesk.backtest.fills import Fill, FillReason, Position
+    from tradedesk.backtest.portfolio import Portfolio
+    from tradedesk.config.models import RiskConfig
+    from tradedesk.journal import Journal
+    from tradedesk.markets import EquityCostModel
+
+    journal_path = tmp_path / "journal.sqlite"
+    on = date(2026, 3, 10)
+    risk = RiskConfig(trading_capital=Decimal("1000000"))
+    with Journal(journal_path) as j:
+        s = Signal(
+            id="base_breakout:NSE_1:x", scrip_code="NSE_1", symbol="ONE",
+            setup=SetupKind.BASE_BREAKOUT, armed_on=on, trigger=100.0, stop=95.0,
+            t1=110.0, t2=115.0, atr=2.0,
+        )  # fmt: skip
+        pf = Portfolio(risk=risk, costs=EquityCostModel(risk.costs), equity=1_000_000.0)
+        pos = Position(
+            signal=s, entry_date=on, entry_price=100.0, qty_initial=100, qty_open=0, stop=95.0,
+            highest_close=100.0,
+            fills=[Fill(on=on, price=100.0, qty=100, reason=FillReason.ENTRY),
+                   Fill(on=on, price=110.0, qty=100, reason=FillReason.TRAIL)],
+        )  # fmt: skip
+        j.record_trade(pf.settle(pos), source="paper")
+
+    state = DashboardState()
+    app_with_journal = create_app(state, journal_path=journal_path)
+    transport = httpx.ASGITransport(app=app_with_journal)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+        eod = (await c.get("/api/eod", params={"date": on.isoformat()})).json()
+        assert eod["closed_count"] == 1 and eod["closed_trades"][0]["symbol"] == "ONE"
+        assert eod["win_rate"] == 1.0
+
+        perf = (await c.get("/api/performance", params={"period": "month"})).json()
+        assert perf[0]["period"] == f"{on.year}-{on.month:02d}" and perf[0]["trades"] == 1
+
+    # a dashboard with no journal wired (create_app(state) alone, the old signature) must
+    # not crash - it degrades to a clear error, not an AttributeError or 500.
+    app_without_journal = create_app(state)
+    transport2 = httpx.ASGITransport(app=app_without_journal)
+    async with httpx.AsyncClient(transport=transport2, base_url="http://test") as c:
+        r = await c.get("/api/eod")
+        assert r.status_code == 404
+
+
 async def test_dashboard_sse_over_real_server() -> None:
     import socket
 

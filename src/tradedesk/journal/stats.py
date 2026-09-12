@@ -1,10 +1,13 @@
 """Journal statistics (PLAN.md 1.5, 6.8, 8): per-setup rolling paper expectancy (feeds the
-score and the auto-bench), live vs paper gap, rule adherence from tags."""
+score and the auto-bench), live vs paper gap, rule adherence from tags, and the dashboard's
+EOD / weekly / monthly performance views (below) - all read-only reporting over the paper
+book's closed trades, no new signal or sizing logic."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from datetime import date
+from typing import Any, Literal
 
 from tradedesk.engine.scoring import TrackRecord
 from tradedesk.journal.db import Journal
@@ -90,3 +93,81 @@ def summary(journal: Journal) -> dict[str, Any]:
         "rule_adherence": {"trades": n, "rule_breaks": broken, "adherence": round(adherence, 3)},
         "live_vs_paper_gap_r": round(live_vs_paper(journal).gap_r, 3),
     }
+
+
+# --------------------------------------------------- dashboard: EOD / weekly / monthly
+
+
+def _trade_dict(r: Any) -> dict[str, Any]:
+    return {
+        "symbol": r["symbol"],
+        "setup": r["setup"],
+        "entry_date": r["entry_date"],
+        "exit_date": r["exit_date"],
+        "qty": r["qty"],
+        "entry_price": r["entry_price"],
+        "exit_reason": r["exit_reason"],
+        "net_pnl": round(float(r["net_pnl"]), 2),
+        "r_multiple": round(float(r["r_multiple"]), 2),
+        "sessions_held": r["sessions_held"],
+    }
+
+
+def eod_report(journal: Journal, on: date, *, source: str = "paper") -> dict[str, Any]:
+    """What closed today, plus what's still open, from the paper book (PLAN.md 8) - the
+    only NSE track record with enough volume to be meaningful before real live trades
+    accumulate. Reads journal.trades()/open_positions() directly; computes nothing a
+    backtest or the live risk manager doesn't already own."""
+    on_iso = on.isoformat()
+    closed = [r for r in journal.trades(source=source) if r["exit_date"] == on_iso]
+    exp, win = _expectancy(closed)
+    net_pnl = sum(float(r["net_pnl"]) for r in closed)
+    open_positions = journal.open_positions(source=source)
+    return {
+        "date": on_iso,
+        "closed_trades": [_trade_dict(r) for r in closed],
+        "closed_count": len(closed),
+        "net_pnl": round(net_pnl, 2),
+        "win_rate": round(win, 3),
+        "expectancy_r": round(exp, 3),
+        "open_positions": len(open_positions),
+        "open_symbols": sorted({p.signal.symbol for p in open_positions}),
+    }
+
+
+def _period_key(d: date, period: Literal["week", "month"]) -> str:
+    if period == "week":
+        y, w, _ = d.isocalendar()
+        return f"{y}-W{w:02d}"
+    return f"{d.year}-{d.month:02d}"
+
+
+def performance_rollup(
+    journal: Journal,
+    *,
+    period: Literal["week", "month"] = "week",
+    n: int = 12,
+    source: str = "paper",
+) -> list[dict[str, Any]]:
+    """Paper-book P&L grouped by ISO week or calendar month, most recent `n` periods with
+    at least one closed trade. A trade counts toward the period it EXITED in - the period
+    it can actually be judged in, matching how the paper book itself books P&L."""
+    rows = journal.trades(source=source)
+    groups: dict[str, list[Any]] = {}
+    for r in rows:
+        key = _period_key(date.fromisoformat(r["exit_date"]), period)
+        groups.setdefault(key, []).append(r)
+    out = []
+    for key in sorted(groups)[-n:]:
+        rs = groups[key]
+        exp, win = _expectancy(rs)
+        out.append(
+            {
+                "period": key,
+                "trades": len(rs),
+                "net_pnl": round(sum(float(r["net_pnl"]) for r in rs), 2),
+                "win_rate": round(win, 3),
+                "expectancy_r": round(exp, 3),
+            }
+        )
+    return out
