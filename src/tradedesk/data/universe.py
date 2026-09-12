@@ -25,6 +25,17 @@ class UniverseRules:
     min_price: float = 50.0
     lookback_sessions: int = 20
     min_sessions_present: int = 20  # must have a full lookback of candles
+    exclude_codes: frozenset[str] = frozenset()
+    """Codes that are never momentum candidates however liquid they are. Empty for NSE.
+
+    Crypto needs it for INR stablecoins: CDX_USDTINR and CDX_USDCINR are pegged near
+    Rs 98 (a 2.1% coefficient of variation over 180 sessions, against 30-90% for a real
+    coin), so every "breakout" they print is peg noise. They are also the MOST liquid
+    INR pairs, so a turnover floor actively selects FOR them - USDCINR alone was 51 of
+    the 154 signals in the first full crypto research dataset. The net R:R filter did
+    reject them downstream (0.11 and 0.37 against a 2.0 minimum), so this is about not
+    polluting research datasets and candidate lists, not about a bad trade escaping.
+    """
 
 
 _DEFAULT_RULES = UniverseRules()  # frozen and shared, so it's a name not a call in defaults below
@@ -46,6 +57,7 @@ def universe_on(
     rules: UniverseRules = _DEFAULT_RULES,
 ) -> list[str]:
     """Codes that pass the liquidity rules using only candles with open date <= `on`."""
+    candidates = [c for c in candidates if c not in rules.exclude_codes]
     if not candidates:
         return []
     cutoff = int(datetime.combine(on + timedelta(days=1), time.min, tzinfo=IST).timestamp())

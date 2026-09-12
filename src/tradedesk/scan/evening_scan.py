@@ -248,7 +248,7 @@ def build_watchlist(
         )
         rejected = list(flt.reasons)
         if not size.viable:
-            rejected.append("size 0: " + ", ".join(size.caps))
+            rejected.append("size 0: " + (", ".join(size.caps) or "risk budget below one qty step"))
         if regime_name == "neutral" and score.grade is not Grade.A:
             rejected.append("neutral regime: A-grade only")
         if score.benched:

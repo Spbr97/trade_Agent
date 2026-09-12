@@ -160,6 +160,8 @@ class CryptoUniverseConfig(Strict):
 
     min_avg_daily_turnover_inr: Money = Decimal("2500000")
     min_price: Money = Decimal("0")  # NSE's Rs 50 floor has no crypto equivalent
+    exclude: list[str] = Field(default_factory=lambda: ["CDX_USDTINR", "CDX_USDCINR"])
+    """INR stablecoins - see UniverseRules.exclude_codes for the measurements."""
 
 
 class CryptoSizingConfig(Strict):

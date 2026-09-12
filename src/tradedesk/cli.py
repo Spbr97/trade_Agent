@@ -544,9 +544,17 @@ def data_load(
     async def go(c: IndstocksClient) -> None:
         with _store(db) as store:
             targets = list(codes) if codes else store.instrument_codes(kind="equity")
-            ref = store.index_code(load_config(root).universe.benchmark)
+            universe_cfg = load_config(root).universe
+            ref = store.index_code(universe_cfg.benchmark)
             if ref and ref not in targets:
                 targets.append(ref)
+            # The volatility index was never added here, so India VIX sat in the
+            # instruments table with zero candles and engine/regime.py always saw
+            # vix=None - it degrades gracefully, which is exactly why nothing ever
+            # surfaced the gap. The regime has been running on benchmark+breadth only.
+            vix_code = store.index_code(universe_cfg.volatility_index)
+            if vix_code and vix_code not in targets:
+                targets.append(vix_code)
             if not targets:
                 raise typer.BadParameter("no codes: pass scrip codes or run data sync-instruments")
             typer.echo(
@@ -558,6 +566,32 @@ def data_load(
             typer.echo(f"fetched {summary.fetched} bars; {len(summary.errors)} errors")
             for r in summary.errors[:20]:
                 typer.echo(f"  ERROR {r.scrip_code}: {r.error}")
+
+            # Straggler sweep. A pass can leave codes behind the newest bar while
+            # reporting fetched=0 and NO error - the loader cannot tell "no new bar
+            # exists" from "the API returned nothing for this code". A real run on
+            # 2026-09-12 left 739 of 2640 codes (and NIFTY, the benchmark) a session
+            # back this way; re-running the identical command fetched them all with
+            # zero errors, which is what makes it a fetch gap and not missing data.
+            # One retry of just the laggards is cheap and closes it.
+            def behind_newest() -> tuple[list[str], datetime | None]:
+                seen = {x: t for x in targets if (t := store.last_ts(x, iv)) is not None}
+                if not seen:
+                    return [], None
+                newest = max(seen.values())
+                return sorted(x for x, t in seen.items() if t < newest), newest
+
+            behind, newest = behind_newest()
+            if behind and newest is not None:
+                typer.echo(f"{len(behind)} codes still behind {newest:%Y-%m-%d}; retrying them")
+                retry = await load_history(
+                    c, store, behind, iv, start=start, end=now, progress=make_progress(behind)
+                )
+                still, _ = behind_newest()
+                typer.echo(
+                    f"  retry fetched {retry.fetched} bars; {len(still)} still behind"
+                    + (f" ({', '.join(still[:5])})" if still else "")
+                )
             from tradedesk.broker.indstocks.ratelimit import Category
 
             typer.echo(f"data-API calls today: {c.limiter.used_today(Category.DATA)}")
@@ -675,9 +709,21 @@ def data_status(db: Path = DB_OPTION, market: str = MARKET_OPTION) -> None:
             codes = store.codes(iv)
             if not codes:
                 continue
-            stamps = [t for c in codes if (t := store.last_ts(c, iv)) is not None]
+            by_code = {c: t for c in codes if (t := store.last_ts(c, iv)) is not None}
+            stamps = list(by_code.values())
             when = f"{max(stamps):%Y-%m-%d %H:%M}" if stamps else "-"
             typer.echo(f"  {iv.value:<10}{len(codes):>5} codes, latest bar {when}")
+            # A silent partial load leaves codes behind the newest bar with no error
+            # reported anywhere (a real 2026-09-12 run left 739 of 2640 a session back).
+            # Reporting only `max(stamps)` hid that completely, so surface it here.
+            if stamps:
+                newest = max(stamps)
+                behind = sorted(c for c, t in by_code.items() if t < newest)
+                if behind:
+                    typer.echo(
+                        f"  {'':<10}{len(behind):>5} of them BEHIND that bar"
+                        f" (e.g. {', '.join(behind[:3])}) - re-run `data load`"
+                    )
         n_inst = store.con.execute("SELECT count(*) FROM instruments").fetchone()
         n_ca = store.con.execute("SELECT count(*) FROM corporate_actions").fetchone()
         n_re = store.con.execute("SELECT count(*) FROM results_events").fetchone()

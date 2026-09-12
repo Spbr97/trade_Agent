@@ -97,6 +97,7 @@ def crypto_market(settings: Settings) -> Market:
         universe_rules=UniverseRules(
             min_avg_turnover_inr=float(cfg.universe.min_avg_daily_turnover_inr),
             min_price=float(cfg.universe.min_price),
+            exclude_codes=frozenset(cfg.universe.exclude),
         ),
         benchmark_name=cfg.benchmark,
         qty_step=float(cfg.sizing.qty_step),

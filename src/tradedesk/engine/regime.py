@@ -97,7 +97,12 @@ def classify_regime(
         regime = Regime.RISK_OFF
     elif above and rising and strong_breadth and vix_calm:
         regime = Regime.RISK_ON
-        reasons = [f"above rising EMA{cfg.nifty_ema}, breadth {breadth_pct:.0f}%, VIX calm"]
+        # Say "no VIX" rather than "VIX calm" when there is no VIX series at all
+        # (crypto has no equivalent, by design) - `vix_calm` is True in that case
+        # because a missing reading must not block risk_on, but claiming the index
+        # is calm when it was never read is a different statement from the truth.
+        vix_note = "VIX calm" if vix_last is not None else "no VIX for this market"
+        reasons = [f"above rising EMA{cfg.nifty_ema}, breadth {breadth_pct:.0f}%, {vix_note}"]
     else:
         regime = Regime.NEUTRAL
         if not rising:

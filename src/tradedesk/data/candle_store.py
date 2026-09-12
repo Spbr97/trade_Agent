@@ -226,8 +226,17 @@ class CandleStore:
         return {r[0]: r[1] for r in rows}
 
     def scrip_code_for(self, symbol: str, exch: str = "NSE", kind: str = "equity") -> str | None:
+        """Case-insensitive on purpose. `trading_symbol` comes from the feed, but the name
+        being looked up usually comes from config written by a human: config/universe.yaml
+        said "INDIA VIX" while the feed stores "India VIX", so this returned None and
+        engine/regime.py silently ran with vix=None for the entire project (it accepts
+        `vix: pd.Series | None` and degrades quietly, so nothing ever surfaced it).
+        Equity tickers are upper-case in both places, so nothing else changes.
+        """
         row = self.con.execute(
-            "SELECT scrip_code FROM instruments WHERE trading_symbol = ? AND exch = ? AND kind = ?",
+            "SELECT scrip_code FROM instruments "
+            "WHERE upper(trading_symbol) = upper(?) AND exch = ? AND kind = ? "
+            "ORDER BY scrip_code",
             [symbol, exch, kind],
         ).fetchone()
         return row[0] if row else None

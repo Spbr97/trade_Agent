@@ -187,7 +187,9 @@ def prepare_market(
         priced = closes_wide.loc[d].to_numpy() >= rules.min_price
         cols = list(closes_wide.columns)
         universe_by_month[(d.year, d.month)] = sorted(
-            c for c, a, b in zip(cols, liquid, priced, strict=True) if bool(a) and bool(b)
+            c
+            for c, a, b in zip(cols, liquid, priced, strict=True)
+            if bool(a) and bool(b) and c not in rules.exclude_codes
         )
 
     intraday: dict[str, dict[date, list[IntradayBar]]] = {}
@@ -454,7 +456,11 @@ def run_backtest(md: MarketData, cfg: BacktestConfig) -> BacktestResult:
                 )
             )
             if not size.viable:
-                ts.move(SignalState.SKIPPED, on, "size 0: " + ", ".join(size.caps))
+                ts.move(
+                    SignalState.SKIPPED,
+                    on,
+                    "size 0: " + (", ".join(size.caps) or "risk budget below one qty step"),
+                )
                 portfolio.rejections.append((on, sig.id, "size 0"))
                 live_by_code.pop(code, None)
                 continue
