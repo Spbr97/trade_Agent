@@ -45,6 +45,8 @@ from tradedesk.scan import build_watchlist, scan_config
 
 DB = Path("data/crypto.duckdb")
 LOG = Path("data/reports/crypto_signal_tracking.jsonl")
+SESSIONS_DIR = Path("data/reports/crypto_sessions")
+DASHBOARD = Path("data/reports/crypto_dashboard.html")
 WATCHLIST = [
     "CDX_BTCINR", "CDX_ETHINR", "CDX_SOLINR", "CDX_XRPINR", "CDX_DOGEINR",
     "CDX_ADAINR", "CDX_TRXINR", "CDX_XLMINR", "CDX_HBARINR", "CDX_BNBINR",
@@ -91,10 +93,10 @@ def save_log(rows: dict[str, TrackedSignal]) -> None:
             fh.write(json.dumps(asdict(r)) + "\n")
 
 
-def resolve_outcomes(store: CandleStore, rows: dict[str, TrackedSignal]) -> int:
+def resolve_outcomes(store: CandleStore, rows: dict[str, TrackedSignal]) -> list[TrackedSignal]:
     """Grade every unresolved signal against real price history since it armed, using the
     exact triple-barrier rule prediction/labeling.py trains on."""
-    resolved = 0
+    resolved: list[TrackedSignal] = []
     for row in rows.values():
         if row.outcome is not None:
             continue
@@ -117,7 +119,7 @@ def resolve_outcomes(store: CandleStore, rows: dict[str, TrackedSignal]) -> int:
         if lab.exit_price is not None:
             row.r_multiple = (lab.exit_price - row.entry) / (row.entry - row.stop)
         row.resolved_at = datetime.now(IST).isoformat()
-        resolved += 1
+        resolved.append(row)
     return resolved
 
 
@@ -142,6 +144,122 @@ def scoreboard(rows: dict[str, TrackedSignal]) -> str:
         + "\n"
         + _line("rejected (sizing/net R:R/etc)", untradeable)
     )
+
+
+def _fmt_price(x: float) -> str:
+    """`:g` renders BTC's ~77 lakh price in scientific notation; show it plainly instead,
+    with enough decimals for a sub-rupee meme-coin price to stay readable too."""
+    return f"{x:,.2f}" if abs(x) >= 1 else f"{x:.8f}".rstrip("0").rstrip(".")
+
+
+def render_session_report(
+    day: date,
+    new_rows: list[TrackedSignal],
+    newly_resolved: list[TrackedSignal],
+    rows: dict[str, TrackedSignal],
+) -> str:
+    """One "session" = one crypto daily bar (the setups are daily-bar only - see the module
+    docstring). Written every run so there is a plain-text trail of what was called and
+    whether it turned out right, separate from the JSONL the code reads back."""
+    lines = [f"# Crypto session report - {day.isoformat()}", ""]
+    lines.append(f"New calls today: {len(new_rows)}")
+    for r in new_rows:
+        tradeable = "tradeable" if not r.rejected_for else f"rejected ({', '.join(r.rejected_for)})"
+        lines.append(
+            f"  - {r.symbol} {r.setup} grade {r.grade}: entry {_fmt_price(r.entry)} "
+            f"stop {_fmt_price(r.stop)} t1 {_fmt_price(r.t1)} t2 {_fmt_price(r.t2)} [{tradeable}]"
+        )
+    lines.append("")
+    lines.append(f"Calls resolved today: {len(newly_resolved)}")
+    for r in newly_resolved:
+        verdict = "RIGHT" if r.label == 1 else "WRONG"
+        lines.append(
+            f"  - {r.symbol} {r.setup} armed {r.armed_on}: {verdict} ({r.outcome}, "
+            f"{r.r_multiple:+.2f}R)"
+        )
+    lines.append("")
+    lines.append("Running scoreboard:")
+    lines.append(scoreboard(rows))
+    return "\n".join(lines)
+
+
+def save_session_report(day: date, text: str) -> Path:
+    SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
+    path = SESSIONS_DIR / f"{day.isoformat()}.md"
+    path.write_text(text, encoding="utf-8")
+    return path
+
+
+def render_dashboard_html(rows: dict[str, TrackedSignal]) -> str:
+    """Static, self-contained HTML - no server, no build step. Regenerated on every run
+    (Task Scheduler, daily 07:00 IST) so opening the file locally always shows the latest
+    calls and their outcomes. Deliberately plain: this is a monitoring tool, not a product."""
+    ordered = sorted(rows.values(), key=lambda r: r.armed_on, reverse=True)
+    pending = [r for r in ordered if r.outcome is None]
+    resolved = [r for r in ordered if r.outcome is not None]
+
+    def row_html(r: TrackedSignal, show_outcome: bool) -> str:
+        tradeable = "yes" if not r.rejected_for else "no"
+        outcome_cell = ""
+        if show_outcome:
+            cls = "win" if r.label == 1 else "loss"
+            r_mult = f"{r.r_multiple:+.2f}R" if r.r_multiple is not None else "-"
+            outcome_cell = f'<td class="{cls}">{r.outcome} ({r_mult})</td>'
+        return (
+            "<tr>"
+            f"<td>{r.armed_on}</td><td>{r.symbol}</td><td>{r.setup}</td><td>{r.grade}</td>"
+            f"<td>{_fmt_price(r.entry)}</td><td>{_fmt_price(r.stop)}</td>"
+            f"<td>{_fmt_price(r.t1)}</td><td>{_fmt_price(r.t2)}</td>"
+            f"<td>{tradeable}</td>" + outcome_cell + "</tr>"
+        )
+
+    pending_rows = "\n".join(row_html(r, show_outcome=False) for r in pending) or (
+        '<tr><td colspan="9">none open</td></tr>'
+    )
+    resolved_rows = "\n".join(row_html(r, show_outcome=True) for r in resolved) or (
+        '<tr><td colspan="10">none resolved yet</td></tr>'
+    )
+    score_text = scoreboard(rows).replace("\n", "<br>")
+
+    return f"""<!doctype html>
+<html><head><meta charset="utf-8"><title>Crypto signal tracker</title>
+<style>
+body {{ font-family: system-ui, sans-serif; margin: 2rem; color: #1a1a1a; background: #fafafa; }}
+h1 {{ font-size: 1.3rem; }}
+h2 {{ font-size: 1.05rem; margin-top: 2rem; }}
+table {{ border-collapse: collapse; width: 100%; margin-top: 0.5rem; font-size: 0.85rem; }}
+th, td {{ border: 1px solid #ddd; padding: 4px 8px; text-align: right; }}
+th:nth-child(2), td:nth-child(2), th:nth-child(3), td:nth-child(3) {{ text-align: left; }}
+th {{ background: #eee; }}
+.win {{ color: #146c2e; font-weight: 600; }}
+.loss {{ color: #b3261e; font-weight: 600; }}
+.score {{ background: #fff; border: 1px solid #ddd; padding: 0.75rem 1rem; font-size: 0.9rem; }}
+.updated {{ color: #666; font-size: 0.8rem; }}
+</style></head>
+<body>
+<h1>Crypto signal tracker (paper calls only - nothing is ever placed)</h1>
+<p class="updated">Last updated: {datetime.now(IST).isoformat(timespec="seconds")}</p>
+<div class="score">{score_text}</div>
+
+<h2>Open calls (not yet resolved)</h2>
+<table><tr><th>Armed</th><th>Coin</th><th>Setup</th><th>Grade</th><th>Entry</th>
+<th>Stop</th><th>T1</th><th>T2</th><th>Tradeable</th></tr>
+{pending_rows}
+</table>
+
+<h2>Resolved calls</h2>
+<table><tr><th>Armed</th><th>Coin</th><th>Setup</th><th>Grade</th><th>Entry</th>
+<th>Stop</th><th>T1</th><th>T2</th><th>Tradeable</th><th>Outcome</th></tr>
+{resolved_rows}
+</table>
+</body></html>
+"""
+
+
+def save_dashboard(rows: dict[str, TrackedSignal]) -> Path:
+    DASHBOARD.parent.mkdir(parents=True, exist_ok=True)
+    DASHBOARD.write_text(render_dashboard_html(rows), encoding="utf-8")
+    return DASHBOARD
 
 
 def main() -> None:
@@ -178,27 +296,34 @@ def main() -> None:
         wl = build_watchlist(md, cfg, settings, day, market=market)
 
         rows = load_log()
-        new = 0
+        new_rows: list[TrackedSignal] = []
         for e in wl.entries:  # every detected signal, not just wl.active - see module docstring
             sig: Signal = e.signal
             if sig.id in rows:
                 continue
-            rows[sig.id] = TrackedSignal(
+            row = TrackedSignal(
                 signal_id=sig.id, scrip_code=sig.scrip_code, symbol=sig.symbol,
                 setup=sig.setup.value, grade=e.grade.value, armed_on=sig.armed_on.isoformat(),
                 entry=sig.trigger, stop=sig.stop, t1=sig.t1, t2=sig.t2,
                 net_rr_t1=e.net_rr_t1, net_rr_t2=e.net_rr_t2, rejected_for=list(e.rejected_for),
                 logged_at=datetime.now(IST).isoformat(),
             )  # fmt: skip
-            new += 1
+            rows[sig.id] = row
+            new_rows.append(row)
 
-        resolved = resolve_outcomes(store, rows)
+        newly_resolved = resolve_outcomes(store, rows)
         save_log(rows)
+        save_dashboard(rows)
+        report = render_session_report(day, new_rows, newly_resolved, rows)
+        report_path = save_session_report(day, report)
         print(
             f"{day}: {len(wl.entries)} signals detected "
-            f"({len(wl.active)} would be tradeable, {new} new today), {resolved} newly resolved"
+            f"({len(wl.active)} would be tradeable, {len(new_rows)} new today), "
+            f"{len(newly_resolved)} newly resolved"
         )
         print(scoreboard(rows))
+        print(f"session report: {report_path}")
+        print(f"dashboard: {DASHBOARD}")
 
 
 if __name__ == "__main__":
