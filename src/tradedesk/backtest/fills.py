@@ -21,9 +21,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import date
+from decimal import ROUND_HALF_EVEN
 from enum import StrEnum
 
 from tradedesk.engine.signals import Signal
+from tradedesk.risk.sizing import quantize_qty
 
 
 @dataclass(frozen=True)
@@ -60,7 +62,7 @@ class FillReason(StrEnum):
 class Fill:
     on: date
     price: float
-    qty: int
+    qty: float
     reason: FillReason
 
     @property
@@ -73,9 +75,10 @@ class Position:
     signal: Signal
     entry_date: date
     entry_price: float
-    qty_initial: int
-    qty_open: int
+    qty_initial: float
+    qty_open: float
     stop: float
+    qty_step: float = 1.0  # smallest tradeable increment; 1.0 = whole units (NSE)
     partial_done: bool = False
     highest_close: float = 0.0
     sessions_held: int = 0
@@ -117,7 +120,7 @@ def evaluate_entry(sig: Signal, bar: Bar, slippage_pct: float) -> tuple[EntryOut
     return EntryOutcome.NONE, None
 
 
-def _sell(pos: Position, bar: Bar, price: float, qty: int, reason: FillReason) -> Fill:
+def _sell(pos: Position, bar: Bar, price: float, qty: float, reason: FillReason) -> Fill:
     qty = min(qty, pos.qty_open)
     fill = Fill(on=bar.on, price=price, qty=qty, reason=reason)
     pos.fills.append(fill)
@@ -144,7 +147,14 @@ def evaluate_exit(
         return fills
 
     if not pos.partial_done and bar.high >= pos.signal.t1:
-        qty = max(1, round(pos.qty_initial * plan.partial_fraction))
+        qty = max(
+            pos.qty_step,
+            quantize_qty(
+                pos.qty_initial * plan.partial_fraction,
+                pos.qty_step,
+                rounding=ROUND_HALF_EVEN,
+            ),
+        )
         if qty >= pos.qty_open:  # tiny position: the "partial" is the whole lot
             fills.append(_sell(pos, bar, pos.signal.t1 * slip, pos.qty_open, FillReason.PARTIAL))
             return fills

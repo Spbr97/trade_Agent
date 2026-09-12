@@ -29,7 +29,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from typing import Protocol, runtime_checkable
 
 from tradedesk.config.models import ChargeSchedule, CryptoChargeSchedule
-from tradedesk.models import Side, TradeType
+from tradedesk.models import Side, TradeType, qty_decimal
 from tradedesk.risk.costs import LegCost, RoundTripCost
 from tradedesk.risk.costs import leg_cost as _equity_leg_cost
 from tradedesk.risk.costs import net_pnl as _equity_net_pnl
@@ -54,26 +54,27 @@ class CostModel(Protocol):
     def slippage_pct(self) -> Decimal: ...
 
     def leg_cost(
-        self, *, side: Side, trade_type: TradeType, qty: int, price: Decimal,
+        self, *, side: Side, trade_type: TradeType, qty: float, price: Decimal,
         dp_applies: bool = True,
     ) -> LegCost: ...  # fmt: skip
 
     def round_trip_cost(
-        self, *, trade_type: TradeType, qty: int, entry_price: Decimal, exit_price: Decimal,
+        self, *, trade_type: TradeType, qty: float, entry_price: Decimal, exit_price: Decimal,
         dp_applies: bool = True,
     ) -> RoundTripCost: ...  # fmt: skip
 
     def net_pnl(
-        self, *, trade_type: TradeType, qty: int, entry_price: Decimal, exit_price: Decimal,
+        self, *, trade_type: TradeType, qty: float, entry_price: Decimal, exit_price: Decimal,
         dp_applies: bool = True,
     ) -> Decimal: ...  # fmt: skip
 
     def net_r_multiple(
-        self, *, trade_type: TradeType, qty: int, entry: Decimal, stop: Decimal, exit_price: Decimal
+        self, *, trade_type: TradeType, qty: float, entry: Decimal, stop: Decimal,
+        exit_price: Decimal,
     ) -> Decimal: ...  # fmt: skip
 
     def net_reward_risk(
-        self, *, trade_type: TradeType, qty: int, entry: Decimal, stop: Decimal, target: Decimal
+        self, *, trade_type: TradeType, qty: float, entry: Decimal, stop: Decimal, target: Decimal
     ) -> Decimal: ...  # fmt: skip
 
 
@@ -89,7 +90,7 @@ class EquityCostModel:
         return self.schedule.slippage_pct
 
     def leg_cost(
-        self, *, side: Side, trade_type: TradeType, qty: int, price: Decimal,
+        self, *, side: Side, trade_type: TradeType, qty: float, price: Decimal,
         dp_applies: bool = True,
     ) -> LegCost:  # fmt: skip
         return _equity_leg_cost(
@@ -98,7 +99,7 @@ class EquityCostModel:
         )  # fmt: skip
 
     def round_trip_cost(
-        self, *, trade_type: TradeType, qty: int, entry_price: Decimal, exit_price: Decimal,
+        self, *, trade_type: TradeType, qty: float, entry_price: Decimal, exit_price: Decimal,
         dp_applies: bool = True,
     ) -> RoundTripCost:  # fmt: skip
         return _equity_round_trip_cost(
@@ -107,7 +108,7 @@ class EquityCostModel:
         )  # fmt: skip
 
     def net_pnl(
-        self, *, trade_type: TradeType, qty: int, entry_price: Decimal, exit_price: Decimal,
+        self, *, trade_type: TradeType, qty: float, entry_price: Decimal, exit_price: Decimal,
         dp_applies: bool = True,
     ) -> Decimal:  # fmt: skip
         return _equity_net_pnl(
@@ -116,7 +117,8 @@ class EquityCostModel:
         )  # fmt: skip
 
     def net_r_multiple(
-        self, *, trade_type: TradeType, qty: int, entry: Decimal, stop: Decimal, exit_price: Decimal
+        self, *, trade_type: TradeType, qty: float, entry: Decimal, stop: Decimal,
+        exit_price: Decimal,
     ) -> Decimal:  # fmt: skip
         return _equity_net_r_multiple(
             self.schedule, trade_type=trade_type, qty=qty, entry=entry, stop=stop,
@@ -124,7 +126,7 @@ class EquityCostModel:
         )  # fmt: skip
 
     def net_reward_risk(
-        self, *, trade_type: TradeType, qty: int, entry: Decimal, stop: Decimal, target: Decimal
+        self, *, trade_type: TradeType, qty: float, entry: Decimal, stop: Decimal, target: Decimal
     ) -> Decimal:  # fmt: skip
         return _equity_net_reward_risk(
             self.schedule, trade_type=trade_type, qty=qty, entry=entry, stop=stop, target=target,
@@ -167,14 +169,14 @@ class CryptoCostModel:
         return value
 
     def leg_cost(
-        self, *, side: Side, trade_type: TradeType, qty: int, price: Decimal,
+        self, *, side: Side, trade_type: TradeType, qty: float, price: Decimal,
         dp_applies: bool = True,
     ) -> LegCost:  # fmt: skip
         if qty <= 0:
             raise ValueError(f"qty must be positive, got {qty}")
         if price <= 0:
             raise ValueError(f"price must be positive, got {price}")
-        turnover = Decimal(qty) * price
+        turnover = qty_decimal(qty) * price
         fee = self._round(turnover * self.schedule.maker_taker_pct)
         gst = self._round(fee * self.schedule.gst_pct)
         tds = (
@@ -189,7 +191,7 @@ class CryptoCostModel:
         )  # fmt: skip
 
     def round_trip_cost(
-        self, *, trade_type: TradeType, qty: int, entry_price: Decimal, exit_price: Decimal,
+        self, *, trade_type: TradeType, qty: float, entry_price: Decimal, exit_price: Decimal,
         dp_applies: bool = True,
     ) -> RoundTripCost:  # fmt: skip
         entry = self.leg_cost(side=Side.BUY, trade_type=trade_type, qty=qty, price=entry_price)
@@ -200,23 +202,24 @@ class CryptoCostModel:
         )
 
     def net_pnl(
-        self, *, trade_type: TradeType, qty: int, entry_price: Decimal, exit_price: Decimal,
+        self, *, trade_type: TradeType, qty: float, entry_price: Decimal, exit_price: Decimal,
         dp_applies: bool = True,
     ) -> Decimal:  # fmt: skip
         rt = self.round_trip_cost(
             trade_type=trade_type, qty=qty, entry_price=entry_price, exit_price=exit_price
         )
-        return (exit_price - entry_price) * qty - rt.total
+        return (exit_price - entry_price) * qty_decimal(qty) - rt.total
 
     def net_r_multiple(
-        self, *, trade_type: TradeType, qty: int, entry: Decimal, stop: Decimal, exit_price: Decimal
+        self, *, trade_type: TradeType, qty: float, entry: Decimal, stop: Decimal,
+        exit_price: Decimal,
     ) -> Decimal:  # fmt: skip
         risk = _gross_risk(qty, entry, stop)
         pnl = self.net_pnl(trade_type=trade_type, qty=qty, entry_price=entry, exit_price=exit_price)
         return pnl / risk
 
     def net_reward_risk(
-        self, *, trade_type: TradeType, qty: int, entry: Decimal, stop: Decimal, target: Decimal
+        self, *, trade_type: TradeType, qty: float, entry: Decimal, stop: Decimal, target: Decimal
     ) -> Decimal:  # fmt: skip
         _gross_risk(qty, entry, stop)
         if target <= entry:
@@ -228,8 +231,8 @@ class CryptoCostModel:
         return reward_net / loss_net
 
 
-def _gross_risk(qty: int, entry: Decimal, stop: Decimal) -> Decimal:
-    risk = (entry - stop) * qty
+def _gross_risk(qty: float, entry: Decimal, stop: Decimal) -> Decimal:
+    risk = (entry - stop) * qty_decimal(qty)
     if risk <= 0:
         raise ValueError(f"stop {stop} must be below entry {entry} for a long")
     return risk

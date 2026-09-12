@@ -40,6 +40,8 @@ class Market:
     universe_rules: UniverseRules
     benchmark_name: str  # the reference instrument the calendar and regime derive from
     atr_pct_band: AtrBand | None = None  # None: engine/filters.py skips the ATR-band check
+    qty_step: float = 1.0  # smallest tradeable increment; 1.0 = whole units (NSE shares)
+    min_notional_inr: float = 0.0  # exchange minimum order value; 0 = no minimum
 
 
 def nse_market(settings: Settings) -> Market:
@@ -69,7 +71,17 @@ def crypto_market(settings: Settings) -> Market:
     confirm_trigger only binds when intraday bars exist. Revisit once crypto intraday
     data lands (Phase 5, live feed). `atr_pct_band` is left None: no crypto-calibrated
     band exists yet, so engine/filters.py skips that check for this market entirely
-    rather than applying NSE's."""
+    rather than applying NSE's.
+
+    `qty_step` is ONE value for the whole market, but CoinDCX publishes a step PER PAIR
+    (markets_details, fetched live 2026-09-12: BTCINR 0.00001, ETHINR 0.0001, SOLINR
+    0.001, ADAINR/TRXINR/XRPINR 0.1, DOGEINR/HBARINR/XLMINR 1) along with a per-pair
+    min_quantity. A uniform fine step is deliberate for now: it is what makes BTC/ETH
+    sizeable at all, and rounding 0.003228 BTC to the real 0.00001 step moves the
+    quantity by under 0.3%, far below anything that changes a backtest verdict. It is
+    NOT good enough to place a real order with - per-pair step and min_quantity must be
+    stored and enforced before M12 touches crypto. `min_notional_inr` needs no such
+    caveat: markets_details gives a flat Rs 100 across every INR pair."""
     cfg = settings.crypto_market
     return Market(
         name="crypto",
@@ -87,4 +99,6 @@ def crypto_market(settings: Settings) -> Market:
             min_price=float(cfg.universe.min_price),
         ),
         benchmark_name=cfg.benchmark,
+        qty_step=float(cfg.sizing.qty_step),
+        min_notional_inr=float(cfg.sizing.min_notional_inr),
     )

@@ -30,7 +30,7 @@ class FilterResult:
     net_rr_t2: float | None = None
 
 
-def net_rr(sig: Signal, qty: int, costs: CostModel) -> tuple[float | None, float | None]:
+def net_rr(sig: Signal, qty: float, costs: CostModel) -> tuple[float | None, float | None]:
     if qty <= 0:
         return None, None
     common = dict(trade_type=TradeType.DELIVERY, qty=qty, entry=_d(sig.trigger), stop=_d(sig.stop))
@@ -46,7 +46,7 @@ def _d(x: float) -> Decimal:
 def apply_filters(
     sig: Signal,
     *,
-    qty: int,
+    qty: float,
     atr_pct: float | None,
     avg_turnover: float | None,
     regime: str | None,

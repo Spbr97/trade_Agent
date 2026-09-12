@@ -162,9 +162,24 @@ class CryptoUniverseConfig(Strict):
     min_price: Money = Decimal("0")  # NSE's Rs 50 floor has no crypto equivalent
 
 
+class CryptoSizingConfig(Strict):
+    """What makes crypto fractional. NSE trades whole shares (step 1); crypto does not,
+    and flooring to whole units priced BTC/ETH/BNB out of every backtest entirely.
+
+    Both numbers come from CoinDCX's markets_details, fetched live 2026-09-12.
+    `min_notional_inr` is exact: a flat Rs 100 on every active INR pair. `qty_step` is a
+    deliberate simplification - the real step is per-pair (BTCINR 0.00001, DOGEINR 1) -
+    see markets/market.py::crypto_market for why one fine step is adequate for research
+    and why it is NOT adequate for placing an order."""
+
+    qty_step: Decimal = Decimal("0.00000001")
+    min_notional_inr: Money = Decimal("100")
+
+
 class CryptoMarketConfig(Strict):
     costs: CryptoChargeSchedule = CryptoChargeSchedule()
     universe: CryptoUniverseConfig = CryptoUniverseConfig()
+    sizing: CryptoSizingConfig = CryptoSizingConfig()
     benchmark: str = "BTCINR"  # CDX_BTCINR: trades every day, stands in for an index
 
 

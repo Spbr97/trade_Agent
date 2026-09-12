@@ -26,7 +26,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from pydantic import BaseModel, ConfigDict
 
 from tradedesk.config.models import ChargeSchedule
-from tradedesk.models import Side, TradeType
+from tradedesk.models import Side, TradeType, qty_decimal
 
 __all__ = [
     "LegCost",
@@ -50,7 +50,7 @@ class LegCost(BaseModel):
 
     side: Side
     trade_type: TradeType
-    qty: int
+    qty: float
     price: Decimal
     turnover: Decimal
     brokerage: Decimal
@@ -89,7 +89,7 @@ def _round_statutory(value: Decimal, schedule: ChargeSchedule) -> Decimal:
     return _round(value, schedule)
 
 
-def _check_order(qty: int, price: Decimal) -> None:
+def _check_order(qty: float, price: Decimal) -> None:
     if qty <= 0:
         raise ValueError(f"qty must be positive, got {qty}")
     if price <= 0:
@@ -101,14 +101,14 @@ def leg_cost(
     *,
     side: Side,
     trade_type: TradeType,
-    qty: int,
+    qty: float,
     price: Decimal,
     dp_applies: bool = True,
 ) -> LegCost:
     """Charges for one order. `dp_applies=False` suppresses the DP charge on a delivery
     sell when the same scrip was already sold from demat earlier that day."""
     _check_order(qty, price)
-    turnover = Decimal(qty) * price
+    turnover = qty_decimal(qty) * price
 
     def r(v: Decimal) -> Decimal:
         return _round(v, schedule)
@@ -172,7 +172,7 @@ def round_trip_cost(
     schedule: ChargeSchedule,
     *,
     trade_type: TradeType,
-    qty: int,
+    qty: float,
     entry_price: Decimal,
     exit_price: Decimal,
     dp_applies: bool = True,
@@ -200,7 +200,7 @@ def net_pnl(
     schedule: ChargeSchedule,
     *,
     trade_type: TradeType,
-    qty: int,
+    qty: float,
     entry_price: Decimal,
     exit_price: Decimal,
     dp_applies: bool = True,
@@ -214,11 +214,11 @@ def net_pnl(
         exit_price=exit_price,
         dp_applies=dp_applies,
     )
-    return (exit_price - entry_price) * qty - rt.total
+    return (exit_price - entry_price) * qty_decimal(qty) - rt.total
 
 
-def _gross_risk(qty: int, entry: Decimal, stop: Decimal) -> Decimal:
-    risk = (entry - stop) * qty
+def _gross_risk(qty: float, entry: Decimal, stop: Decimal) -> Decimal:
+    risk = (entry - stop) * qty_decimal(qty)
     if risk <= 0:
         raise ValueError(f"stop {stop} must be below entry {entry} for a long")
     return risk
@@ -228,7 +228,7 @@ def net_r_multiple(
     schedule: ChargeSchedule,
     *,
     trade_type: TradeType,
-    qty: int,
+    qty: float,
     entry: Decimal,
     stop: Decimal,
     exit_price: Decimal,
@@ -245,7 +245,7 @@ def net_reward_risk(
     schedule: ChargeSchedule,
     *,
     trade_type: TradeType,
-    qty: int,
+    qty: float,
     entry: Decimal,
     stop: Decimal,
     target: Decimal,

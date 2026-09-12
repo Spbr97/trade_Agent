@@ -21,4 +21,12 @@ universe:
   min_avg_daily_turnover_inr: 2500000  # 25 lakh
   min_price: 0
 
+# Fractional sizing. Both from CoinDCX markets_details, fetched live 2026-09-12:
+# min_notional is a flat Rs 100 on every active INR pair (exact); qty_step is a uniform
+# stand-in for a value that is really per-pair (BTCINR 0.00001 ... DOGEINR 1) - fine for
+# backtest/research, NOT sufficient to place a real order. See markets/market.py.
+sizing:
+  qty_step: 0.00000001
+  min_notional_inr: 100
+
 benchmark: BTCINR

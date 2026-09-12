@@ -57,7 +57,7 @@ class OpenPositionInfo:
     scrip_code: str
     entry: float
     stop: float
-    qty: int
+    qty: float
     sector: str | None = None
 
 
@@ -70,7 +70,7 @@ class WatchlistEntry(BaseModel):
     score_components: dict[str, float]
     score_notes: list[str]
     alertable: bool
-    qty: int
+    qty: float
     risk_amount: float
     risk_pct: float
     position_value: float
@@ -137,6 +137,8 @@ def scan_config(
         universe_rules=market.universe_rules,
         slippage_pct=float(market.costs.slippage_pct),
         costs=market.costs,
+        qty_step=market.qty_step,
+        min_notional=market.min_notional_inr,
     )
 
 
@@ -146,7 +148,7 @@ def _heat(positions: Sequence[OpenPositionInfo], capital: float) -> float:
     return sum(max(0.0, p.entry - p.stop) * p.qty for p in positions) / capital
 
 
-def _round_trip_cost(sig: Signal, qty: int, market: Market) -> float:
+def _round_trip_cost(sig: Signal, qty: float, market: Market) -> float:
     if qty <= 0:
         return 0.0
     buy = market.costs.leg_cost(
@@ -209,6 +211,8 @@ def build_watchlist(
                 gap_risk_cap_pct=float(cfg.risk.gap_risk_cap_pct),
                 gap95_pct=gap95_pct(feats),
                 available_heat_pct=float(cfg.risk.max_portfolio_heat_pct) - heat_before,
+                qty_step=cfg.qty_step,
+                min_notional=cfg.min_notional,
             )
         )
         atr_pct = float(last["atr_pct"]) if last.get("atr_pct") == last.get("atr_pct") else None

@@ -59,6 +59,8 @@ class BacktestConfig:
     costs: CostModel | None = (
         None  # M13 Phase 4: None -> EquityCostModel(risk.costs), NSE as before
     )
+    qty_step: float = 1.0  # 1.0 = whole units (NSE); fractional for crypto
+    min_notional: float = 0.0  # exchange minimum order value in INR; 0 = none
 
 
 @dataclass
@@ -447,6 +449,8 @@ def run_backtest(md: MarketData, cfg: BacktestConfig) -> BacktestResult:
                     gap_risk_cap_pct=float(cfg.risk.gap_risk_cap_pct),
                     gap95_pct=gap95_pct(md.features[code].iloc[: i + 1]),
                     available_heat_pct=portfolio.available_heat_pct(),
+                    qty_step=cfg.qty_step,
+                    min_notional=cfg.min_notional,
                 )
             )
             if not size.viable:
@@ -460,11 +464,12 @@ def run_backtest(md: MarketData, cfg: BacktestConfig) -> BacktestResult:
                 entry_price=price,
                 qty_initial=size.qty,
                 qty_open=size.qty,
+                qty_step=cfg.qty_step,
                 stop=sig.stop,
                 highest_close=price,
                 fills=[Fill(on=on, price=price, qty=size.qty, reason=FillReason.ENTRY)],
             )
-            ts.move(SignalState.TAKEN, on, f"qty {size.qty} " + ", ".join(size.caps))
+            ts.move(SignalState.TAKEN, on, f"qty {size.qty:g} " + ", ".join(size.caps))
             ts.move(SignalState.OPEN, on)
             portfolio.open_position(pos)
             entry_bar = _post_fill_bar(day_bars, fill_index, bar) if day_bars else bar

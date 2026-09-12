@@ -867,9 +867,9 @@ def journal_exit(
         pos = next((p for p in jn.open_positions(source="live") if p.signal.id == signal_id), None)
         if pos is None:
             raise typer.BadParameter(f"no open live position for {signal_id}")
-        qty = min(qty, pos.qty_open)
-        pos.fills.append(Fill(on=day, price=price, qty=qty, reason=FillReason(reason)))
-        pos.qty_open -= qty
+        fill_qty = min(float(qty), pos.qty_open)
+        pos.fills.append(Fill(on=day, price=price, qty=fill_qty, reason=FillReason(reason)))
+        pos.qty_open -= fill_qty
         if reason == "partial":
             pos.partial_done = True
             old = pos.stop
@@ -1396,6 +1396,8 @@ def backtest(
         universe_rules=mkt.universe_rules,
         slippage_pct=float(mkt.costs.slippage_pct),
         costs=mkt.costs,
+        qty_step=mkt.qty_step,
+        min_notional=mkt.min_notional_inr,
     )
     with _store(db) as store:
         if market == "crypto":

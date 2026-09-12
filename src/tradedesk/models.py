@@ -37,3 +37,15 @@ def price_decimal(x: float) -> Decimal:
     upstream indicator math the same way `round(x, 2)` did.
     """
     return Decimal(str(round(x, 8)))
+
+
+def qty_decimal(x: float) -> Decimal:
+    """A quantity -> Decimal, exactly, for mixing with Decimal money.
+
+    `Decimal(qty)` was fine while every quantity was a whole number of shares, but a
+    fractional crypto quantity is a float, and `Decimal(0.0032)` expands the binary float
+    into 0.00319999999999999996... - while `Decimal * float` raises outright. Going via
+    str() gives the decimal number that was actually meant. NSE is unaffected: str(20) is
+    "20", so `Decimal("20")` is the same value `Decimal(20)` always produced.
+    """
+    return Decimal(str(x))
