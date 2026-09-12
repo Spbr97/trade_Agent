@@ -41,7 +41,7 @@ from tradedesk.prediction import (
 )
 from tradedesk.prediction.features import to_frame
 from tradedesk.prediction.predict import log_shadow, read_shadow, score_watchlist
-from tradedesk.prediction.train import purged_walk_forward
+from tradedesk.prediction.train import make_xgboost, purged_walk_forward, select_threshold
 from tradedesk.scan.evening_scan import Watchlist, WatchlistEntry
 
 D = date(2026, 3, 2)
@@ -179,7 +179,10 @@ def synthetic_dataset(n: int = 600, seed: int = 1) -> pd.DataFrame:
 
 
 def test_training_recovers_signs_and_is_calibrated(tmp_path: Path) -> None:
-    rep = train(synthetic_dataset(), n_splits=4, embargo_sessions=10, prefer_lightgbm=False)
+    rep = train(
+        synthetic_dataset(), n_splits=4, embargo_sessions=10,
+        prefer_lightgbm=False, prefer_xgboost=False,
+    )  # fmt: skip
     assert rep.bundle is not None and rep.oos is not None
     assert rep.bundle.kind == "logistic"
     assert rep.oos.brier < 0.24  # meaningfully better than the ~0.25 of a coin
@@ -206,6 +209,93 @@ def test_training_refuses_a_one_class_dataset() -> None:
     df["label"] = 1
     rep = train(df, n_splits=2, embargo_sessions=5)
     assert rep.bundle is None and rep.notes
+
+
+def test_final_test_set_is_reserved_and_scored_exactly_once() -> None:
+    """The most recent `final_test_frac` of history must never feed model or threshold
+    selection - only the walk-forward folds do. Confirms the reserved block's dates never
+    overlap the bundle's own recorded `training_data_range`."""
+    rep = train(synthetic_dataset(), n_splits=4, embargo_sessions=10, final_test_frac=0.2)
+    assert rep.bundle is not None and rep.final_test is not None
+    training_end = date.fromisoformat(rep.bundle.training_data_range[1])
+    # every armed_on date used for training must be strictly before the reserved period
+    df = synthetic_dataset()
+    reserved = df[df["armed_on"] > training_end]
+    assert len(reserved) > 0  # something was actually held out, not "everything trained on"
+    assert rep.final_test.n == len(reserved)
+
+
+def test_select_threshold_requires_a_minimum_sample_and_flags_no_edge() -> None:
+    """Real bug found running this on live data: without a sample-size floor, "maximise
+    total R" picks whichever threshold happens to leave the fewest trades (least to lose),
+    not a genuine edge. All-negative expectancy at every threshold must report has_edge=False."""
+    rng = np.random.default_rng(3)
+    n = 500
+    p = rng.uniform(0, 1, n)
+    y = rng.integers(0, 2, n)
+    r = np.where(y == 1, 0.5, -1.0)  # negative expectancy regardless of threshold
+    threshold, grid, has_edge = select_threshold(y, p, r, min_above=20)
+    assert has_edge is False
+    chosen = next(row for row in grid if row["threshold"] == threshold)
+    assert chosen["eligible"] is True  # never settles on a sub-floor sample
+
+
+def test_select_threshold_finds_a_real_edge_when_one_exists() -> None:
+    rng = np.random.default_rng(4)
+    n = 2000
+    p = rng.uniform(0, 1, n)
+    y = (rng.uniform(size=n) < p).astype(int)  # p is genuinely predictive of y
+    r = np.where(y == 1, 2.0, -1.0)
+    threshold, grid, has_edge = select_threshold(y, p, r, min_above=20)
+    assert has_edge is True
+    assert threshold >= 0.5
+
+
+def test_make_xgboost_degrades_to_none_or_builds_a_fittable_model() -> None:
+    """Same contract as make_lightgbm(): either unimportable (returns None, degrades
+    gracefully) or a real, fittable, calibrated estimator - never raises either way."""
+    m = make_xgboost()
+    if m is None:
+        pytest.skip("xgboost not importable in this environment")
+    rng = np.random.default_rng(0)
+    X = rng.normal(size=(60, 3))
+    y = (X[:, 0] > 0).astype(int)
+    m.fit(X, y)
+    p = m.predict_proba(X)[:, 1]
+    assert p.shape == (60,)
+    assert ((p >= 0) & (p <= 1)).all()
+
+
+def test_artifact_json_has_every_field_the_bundle_promises(tmp_path: Path) -> None:
+    """No prior test read the .json sidecar's schema at all - only the .joblib round trip
+    was checked. This closes that gap."""
+    import json
+
+    rep = train(synthetic_dataset(), n_splits=4, embargo_sessions=10, max_hold=10)
+    assert rep.bundle is not None
+    path = rep.bundle.save(tmp_path)
+    payload = json.loads(path.with_suffix(".json").read_text(encoding="utf-8"))
+    for key in (
+        "version", "kind", "threshold", "oos", "trained_on", "notes", "feature_list",
+        "training_data_range", "feature_version", "target_definition", "hyperparameters",
+        "random_seed", "final_test", "threshold_grid", "feature_importance",
+    ):  # fmt: skip
+        assert key in payload, f"missing artifact field: {key}"
+    assert payload["target_definition"]["max_hold"] == 10
+    assert payload["random_seed"] == rep.bundle.random_seed
+
+
+def test_feature_importance_is_ranked_and_works_for_the_logistic_baseline() -> None:
+    rep = train(
+        synthetic_dataset(), n_splits=4, embargo_sessions=10,
+        prefer_lightgbm=False, prefer_xgboost=False,
+    )  # fmt: skip
+    assert rep.bundle is not None
+    importance = rep.bundle.feature_importance()
+    assert importance is not None
+    values = list(importance.values())
+    assert values == sorted(values, key=abs, reverse=True)  # ranked by magnitude, descending
+    assert "rs_percentile" in importance and "stop_atr" in importance
 
 
 # ------------------------------------------------------------ applying

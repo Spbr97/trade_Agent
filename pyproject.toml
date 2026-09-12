@@ -25,6 +25,7 @@ dependencies = [
     "mcp>=1.2",
     "scikit-learn>=1.5",
     "joblib>=1.4",
+    "xgboost>=3.4.1",
 ]
 
 [project.scripts]
@@ -67,7 +68,7 @@ files = ["src"]
 plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
-module = ["mplfinance", "mplfinance.*", "sklearn", "sklearn.*", "joblib", "lightgbm"]
+module = ["mplfinance", "mplfinance.*", "sklearn", "sklearn.*", "joblib", "lightgbm", "xgboost"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

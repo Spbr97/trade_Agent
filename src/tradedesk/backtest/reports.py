@@ -83,6 +83,72 @@ def max_drawdown(equity: pd.Series) -> float:
     return float(-dd.min())
 
 
+def log_returns(equity: pd.Series) -> pd.Series:
+    """Log returns, not simple pct_change - found to matter for real on a lumpy trade-based
+    equity curve (equity_curve_from_trades): a round trip up X% then back down to the same
+    level has an ARITHMETIC mean return that is spuriously positive (Jensen's inequality -
+    e.g. +9% then -8.26% nets to 0% growth but a +0.37% arithmetic mean), which produced a
+    real, observed case of a NEGATIVE-CAGR strategy reporting a POSITIVE Sharpe. Log returns
+    are additive and don't have this bias: the same round trip nets to exactly 0."""
+    import numpy as np
+
+    ratio = equity / equity.shift(1)
+    return pd.Series(np.log(ratio[ratio > 0]), index=ratio[ratio > 0].index)
+
+
+def sharpe_ratio(daily_returns: pd.Series, periods_per_year: int = 252) -> float:
+    """Annualised Sharpe (rf=0) from a series of PERIODIC returns - pass day-over-day
+    equity % change for a daily Sharpe, matching `periods_per_year`'s default of 252
+    trading sessions. 0.0 on fewer than 2 points or zero variance rather than raising or
+    returning nan/inf, since a short or flat window is a real, unremarkable case here."""
+    import math
+
+    r = daily_returns.dropna()
+    if len(r) < 2:
+        return 0.0
+    sd = float(r.std(ddof=0))
+    if sd == 0.0:
+        return 0.0
+    return float(r.mean() / sd * math.sqrt(periods_per_year))
+
+
+def cagr(equity: pd.Series, start: date, end: date) -> float:
+    """Compound annual growth rate from the first to the last equity value over
+    `start..end`. 0.0 on an empty/non-positive series or a sub-day window."""
+    if equity.empty or float(equity.iloc[0]) <= 0:
+        return 0.0
+    years = max((end - start).days / 365.25, 1.0 / 365.25)
+    return float((float(equity.iloc[-1]) / float(equity.iloc[0])) ** (1.0 / years) - 1.0)
+
+
+def equity_curve_from_trades(
+    trades: Sequence[ClosedTrade], calendar: Sequence[date], starting_capital: float
+) -> pd.Series:
+    """A trade-level equity curve for comparing two COHORTS of the same trade list (e.g.
+    "all triggered signals" vs "signals an ML filter would have kept") - NOT a substitute
+    for `BacktestResult.equity` (backtest/runner.py), which is the real bar-by-bar,
+    crowding-aware mark-to-market curve for the portfolio actually simulated. Re-running
+    the portfolio's heat/position-count limits for a filtered subset would require a whole
+    second backtest; this instead compounds `net_pnl` serially in exit-date order on top of
+    `calendar`, forward-filling between exits, as a deliberately simplified idealisation
+    good enough for a Sharpe/CAGR/drawdown COMPARISON between two cohorts, not for reporting
+    either cohort's number as if it were a real, capital-constrained outcome."""
+    # Every position starts as NaN, not `starting_capital` - a real bug found by testing
+    # this directly: pre-filling every day with a real number left nothing for ffill() to
+    # propagate, so any day after the last-recorded update silently reverted to the
+    # STARTING capital instead of carrying the latest cumulative equity forward.
+    idx = pd.Index(list(calendar), name="date")
+    equity = pd.Series(float("nan"), index=idx, dtype=float)
+    if len(idx):
+        equity.iloc[0] = starting_capital
+    running = starting_capital
+    for t in sorted(trades, key=lambda t: t.exit_date):
+        running += t.net_pnl
+        if t.exit_date in equity.index:
+            equity.at[t.exit_date] = float(running)
+    return equity.ffill()
+
+
 @dataclass
 class Report:
     overall: Metrics

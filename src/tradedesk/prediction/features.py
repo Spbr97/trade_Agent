@@ -17,6 +17,10 @@ import pandas as pd
 from tradedesk.engine.scoring import room_in_r
 from tradedesk.engine.signals import SetupKind, Signal
 
+FEATURE_VERSION = "v2"  # bump whenever FEATURE_NAMES changes, so a saved model's artifact
+# records exactly which feature set it was trained against (v1 was the original 31 before
+# the 2026-09-12 ML-improvement pass added nifty_return_1d/5d below)
+
 FEATURE_NAMES: list[str] = [
     "dist_ema20_atr",
     "dist_ema50_atr",
@@ -46,6 +50,8 @@ FEATURE_NAMES: list[str] = [
     "sessions_to_results",
     "day_of_week",
     "expiry_week",
+    "nifty_return_1d",
+    "nifty_return_5d",
     "setup_base_breakout",
     "setup_trend_pullback",
     "setup_nr7_breakout",
@@ -70,6 +76,8 @@ def signal_features(
     vix_change_5d: float | None = None,
     sessions_to_results: int | None = None,
     expiry_week: bool = False,
+    nifty_return_1d: float | None = None,
+    nifty_return_5d: float | None = None,
 ) -> dict[str, float]:
     """`feats` must be the daily feature frame sliced to the arming session (last row = the
     arming close). Returns a flat dict keyed by FEATURE_NAMES."""
@@ -111,6 +119,8 @@ def signal_features(
         else float(min(sessions_to_results, 30)),
         "day_of_week": float(armed.weekday()),
         "expiry_week": 1.0 if expiry_week else 0.0,
+        "nifty_return_1d": _f(nifty_return_1d),
+        "nifty_return_5d": _f(nifty_return_5d),
         "setup_base_breakout": 1.0 if sig.setup is SetupKind.BASE_BREAKOUT else 0.0,
         "setup_trend_pullback": 1.0 if sig.setup is SetupKind.TREND_PULLBACK else 0.0,
         "setup_nr7_breakout": 1.0 if sig.setup is SetupKind.NR7_BREAKOUT else 0.0,

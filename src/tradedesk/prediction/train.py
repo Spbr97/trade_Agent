@@ -28,7 +28,7 @@ import pandas as pd
 from tradedesk.backtest.runner import BacktestResult, MarketData
 from tradedesk.broker.indstocks.models import IST
 from tradedesk.engine.lifecycle import SignalState
-from tradedesk.prediction.features import FEATURE_NAMES, signal_features
+from tradedesk.prediction.features import FEATURE_NAMES, FEATURE_VERSION, signal_features
 from tradedesk.prediction.labeling import label_signal
 
 META_COLUMNS = [
@@ -91,7 +91,14 @@ def build_dataset(md: MarketData, result: BacktestResult, *, max_hold: int = 10)
 
 
 def market_context(md: MarketData, code: str, on: date) -> dict[str, Any]:
-    """Breadth, VIX and results proximity as of `on` (nothing after it)."""
+    """Breadth, VIX, results proximity and benchmark returns, all as of `on` (nothing after
+    it). `nifty_return_1d/5d` reuse `md.benchmark` - already loaded for the regime
+    calculation, so this is two more return calculations on data already on hand, not a
+    new data pipeline (see FEATURE_VERSION's docstring for why sector_return_1d/5d was
+    NOT added alongside these: there is no stock-to-sector-index mapping or sector-index
+    candle loading anywhere in the codebase today - config/universe.yaml's
+    `sector_indices` list is genuinely unused - so a sector return feature would need real
+    new infrastructure, not a small addition, and was deliberately left out of this pass)."""
     breadth = md.breadth.get(on)
     vix_last = vix_chg = None
     if md.vix is not None:
@@ -100,11 +107,19 @@ def market_context(md: MarketData, code: str, on: date) -> dict[str, Any]:
             vix_last = float(v.iloc[-1])
             if len(v) > 5:
                 vix_chg = (vix_last / float(v.iloc[-6]) - 1) * 100
+    nifty_1d = nifty_5d = None
+    bench_close = md.benchmark["close"].loc[:on].dropna() if "close" in md.benchmark else None
+    if bench_close is not None and len(bench_close) > 1:
+        nifty_1d = (float(bench_close.iloc[-1]) / float(bench_close.iloc[-2]) - 1) * 100
+        if len(bench_close) > 5:
+            nifty_5d = (float(bench_close.iloc[-1]) / float(bench_close.iloc[-6]) - 1) * 100
     return {
         "breadth_pct": float(breadth) if breadth is not None and pd.notna(breadth) else None,
         "vix": vix_last,
         "vix_change_5d": vix_chg,
         "sessions_to_results": _sessions_to_results(md, code, on),
+        "nifty_return_1d": nifty_1d,
+        "nifty_return_5d": nifty_5d,
     }
 
 
@@ -182,6 +197,12 @@ class Metrics:
     expectancy_above_r: float
     n_above: int
     threshold: float
+    roc_auc: float | None = None
+    pr_auc: float | None = None
+    precision: float | None = None
+    recall: float | None = None
+    f1: float | None = None
+    log_loss: float | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -193,6 +214,12 @@ class Metrics:
             "expectancy_above_r": round(self.expectancy_above_r, 3),
             "n_above": self.n_above,
             "threshold": self.threshold,
+            "roc_auc": round(self.roc_auc, 4) if self.roc_auc is not None else None,
+            "pr_auc": round(self.pr_auc, 4) if self.pr_auc is not None else None,
+            "precision": round(self.precision, 4) if self.precision is not None else None,
+            "recall": round(self.recall, 4) if self.recall is not None else None,
+            "f1": round(self.f1, 4) if self.f1 is not None else None,
+            "log_loss": round(self.log_loss, 4) if self.log_loss is not None else None,
         }
 
 
@@ -209,6 +236,33 @@ def evaluate(
     r = realised_r
     ok = np.isfinite(r)
     above = ok & (p >= threshold)
+
+    # Full ML metrics (PDF's asks beyond Brier/calibration): AUC-style metrics need both
+    # classes present, and log_loss needs clipped probabilities to avoid -inf on a
+    # perfectly-confident wrong prediction - both degrade to None on a degenerate y/p
+    # rather than raising, since a single walk-forward fold can legitimately have only
+    # one class present.
+    roc_auc = pr_auc = precision = recall = f1 = ll = None
+    if len(y) and len(np.unique(y)) > 1:
+        from sklearn.metrics import (
+            average_precision_score,
+            f1_score,
+            precision_score,
+            recall_score,
+            roc_auc_score,
+        )
+        from sklearn.metrics import (
+            log_loss as _log_loss,
+        )
+
+        roc_auc = float(roc_auc_score(y, p))
+        pr_auc = float(average_precision_score(y, p))
+        pred = (p >= threshold).astype(int)
+        precision = float(precision_score(y, pred, zero_division=0))
+        recall = float(recall_score(y, pred, zero_division=0))
+        f1 = float(f1_score(y, pred, zero_division=0))
+        ll = float(_log_loss(y, np.clip(p, 1e-6, 1 - 1e-6)))
+
     return Metrics(
         n=int(len(y)),
         brier=brier,
@@ -218,20 +272,53 @@ def evaluate(
         expectancy_above_r=float(r[above].mean()) if above.any() else 0.0,
         n_above=int(above.sum()),
         threshold=threshold,
+        roc_auc=roc_auc,
+        pr_auc=pr_auc,
+        precision=precision,
+        recall=recall,
+        f1=f1,
+        log_loss=ll,
     )
 
 
-def make_baseline() -> Any:
+DEFAULT_SEED = 20260101  # fixed so `tradedesk train` is reproducible run-to-run on the same data
+
+
+def _cv(seed: int) -> Any:
+    from sklearn.model_selection import StratifiedKFold
+
+    return StratifiedKFold(n_splits=3, shuffle=True, random_state=seed)
+
+
+def baseline_hyperparameters(seed: int = DEFAULT_SEED) -> dict[str, Any]:
+    return {"C": 0.5, "max_iter": 1000, "random_state": seed, "calibration": "sigmoid", "cv": 3}
+
+
+def lightgbm_hyperparameters(seed: int = DEFAULT_SEED) -> dict[str, Any]:
+    return {
+        "n_estimators": 200,
+        "learning_rate": 0.03,
+        "num_leaves": 15,
+        "min_child_samples": 20,
+        "random_state": seed,
+        "calibration": "isotonic",
+        "cv": 3,
+    }
+
+
+def make_baseline(seed: int = DEFAULT_SEED) -> Any:
     from sklearn.calibration import CalibratedClassifierCV
     from sklearn.linear_model import LogisticRegression
     from sklearn.pipeline import make_pipeline
     from sklearn.preprocessing import StandardScaler
 
-    base = make_pipeline(StandardScaler(), LogisticRegression(C=0.5, max_iter=1000))
-    return CalibratedClassifierCV(base, method="sigmoid", cv=3)
+    base = make_pipeline(
+        StandardScaler(), LogisticRegression(C=0.5, max_iter=1000, random_state=seed)
+    )
+    return CalibratedClassifierCV(base, method="sigmoid", cv=_cv(seed))
 
 
-def make_lightgbm() -> Any | None:
+def make_lightgbm(seed: int = DEFAULT_SEED) -> Any | None:
     try:
         import lightgbm  # noqa: F401
         from lightgbm import LGBMClassifier
@@ -243,13 +330,55 @@ def make_lightgbm() -> Any | None:
                 learning_rate=0.03,
                 num_leaves=15,
                 min_child_samples=20,
+                random_state=seed,
                 verbose=-1,
             ),
             method="isotonic",
-            cv=3,
+            cv=_cv(seed),
         )
     except Exception:  # noqa: BLE001 - optional dependency (Smart App Control may block it)
         return None
+
+
+def make_xgboost(seed: int = DEFAULT_SEED) -> Any | None:
+    """Same guarded-import pattern as make_lightgbm() - xgboost is a compiled C++ wheel like
+    LightGBM, so Smart App Control may block it here too (see CLAUDE.md); degrade to None
+    rather than crash `tradedesk train` if it isn't importable."""
+    try:
+        import xgboost  # noqa: F401
+        from sklearn.calibration import CalibratedClassifierCV
+        from xgboost import XGBClassifier
+
+        return CalibratedClassifierCV(
+            XGBClassifier(
+                n_estimators=200,
+                learning_rate=0.03,
+                max_depth=4,
+                min_child_weight=5,
+                subsample=0.8,
+                colsample_bytree=0.8,
+                random_state=seed,
+                eval_metric="logloss",
+            ),
+            method="isotonic",
+            cv=_cv(seed),
+        )
+    except Exception:  # noqa: BLE001 - optional dependency (Smart App Control may block it)
+        return None
+
+
+def xgboost_hyperparameters(seed: int = DEFAULT_SEED) -> dict[str, Any]:
+    return {
+        "n_estimators": 200,
+        "learning_rate": 0.03,
+        "max_depth": 4,
+        "min_child_weight": 5,
+        "subsample": 0.8,
+        "colsample_bytree": 0.8,
+        "random_state": seed,
+        "calibration": "isotonic",
+        "cv": 3,
+    }
 
 
 @dataclass
@@ -262,6 +391,13 @@ class ModelBundle:
     oos: dict[str, Any]
     trained_on: int
     notes: list[str] = field(default_factory=list)
+    training_data_range: tuple[str, str] | None = None
+    feature_version: str | None = None
+    target_definition: dict[str, Any] = field(default_factory=dict)
+    hyperparameters: dict[str, Any] = field(default_factory=dict)
+    random_seed: int | None = None
+    final_test: dict[str, Any] | None = None
+    threshold_grid: list[dict[str, Any]] = field(default_factory=list)
 
     def predict_proba(self, X: pd.DataFrame) -> np.ndarray:
         return np.asarray(self.model.predict_proba(X[self.features].to_numpy(dtype=float))[:, 1])
@@ -275,10 +411,30 @@ class ModelBundle:
         except Exception:  # noqa: BLE001
             return None
 
+    def feature_importance(self) -> dict[str, float] | None:
+        """Ranked, model-kind-agnostic: logistic's own coefficients (by magnitude) if this
+        is the baseline, else a tree model's `feature_importances_` (LightGBM/XGBoost both
+        expose it identically on the raw estimator). None if neither is reachable, rather
+        than fabricating a ranking - feature importance is not proof of causality either
+        way, it just answers "what is the model actually using"."""
+        coefs = self.coefficients()
+        if coefs is not None:
+            return dict(sorted(coefs.items(), key=lambda kv: -abs(kv[1])))
+        try:
+            cals = self.model.calibrated_classifiers_
+            vals = np.mean([c.estimator.feature_importances_ for c in cals], axis=0)
+            ranked = sorted(
+                zip(self.features, (float(x) for x in vals), strict=True), key=lambda kv: -kv[1]
+            )
+            return dict(ranked)
+        except Exception:  # noqa: BLE001
+            return None
+
     def save(self, folder: Path) -> Path:
         folder.mkdir(parents=True, exist_ok=True)
         path = folder / f"{self.version}.joblib"
         joblib.dump(self, path)
+        importance = self.feature_importance()
         (folder / f"{self.version}.json").write_text(
             json.dumps(
                 {
@@ -288,6 +444,17 @@ class ModelBundle:
                     "oos": self.oos,
                     "trained_on": self.trained_on,
                     "notes": self.notes,
+                    "feature_list": self.features,
+                    "training_data_range": self.training_data_range,
+                    "feature_version": self.feature_version,
+                    "target_definition": self.target_definition,
+                    "hyperparameters": self.hyperparameters,
+                    "random_seed": self.random_seed,
+                    "final_test": self.final_test,
+                    "threshold_grid": self.threshold_grid,
+                    "feature_importance": (
+                        dict(list((importance or {}).items())[:10])
+                    ),
                 },
                 indent=2,
                 default=str,
@@ -303,6 +470,53 @@ class ModelBundle:
         return obj
 
 
+def select_threshold(
+    y: np.ndarray,
+    p: np.ndarray,
+    realised_r: np.ndarray,
+    grid: Sequence[float] | None = None,
+    min_above: int = 20,
+) -> tuple[float, list[dict[str, Any]], bool]:
+    """Pick the probability threshold that maximises TOTAL R captured
+    (expectancy_above_r * n_above) among thresholds that keep at least `min_above` trades -
+    not just any threshold, and not just average R. Both guards are load-bearing, found by
+    actually running this on real NSE data (2023-2026): without the sample-size floor,
+    "maximise total R" degenerates into "pick whichever threshold happens to leave the
+    fewest trades", since a threshold with 1 leftover trade can have the least-negative
+    total R purely by having almost nothing left to lose, not because it identifies a
+    better trade - the real run's default grid had EVERY threshold net-negative, and the
+    naive version chose 0.80 because it left exactly one trade. Returns the winning
+    threshold, the full grid (each row flagged `eligible` if it met `min_above`), and a
+    third `has_edge` bool - False when even the winning eligible threshold's own
+    expectancy is not positive, so a caller can say "no threshold shows real improvement"
+    instead of silently presenting a best-of-a-bad-bunch pick as if it were a discovery.
+
+    Evaluated only on the data passed in - callers must pass walk-forward VALIDATION
+    predictions, never the locked final test set, or the selection stops being an honest
+    out-of-sample choice (see train()'s final_test_frac)."""
+    grid = list(grid) if grid is not None else [round(0.50 + 0.05 * i, 2) for i in range(7)]
+    ok = np.isfinite(realised_r)
+    rows: list[dict[str, Any]] = []
+    for t in grid:
+        above = ok & (p >= t)
+        n_above = int(above.sum())
+        exp_r = float(realised_r[above].mean()) if n_above else 0.0
+        rows.append(
+            {
+                "threshold": t,
+                "n_above": n_above,
+                "expectancy_above_r": round(exp_r, 3),
+                "total_r": round(exp_r * n_above, 2),
+                "eligible": n_above >= min_above,
+            }
+        )
+    eligible = [row for row in rows if row["eligible"]]
+    pool = eligible if eligible else rows  # no threshold met the floor: fall back to the full grid
+    best = max(pool, key=lambda row: row["total_r"])
+    has_edge = bool(eligible) and best["expectancy_above_r"] > 0
+    return float(best["threshold"]), rows, has_edge
+
+
 @dataclass
 class TrainReport:
     folds: list[dict[str, Any]]
@@ -310,6 +524,8 @@ class TrainReport:
     plain_expectancy_above_r: float | None
     bundle: ModelBundle | None
     notes: list[str]
+    final_test: Metrics | None = None
+    threshold_grid: list[dict[str, Any]] | None = None
 
     def text(self) -> str:
         lines = [f"folds: {len(self.folds)}"]
@@ -320,7 +536,11 @@ class TrainReport:
             )
         if self.oos:
             o = self.oos.to_dict()
-            lines.append(f"out of sample: {o}")
+            lines.append(f"validation (walk-forward, used for model/threshold selection): {o}")
+        if self.threshold_grid:
+            lines.append(f"threshold grid (validation only): {self.threshold_grid}")
+        if self.final_test:
+            lines.append(f"FINAL TEST (locked, scored once): {self.final_test.to_dict()}")
         if self.plain_expectancy_above_r is not None:
             lines.append(f"plain-score top half expectancy: {self.plain_expectancy_above_r:+.3f}R")
         lines.extend(self.notes)
@@ -334,28 +554,62 @@ def train(
     embargo_sessions: int = 10,
     threshold: float = 0.5,
     prefer_lightgbm: bool = True,
+    prefer_xgboost: bool = True,
+    seed: int = DEFAULT_SEED,
+    final_test_frac: float = 0.2,
+    auto_threshold: bool = True,
+    max_hold: int | None = None,
 ) -> TrainReport:
     notes: list[str] = []
     if df.empty or df["label"].nunique() < 2:
         return TrainReport(
             [], None, None, None, ["not enough labelled signals (need both classes)"]
         )
-    X = df[FEATURE_NAMES].to_numpy(dtype=float)
-    y = df["label"].to_numpy(dtype=int)
-    r = df["realised_r"].to_numpy(dtype=float)
-    dates = [d if isinstance(d, date) else pd.Timestamp(d).date() for d in df["armed_on"]]
+
+    dates_all = [d if isinstance(d, date) else pd.Timestamp(d).date() for d in df["armed_on"]]
+    df = df.assign(_armed_date=dates_all)
+    unique_dates = sorted(set(dates_all))
+
+    # Phase 1a: reserve the most recent `final_test_frac` of history, untouched by
+    # walk-forward fold selection or threshold search - "a final period should remain
+    # untouched during model development" (only evaluated once, below, after everything
+    # else is finalised).
+    dev_df, final_df = df, df.iloc[0:0]
+    if 0 < final_test_frac < 1 and len(unique_dates) >= n_splits + 2:
+        split_at = unique_dates[int(len(unique_dates) * (1 - final_test_frac))]
+        dev_mask = df["_armed_date"] < split_at
+        if dev_mask.sum() >= 30 and (~dev_mask).sum() >= 5:
+            dev_df, final_df = df[dev_mask], df[~dev_mask]
+        else:
+            notes.append("not enough history to hold out a final test set; using all data")
+    else:
+        notes.append("not enough history to hold out a final test set; using all data")
+
+    X = dev_df[FEATURE_NAMES].to_numpy(dtype=float)
+    y = dev_df["label"].to_numpy(dtype=int)
+    r = dev_df["realised_r"].to_numpy(dtype=float)
+    dates = list(dev_df["_armed_date"])
+    if len(np.unique(y)) < 2:
+        return TrainReport(
+            [], None, None, None, ["dev split has only one class after reserving the final test set"]  # noqa: E501
+        )
     folds = purged_walk_forward(dates, n_splits=n_splits, embargo_sessions=embargo_sessions)
     if not folds:
         return TrainReport(
             [], None, None, None, ["not enough history for a purged walk-forward split"]
         )
 
-    candidates: list[tuple[str, Any]] = [("logistic", make_baseline())]
-    lgb = make_lightgbm() if prefer_lightgbm else None
+    candidates: list[tuple[str, Any]] = [("logistic", make_baseline(seed))]
+    lgb = make_lightgbm(seed) if prefer_lightgbm else None
     if lgb is not None:
         candidates.append(("lightgbm", lgb))
     else:
         notes.append("lightgbm not available; baseline only")
+    xgb = make_xgboost(seed) if prefer_xgboost else None
+    if xgb is not None:
+        candidates.append(("xgboost", xgb))
+    else:
+        notes.append("xgboost not available")
 
     results: dict[str, tuple[list[dict[str, Any]], np.ndarray, np.ndarray]] = {}
     for kind, proto in candidates:
@@ -380,29 +634,70 @@ def train(
     best = min(results, key=brier_of)
     if best != "logistic":
         notes.append(
-            "lightgbm beat the baseline out of sample "
-            f"({brier_of('lightgbm'):.4f} vs {brier_of('logistic'):.4f})"
+            f"{best} beat the baseline out of sample "
+            f"({brier_of(best):.4f} vs {brier_of('logistic'):.4f})"
         )
     rows, oos_p, mask = results[best]
-    oos = evaluate(y[mask], oos_p[mask], r[mask], threshold) if mask.any() else None
+
+    # Phase 2c: threshold selection on validation (dev walk-forward OOS) predictions ONLY -
+    # never on the final test set reserved above, or the "lock before final test" guarantee
+    # is worthless.
+    threshold_grid: list[dict[str, Any]] = []
+    chosen_threshold = threshold
+    if auto_threshold and mask.any():
+        chosen_threshold, threshold_grid, has_edge = select_threshold(y[mask], oos_p[mask], r[mask])
+        if has_edge:
+            notes.append(f"threshold auto-selected on validation folds: {chosen_threshold}")
+        else:
+            notes.append(
+                f"threshold auto-selected on validation folds: {chosen_threshold}, but NO "
+                "threshold in the grid showed positive expectancy with an adequate sample "
+                "(min_above) - this is the least-bad option, not a discovered edge"
+            )
+
+    oos = evaluate(y[mask], oos_p[mask], r[mask], chosen_threshold) if mask.any() else None
 
     plain_above = None
-    if df["plain_score"].notna().any():
-        ps = df["plain_score"].to_numpy(dtype=float)
+    if dev_df["plain_score"].notna().any():
+        ps = dev_df["plain_score"].to_numpy(dtype=float)
         top = np.isfinite(r) & (ps >= np.nanmedian(ps))
         plain_above = float(r[top].mean()) if top.any() else None
 
     final = _clone(dict(candidates)[best])
     final.fit(X, y)
+
+    # Score the locked final test set exactly once, with the already-chosen model and
+    # threshold - this is the number that should be trusted, not the validation folds
+    # (which fed model AND threshold selection above).
+    final_metrics = None
+    if len(final_df):
+        Xf = final_df[FEATURE_NAMES].to_numpy(dtype=float)
+        yf = final_df["label"].to_numpy(dtype=int)
+        rf = final_df["realised_r"].to_numpy(dtype=float)
+        pf = final.predict_proba(Xf)[:, 1]
+        final_metrics = evaluate(yf, pf, rf, chosen_threshold)
+
+    hp_fn = {
+        "logistic": baseline_hyperparameters,
+        "lightgbm": lightgbm_hyperparameters,
+        "xgboost": xgboost_hyperparameters,
+    }[best]
     bundle = ModelBundle(
         version=datetime.now(IST).strftime("%Y%m%d-%H%M%S"),
         model=final,
         features=list(FEATURE_NAMES),
-        threshold=threshold,
+        threshold=chosen_threshold,
         kind=best,
         oos=oos.to_dict() if oos else {},
         trained_on=int(len(y)),
         notes=notes,
+        training_data_range=(str(min(dates)), str(max(dates))) if dates else None,
+        feature_version=FEATURE_VERSION,
+        target_definition={"labeling": "triple_barrier", "max_hold": max_hold},
+        hyperparameters=hp_fn(seed),
+        random_seed=seed,
+        final_test=final_metrics.to_dict() if final_metrics else None,
+        threshold_grid=threshold_grid,
     )
     coefs = bundle.coefficients()
     if coefs is not None:
@@ -412,10 +707,68 @@ def train(
                     f"sanity: coefficient of {name} has an unexpected sign ({coefs[name]:+.3f})"
                 )
     bundle.notes = notes
-    return TrainReport(rows, oos, plain_above, bundle, notes)
+    return TrainReport(rows, oos, plain_above, bundle, notes, final_test=final_metrics, threshold_grid=threshold_grid)  # noqa: E501
 
 
 def _clone(model: Any) -> Any:
     from sklearn.base import clone
 
     return clone(model)
+
+
+# ------------------------------------------------------ economic comparison
+
+
+def compare_strategies(
+    result: BacktestResult, bundle: ModelBundle, df: pd.DataFrame, starting_capital: float
+) -> dict[str, Any]:
+    """Strategy A (existing rules, every triggered signal) vs Strategy C (rules + ML filter
+    at the bundle's threshold) - the actual economic question, not just a classification
+    metric: does the ML layer improve Sharpe/CAGR/drawdown/profit factor over the existing
+    rules, or just look good on Brier/AUC? Strategy B (ML-only, no rule gate) is
+    deliberately NOT built: nothing in this codebase generates a trade candidate without a
+    setup firing first (engine/engine.py::scan_day is the only place a signal is created,
+    by design - CLAUDE.md hard rule), so there is no "ML-only" population of trades to
+    construct without inventing a new, unsanctioned signal source.
+
+    Joins each closed trade to its probability via the same `t.position.signal.id` link
+    build_dataset() already uses, scored by the already-TRAINED bundle - this never
+    retrains and never re-simulates the portfolio's sizing/heat/crowding limits, so it is a
+    trade-selection comparison over the ONE backtest that was actually run, not two
+    independent backtests with different position-sizing behaviour. See
+    backtest/reports.py::equity_curve_from_trades for the simplification this relies on for
+    Sharpe/CAGR/drawdown (a serially-compounded trade equity curve, not a bar-by-bar,
+    capital-constrained one)."""
+    from tradedesk.backtest import reports
+
+    probs: dict[str, float] = {}
+    if len(df):
+        p = bundle.predict_proba(df)
+        probs = dict(zip(df["signal_id"], p, strict=True))
+
+    all_trades = list(result.portfolio.closed)
+    filtered = [t for t in all_trades if probs.get(t.position.signal.id, 0.0) >= bundle.threshold]
+
+    start = result.calendar[0] if result.calendar else date.today()
+    end = result.calendar[-1] if result.calendar else date.today()
+
+    def side(trades: list[Any]) -> dict[str, Any]:
+        m = reports.metrics(trades)
+        eq = reports.equity_curve_from_trades(trades, result.calendar, starting_capital)
+        daily_ret = reports.log_returns(eq).dropna()
+        return {
+            **m.to_row(),
+            "sharpe": round(reports.sharpe_ratio(daily_ret), 3),
+            "cagr": round(reports.cagr(eq, start, end), 4),
+            "max_drawdown": round(reports.max_drawdown(eq), 4),
+        }
+
+    return {
+        "strategy_a_existing_rules": side(all_trades),
+        "strategy_c_rules_plus_ml": side(filtered),
+        "threshold_used": bundle.threshold,
+        "note": (
+            "Strategy B (ML-only, no rule gate) is architecturally out of scope - "
+            "engine/engine.py::scan_day is the only signal source in this codebase"
+        ),
+    }

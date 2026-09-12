@@ -1698,18 +1698,30 @@ def train(
     setup: list[str] = typer.Option(None, "--setup", help="Setup name; default: all enabled"),
     shadow: bool = typer.Option(True, "--shadow/--no-shadow", help="Shadow is the only mode"),
     n_splits: int = typer.Option(4, "--splits", help="Purged walk-forward folds"),
+    final_test_frac: float = typer.Option(
+        0.2, "--final-test-frac", help="Most recent fraction of history locked as a final test"
+    ),
+    auto_threshold: bool = typer.Option(
+        True,
+        "--auto-threshold/--fixed-threshold",
+        help="Grid-search the probability threshold on validation folds instead of using "
+        "ml.yaml's grade_a_min_probability directly",
+    ),
     models_dir: Path = typer.Option(Path("data/models"), "--models-dir"),
     dataset_out: Path | None = typer.Option(None, "--dataset", help="Also write the CSV"),
     db: Path = DB_OPTION,
     root: Path = ROOT_OPTION,
 ) -> None:
     """Train the meta-labeling model (M11): backtest -> triple-barrier labels -> purged
-    walk-forward -> calibrated baseline (LightGBM only if better OOS) -> saved bundle.
+    walk-forward on all but the most recent `--final-test-frac` of history -> calibrated
+    baseline (LightGBM/XGBoost only if available and better OOS) -> threshold grid search
+    on validation folds -> one locked scoring of the final test set -> saved bundle, plus a
+    Strategy A (existing rules) vs Strategy C (rules + ML filter) economic comparison.
     The saved model is used in shadow mode by `tradedesk scan` until ml.yaml enables it."""
     from tradedesk.backtest import prepare_market, run_backtest
     from tradedesk.broker.indstocks.models import IST, Interval
     from tradedesk.engine.signals import SetupKind
-    from tradedesk.prediction import build_dataset
+    from tradedesk.prediction import build_dataset, compare_strategies
     from tradedesk.prediction import train as train_model
     from tradedesk.scan import scan_config
 
@@ -1729,7 +1741,8 @@ def train(
         typer.echo(f"backtesting {len(codes)} codes {start} -> {end} for the dataset")
         md = prepare_market(store, codes, ref, cfg)
     result = run_backtest(md, cfg)
-    df = build_dataset(md, result, max_hold=settings.risk.max_hold_sessions)
+    max_hold = settings.risk.max_hold_sessions
+    df = build_dataset(md, result, max_hold=max_hold)
     typer.echo(
         f"dataset: {len(df)} triggered signals, base rate "
         f"{(df['label'].mean() if len(df) else float('nan')):.2f}"
@@ -1743,11 +1756,16 @@ def train(
         n_splits=n_splits,
         embargo_sessions=settings.ml.embargo_sessions,
         threshold=float(settings.ml.grade_a_min_probability),
+        final_test_frac=final_test_frac,
+        auto_threshold=auto_threshold,
+        max_hold=max_hold,
     )
     typer.echo(rep.text())
     if rep.bundle is None:
         typer.echo("no model saved", err=True)
         raise typer.Exit(code=1)
+    comparison = compare_strategies(result, rep.bundle, df, starting_capital=cfg.capital)
+    typer.echo(f"strategy A vs C (existing rules vs rules+ML): {comparison}")
     path = rep.bundle.save(models_dir)
     typer.echo(f"saved {path} (shadow only; ml.yaml enabled={settings.ml.enabled})")
 
