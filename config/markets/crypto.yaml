@@ -1,0 +1,24 @@
+# CoinDCX crypto market (M13 Phase 4). Optional - absent is fine, defaults match this file.
+#
+# Costs verified 2026-09-12 (see src/tradedesk/markets/costs.py::CryptoCostModel):
+#   - maker/taker 0.2% base tier, both sides - corroborated via search, NOT a first-party
+#     fetch (coindcx.com/fees is a client-rendered SPA); re-verify before real capital.
+#   - 1% TDS (Section 194S) on the SELL leg's full value, win or lose.
+#   - 18% GST on the trading fee only, not on TDS.
+#
+# Universe floor is DATA-INFORMED, not NSE's number rescaled by guesswork - see
+# CryptoUniverseConfig's docstring for the real turnover distribution behind it. It is a
+# capital-allocation choice, not a verified fact like the cost numbers - reconsider it.
+
+costs:
+  maker_taker_pct: 0.002
+  tds_pct: 0.01
+  gst_pct: 0.18
+  slippage_pct: 0.0005
+  rounding: paise
+
+universe:
+  min_avg_daily_turnover_inr: 2500000  # 25 lakh
+  min_price: 0
+
+benchmark: BTCINR

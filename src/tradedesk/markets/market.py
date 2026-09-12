@@ -12,21 +12,23 @@ already market-agnostic:
     correctly when it's None - crypto's lack of a VIX equivalent needs no new code path.
 
 So the only piece that genuinely differs in SHAPE (not just parameters) between NSE and a
-crypto market is costs - see costs.py's module docstring. `Market` is therefore a plain
-bundle of the config each market already has (SessionRules, UniverseRules) plus the one
-real abstraction (CostModel). Adding CalendarProvider/RegimeProvider classes now, before a
-second market exists to prove them different, would be speculative - they stay functions
-taking a reference/benchmark code, which is exactly what they are today.
+crypto market is costs - see costs.py's module docstring, now with a second model
+(CryptoCostModel, Phase 4) to prove the abstraction was worth it. `Market` is therefore a
+plain bundle of the config each market already has (SessionRules, UniverseRules) plus the
+one real abstraction (CostModel). Adding CalendarProvider/RegimeProvider classes now,
+before a second market exists to prove them different, would be speculative - they stay
+functions taking a reference/benchmark code, which is exactly what they are today.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import time
 
 from tradedesk.config.models import Settings
 from tradedesk.data.universe import UniverseRules
 from tradedesk.live.models import SessionRules
-from tradedesk.markets.costs import CostModel, EquityCostModel
+from tradedesk.markets.costs import CostModel, CryptoCostModel, EquityCostModel
 
 
 @dataclass(frozen=True)
@@ -55,4 +57,30 @@ def nse_market(settings: Settings) -> Market:
             min_price=float(settings.universe.min_price),
         ),
         benchmark_name=settings.universe.benchmark,
+    )
+
+
+def crypto_market(settings: Settings) -> Market:
+    """M13 Phase 4. `session_rules` here is a placeholder 24/7 stand-in
+    (00:00-23:59, no-entry/late-trigger windows disabled) - not yet meaningfully
+    exercised, since only daily crypto candles are loaded so far (Phase 3) and
+    confirm_trigger only binds when intraday bars exist. Revisit once crypto intraday
+    data lands (Phase 5, live feed)."""
+    cfg = settings.crypto_market
+    return Market(
+        name="crypto",
+        code_prefix="CDX_",
+        costs=CryptoCostModel(cfg.costs),
+        session_rules=SessionRules(
+            session_open=time(0, 0),
+            session_close=time(23, 59),
+            no_entry_before=time(0, 0),
+            late_trigger_after=time(23, 59),
+            close_check_at=time(23, 55),
+        ),  # fmt: skip
+        universe_rules=UniverseRules(
+            min_avg_turnover_inr=float(cfg.universe.min_avg_daily_turnover_inr),
+            min_price=float(cfg.universe.min_price),
+        ),
+        benchmark_name=cfg.benchmark,
     )

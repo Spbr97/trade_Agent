@@ -15,6 +15,7 @@ from tradedesk.config.models import (
     AlertsConfig,
     ChargeSchedule,
     ClaudeConfig,
+    CryptoMarketConfig,
     EngineConfig,
     MlConfig,
     RiskConfig,
@@ -24,7 +25,7 @@ from tradedesk.config.models import (
     UniverseConfig,
 )
 
-__all__ = ["ChargeSchedule", "Settings", "load_config", "load_yaml"]
+__all__ = ["ChargeSchedule", "CryptoMarketConfig", "Settings", "load_config", "load_yaml"]
 
 CONFIG_DIR = "config"
 
@@ -38,6 +39,7 @@ _FILES: dict[str, tuple[str, type[Any], bool]] = {
     "claude": ("claude.yaml", ClaudeConfig, False),
     "ml": ("ml.yaml", MlConfig, False),
     "engine": ("engine.yaml", EngineConfig, False),
+    "crypto_market": ("markets/crypto.yaml", CryptoMarketConfig, False),
 }
 
 

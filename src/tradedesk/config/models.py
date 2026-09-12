@@ -62,6 +62,25 @@ class ChargeSchedule(Strict):
     statutory_rounding: Literal["rupee", "paise"] = "rupee"  # STT and stamp duty per trade
 
 
+class CryptoChargeSchedule(Strict):
+    """CoinDCX + Indian tax charges (M13 Phase 4). Verified 2026-09-12 - see
+    markets/costs.py::CryptoCostModel's docstring for sources; the maker/taker rate is
+    corroborated via search, not a first-party fetch (CoinDCX's own fee page is a
+    client-rendered SPA that could not be scraped directly) - re-verify against
+    coindcx.com/fees before trusting this for real capital.
+
+    No STT/stamp duty/DP/SEBI equivalent (those are NSE cash-equity statutory charges).
+    No brokerage min/max caps - CoinDCX's fee is a flat percentage. No TradeType split:
+    unlike NSE, TDS applies to every sell regardless of hold duration.
+    """
+
+    maker_taker_pct: Fraction = Decimal("0.002")  # 0.2%, base/VIP-0 tier, both sides
+    tds_pct: Fraction = Decimal("0.01")  # Section 194S, 1% of the SELL leg's turnover
+    gst_pct: Fraction = Decimal("0.18")  # on the trading fee only, not on TDS
+    slippage_pct: Fraction = Decimal("0.0005")
+    rounding: Literal["paise", "none"] = "paise"
+
+
 class ConsecutiveLossPause(Strict):
     losses: int = Field(4, ge=1)
     sessions: int = Field(2, ge=1)
@@ -120,6 +139,33 @@ class UniverseConfig(Strict):
     benchmark: str = "NIFTY 50"
     sector_indices: list[str] = Field(default_factory=list)
     volatility_index: str = "INDIA VIX"
+
+
+# --------------------------------------------------------------- markets/crypto.yaml
+
+
+class CryptoUniverseConfig(Strict):
+    """NSE's Rs 50,000,000 (5 crore) turnover floor does not transfer - see
+    docs/signoff-crypto-phase3.md: even CDX_BTCINR (~Rs 4.6 crore/20-session-avg) and
+    CDX_ETHINR (~Rs 2.6 crore) don't clear it, because most global crypto volume flows
+    through USDT pairs elsewhere, not CoinDCX's INR pairs specifically.
+
+    Default here (Rs 25,00,000 / 25 lakh) is DATA-INFORMED, not the NSE number rescaled
+    by guesswork: from the real 20-session turnover distribution across all 338 active
+    INR pairs (checked 2026-09-12), rank #10 sits at ~Rs 48 lakh and rank #50 at ~Rs 7.5
+    lakh - 25 lakh lands inside that range, keeping roughly the top 15-20 pairs by
+    turnover rather than the single pair (USDT) the NSE-inherited floor left. This is a
+    capital-allocation choice, not a fact verified the way the cost numbers are -
+    reconsider before relying on it for size."""
+
+    min_avg_daily_turnover_inr: Money = Decimal("2500000")
+    min_price: Money = Decimal("0")  # NSE's Rs 50 floor has no crypto equivalent
+
+
+class CryptoMarketConfig(Strict):
+    costs: CryptoChargeSchedule = CryptoChargeSchedule()
+    universe: CryptoUniverseConfig = CryptoUniverseConfig()
+    benchmark: str = "BTCINR"  # CDX_BTCINR: trades every day, stands in for an index
 
 
 # ------------------------------------------------------------------------- setups.yaml
@@ -284,3 +330,4 @@ class Settings(Strict):
     claude: ClaudeConfig = ClaudeConfig()
     ml: MlConfig = MlConfig()
     engine: EngineConfig = EngineConfig()
+    crypto_market: CryptoMarketConfig = CryptoMarketConfig()

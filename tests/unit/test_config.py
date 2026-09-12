@@ -50,3 +50,25 @@ def test_risk_yaml_is_required(tmp_path: Path) -> None:
 def test_fractions_are_bounded() -> None:
     with pytest.raises(ValidationError):
         RiskConfig.model_validate({"trading_capital": 1, "max_risk_per_trade_pct": 5})
+
+
+def test_crypto_market_yaml_loads(settings: Settings) -> None:
+    """config/markets/crypto.yaml (M13 Phase 4) - optional nested file, loaded the same
+    way as every other config/*.yaml, just one directory deeper."""
+    cm = settings.crypto_market
+    assert cm.costs.maker_taker_pct == Decimal("0.002")
+    assert cm.costs.tds_pct == Decimal("0.01")
+    assert cm.costs.gst_pct == Decimal("0.18")
+    assert cm.universe.min_avg_daily_turnover_inr == Decimal("2500000")
+    assert cm.universe.min_price == Decimal("0")
+    assert cm.benchmark == "BTCINR"
+
+
+def test_crypto_market_falls_back_to_defaults_when_file_absent(tmp_path: Path) -> None:
+    (tmp_path / "config").mkdir()
+    (tmp_path / "config" / "risk.yaml").write_text(
+        yaml.safe_dump({"trading_capital": 50000}), encoding="utf-8"
+    )
+    s = load_config(tmp_path)
+    assert s.crypto_market.costs.maker_taker_pct == Decimal("0.002")
+    assert s.crypto_market.universe.min_avg_daily_turnover_inr == Decimal("2500000")
