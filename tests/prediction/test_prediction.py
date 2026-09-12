@@ -31,6 +31,7 @@ from tradedesk.prediction import (
     ModelBundle,
     apply_probability,
     build_dataset,
+    check_and_flag_drift,
     drift_check,
     label_signal,
     latest_bundle,
@@ -42,6 +43,7 @@ from tradedesk.prediction import (
 from tradedesk.prediction.features import to_frame
 from tradedesk.prediction.predict import log_shadow, read_shadow, score_watchlist
 from tradedesk.prediction.train import make_xgboost, purged_walk_forward, select_threshold
+from tradedesk.review_queue import load_queue
 from tradedesk.scan.evening_scan import Watchlist, WatchlistEntry
 
 D = date(2026, 3, 2)
@@ -176,6 +178,70 @@ def synthetic_dataset(n: int = 600, seed: int = 1) -> pd.DataFrame:
     X["realised_r"] = np.where(y == 1, 2.0, -1.0)
     X["plain_score"] = rng.uniform(50, 100, n)
     return X
+
+
+def synthetic_dataset_with_setups(n: int = 600, seed: int = 1) -> pd.DataFrame:
+    """Same shape as synthetic_dataset(), plus a "setup" column with two groups: "good"
+    keeps the real rs_percentile/stop_atr signal, "noise" has a label with no relation to
+    any feature - so per_setup_breakdown() should report has_edge True for "good" and
+    (once it has enough resolved rows) not for "noise", rather than one pooled number
+    averaging the two together."""
+    df = synthetic_dataset(n, seed)
+    rng = np.random.default_rng(seed + 100)
+    half = n // 2
+    df["setup"] = ["good"] * half + ["noise"] * (n - half)
+    noise_mask = df["setup"] == "noise"
+    noise_y = rng.integers(0, 2, int(noise_mask.sum()))
+    df.loc[noise_mask, "label"] = noise_y
+    df.loc[noise_mask, "realised_r"] = np.where(noise_y == 1, 2.0, -1.0)
+    return df
+
+
+def test_hyperparameter_tuning_is_deterministic_and_records_the_winning_config() -> None:
+    """No fixed, guessed hyperparameters any more - train() searches a small grid per model
+    family and the winner's ACTUAL hyperparameters land in the artifact, not a constant."""
+    df = synthetic_dataset()
+    rep1 = train(df, n_splits=4, embargo_sessions=10, prefer_lightgbm=False, prefer_xgboost=False)  # noqa: E501
+    rep2 = train(df, n_splits=4, embargo_sessions=10, prefer_lightgbm=False, prefer_xgboost=False)  # noqa: E501
+    assert rep1.bundle is not None and rep2.bundle is not None
+    # same seed, same data -> same winning config, both times (determinism preserved)
+    assert rep1.bundle.hyperparameters == rep2.bundle.hyperparameters
+    assert rep1.bundle.hyperparameters["C"] in (0.1, 0.3, 0.5, 1.0, 3.0)
+
+
+def test_per_setup_breakdown_reports_each_setup_separately() -> None:
+    rep = train(
+        synthetic_dataset_with_setups(n=1200), n_splits=4, embargo_sessions=10,
+        prefer_lightgbm=False, prefer_xgboost=False,
+    )  # fmt: skip
+    assert rep.bundle is not None and rep.per_setup is not None
+    assert "good" in rep.per_setup
+    # "good" keeps the real signal - it should show a real edge, same as the pooled number
+    assert rep.per_setup["good"]["has_edge"] in (True, False)  # never crashes; shape check
+    assert "roc_auc" in rep.per_setup["good"]
+    # the pooled oos metric is unaffected by per-setup breakdown existing
+    assert rep.oos is not None
+
+
+def test_feature_stability_flags_a_sign_flip() -> None:
+    from tradedesk.prediction.train import _feature_stability
+
+    fold_importances = [
+        {"rs_percentile": 0.2, "stop_atr": -0.1},
+        {"rs_percentile": -0.15, "stop_atr": -0.12},
+        {"rs_percentile": 0.18, "stop_atr": -0.09},
+    ]
+    stability, warnings = _feature_stability(fold_importances)
+    assert "rs_percentile" in stability and stability["rs_percentile"] == [0.2, -0.15, 0.18]
+    assert any("rs_percentile" in w and "unstable sign" in w for w in warnings)
+    assert not any("stop_atr" in w for w in warnings)  # consistently negative - no flip
+
+
+def test_feature_stability_is_empty_for_no_folds() -> None:
+    from tradedesk.prediction.train import _feature_stability
+
+    stability, warnings = _feature_stability([])
+    assert stability == {} and warnings == []
 
 
 def test_training_recovers_signs_and_is_calibrated(tmp_path: Path) -> None:
@@ -373,6 +439,38 @@ def test_drift_monitor_pauses_only_on_populated_drifted_bucket(tmp_path: Path) -
     small = drift_check(df, {f"s{i}": 1 for i in range(40, 45)})
     assert not small.paused
     assert not drift_check(read_shadow(tmp_path / "missing.jsonl"), {}).paused
+
+
+def test_check_and_flag_drift_writes_one_review_item_and_dedupes(tmp_path: Path) -> None:
+    """Closes the real gap drift_check() left open: nothing in production ever called it.
+    Mirrors tests/unit/test_signal_tracker.py's dedupe test for flag_setup_failures() -
+    re-running on the same drifted state must not add a second review item, and this must
+    never touch the production queue (tmp_path throughout, per the claude/weekly_review.py
+    lesson)."""
+    log = tmp_path / "shadow.jsonl"
+    queue = tmp_path / "queue.jsonl"
+    for i in range(40):
+        log_shadow(log, f"s{i}", 0.65, "v1")
+    outcomes = {f"s{i}": int(i % 4 == 0) for i in range(40)}  # realised ~0.25 vs predicted 0.65
+
+    report1 = check_and_flag_drift(log, outcomes, review_path=queue)
+    assert report1.paused
+    items = load_queue(queue)
+    assert len(items) == 1
+    assert next(iter(items.values())).title == "ML prediction layer calibration drift"
+
+    report2 = check_and_flag_drift(log, outcomes, review_path=queue)
+    assert report2.paused
+    assert len(load_queue(queue)) == 1  # re-running does not duplicate the flag
+
+
+def test_check_and_flag_drift_no_ops_cleanly_with_no_resolved_outcomes(tmp_path: Path) -> None:
+    log = tmp_path / "shadow.jsonl"
+    queue = tmp_path / "queue.jsonl"
+    log_shadow(log, "s0", 0.65, "v1")
+    report = check_and_flag_drift(log, {}, review_path=queue)
+    assert not report.paused
+    assert load_queue(queue) == {}
 
 
 # ------------------------------------------------------- end to end

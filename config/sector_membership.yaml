@@ -1,0 +1,47 @@
+# Stock -> sector-index membership, curated from NSE/niftyindices.com published
+# constituent lists (fetched 2026-09-13). Used by prediction/train.py::market_context()
+# to compute sector_return_1d/5d - an unmapped symbol gets sector_return=None
+# (graceful degradation, not a crash). Sector-index names here must match
+# config/universe.yaml::sector_indices exactly.
+#
+# Only 2 sectors are mapped, not the original 9 planned: verified against the live
+# INDstocks historical-candle API 2026-09-13 that only BANK NIFTY and Nifty Financial
+# actually return history - the other 7 sectoral indices exist in the instruments
+# table but the historical endpoint rejects them ("Invalid scrip codes"). See
+# config/universe.yaml's sector_indices comment for detail.
+#
+# HDFCBANK/ICICIBANK/AXISBANK/KOTAKBANK/SBIN are constituents of both lists;
+# assigned to BANK NIFTY (the narrower/more specific sector) only.
+
+BANK NIFTY:
+  - AUBANK
+  - AXISBANK
+  - BANKBARODA
+  - CANBK
+  - FEDERALBNK
+  - HDFCBANK
+  - ICICIBANK
+  - IDFCFIRSTB
+  - INDUSINDBK
+  - KOTAKBANK
+  - PNB
+  - SBIN
+  - UNIONBANK
+  - YESBANK
+
+Nifty Financial:
+  - BAJAJFINSV
+  - BAJFINANCE
+  - BSE
+  - CHOLAFIN
+  - HDFCLIFE
+  - ICICIGI
+  - JIOFIN
+  - LICHSGFIN
+  - MFSL
+  - MUTHOOTFIN
+  - PFC
+  - RECLTD
+  - SBICARD
+  - SBILIFE
+  - SHRIRAMFIN

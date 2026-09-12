@@ -50,7 +50,13 @@ class BacktestConfig:
     engine: EngineConfig
     setup_params: Mapping[str, Mapping[str, Any]] = field(default_factory=dict)
     universe_rules: UniverseRules = UniverseRules()
-    sector_of: Mapping[str, str] = field(default_factory=dict)
+    sector_of: Mapping[str, str] = field(default_factory=dict)  # scrip_code -> sector index name
+    # sector index name -> that index's OWN scrip code (e.g. "BANK NIFTY" -> "NSE_40000003"),
+    # so prepare_market() knows which candles to load - sector_of alone only says which
+    # stocks belong to which sector, not where that sector's own price series lives. Both
+    # dicts populated together from config/sector_membership.yaml (Phase 2, 2026-09-13);
+    # empty by default like vix_code, so every existing caller is unaffected.
+    sector_codes: Mapping[str, str] = field(default_factory=dict)
     slippage_pct: float = 0.0005
     warmup_sessions: int = 260
     vix_code: str | None = None
@@ -80,6 +86,8 @@ class MarketData:
     universe_by_month: dict[tuple[int, int], list[str]]
     results_dates: dict[str, list[date]]
     intraday: dict[str, dict[date, list[IntradayBar]]] = field(default_factory=dict)
+    sector_of: Mapping[str, str] = field(default_factory=dict)  # scrip_code -> sector index name
+    sector_candles: dict[str, pd.Series] = field(default_factory=dict)  # sector name -> closes
 
 
 @dataclass
@@ -175,6 +183,18 @@ def prepare_market(
         if not v.empty:
             vix = pd.Series(v["close"].to_numpy(), index=pd.Index(ist_dates(v)))
 
+    # Sector-return context (Phase 2, 2026-09-13): sector_codes maps a sector index NAME
+    # (e.g. "BANK NIFTY") to that index's own scrip code, distinct from sector_of (which
+    # maps a STOCK's scrip code to its sector name) - both come from config/
+    # sector_membership.yaml via the CLI, empty by default like vix_code above.
+    sector_candles: dict[str, pd.Series] = {}
+    for sector_name, sector_code in cfg.sector_codes.items():
+        sc = _dedupe_by_calendar_day(
+            store.load(sector_code, Interval.D1, load_from, load_to, adjusted=False)
+        )
+        if not sc.empty:
+            sector_candles[sector_name] = pd.Series(sc["close"].to_numpy(), index=pd.Index(ist_dates(sc)))  # noqa: E501
+
     turn_wide = pd.DataFrame(turnover).reindex(calendar)
     rules = cfg.universe_rules
     avg_turn = turn_wide.rolling(
@@ -237,6 +257,8 @@ def prepare_market(
         universe_by_month=universe_by_month,
         results_dates=results_dates,
         intraday=intraday,
+        sector_of=cfg.sector_of,
+        sector_candles=sector_candles,
     )
 
 

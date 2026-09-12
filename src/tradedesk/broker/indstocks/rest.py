@@ -281,3 +281,39 @@ class IndstocksClient:
             for code, raw in (body.get("data") or {}).items():
                 out[code] = LtpQuote(scrip_code=code, live_price=float(raw["live_price"]))
         return out
+
+    # ---------------------------------------------------------------- options
+
+    async def list_expiries(self, underlying: str, segment: str = "DERIVATIVE") -> list[str]:
+        """Upcoming expiry dates (ascending, YYYY-MM-DD strings) for `underlying`."""
+        body = await self._get_json(
+            "/market/instruments/expiries",
+            category=Category.DATA,
+            params={"underlying": underlying, "segment": segment},
+        )
+        return list(body.get("data") or [])
+
+    async def option_chain(
+        self,
+        exchange: str,
+        segment: str,
+        underlying_scrip: str,
+        expiry: str,
+        strike_count: int = 10,
+    ) -> dict[str, Any]:
+        """Raw chain payload: {"underlying_ltp": ..., "expiry": ..., "strikes": {strike:
+        {"ce": {...}, "pe": {...}}}}. Returned as a plain dict (not a pydantic model) since
+        the only consumer today (scripts/options_snapshot.py) reduces it to two numbers and
+        never stores the raw strikes - see that script for why."""
+        body = await self._get_json(
+            "/market/option-chain",
+            category=Category.DATA,
+            params={
+                "exchange": exchange,
+                "segment": segment,
+                "underlying-scrip": underlying_scrip,
+                "expiry": expiry,
+                "strike_count": strike_count,
+            },
+        )
+        return dict(body.get("data") or {})

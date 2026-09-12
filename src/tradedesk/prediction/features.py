@@ -17,9 +17,13 @@ import pandas as pd
 from tradedesk.engine.scoring import room_in_r
 from tradedesk.engine.signals import SetupKind, Signal
 
-FEATURE_VERSION = "v2"  # bump whenever FEATURE_NAMES changes, so a saved model's artifact
-# records exactly which feature set it was trained against (v1 was the original 31 before
-# the 2026-09-12 ML-improvement pass added nifty_return_1d/5d below)
+FEATURE_VERSION = "v3"  # bump whenever FEATURE_NAMES changes, so a saved model's artifact
+# records exactly which feature set it was trained against (v1 was the original 31; v2
+# added nifty_return_1d/5d on 2026-09-12; v3 on 2026-09-13 replaced sector_percentile - a
+# dead stub that always defaulted to 50.0, since nothing anywhere ever populated it - with
+# real sector_return_1d/5d, computed from config/sector_membership.yaml + loaded sector
+# index candles; predict.py refuses to score a bundle whose feature_version doesn't match,
+# rather than silently misaligning columns)
 
 FEATURE_NAMES: list[str] = [
     "dist_ema20_atr",
@@ -30,7 +34,8 @@ FEATURE_NAMES: list[str] = [
     "adx14",
     "rsi14",
     "rs_percentile",
-    "sector_percentile",
+    "sector_return_1d",
+    "sector_return_5d",
     "atr_pct",
     "stop_atr",
     "room_r",
@@ -70,7 +75,8 @@ def signal_features(
     sig: Signal,
     feats: pd.DataFrame,
     *,
-    sector_percentile: float | None = None,
+    sector_return_1d: float | None = None,
+    sector_return_5d: float | None = None,
     breadth_pct: float | None = None,
     vix: float | None = None,
     vix_change_5d: float | None = None,
@@ -97,7 +103,8 @@ def signal_features(
         "adx14": _f(last.get("adx14")),
         "rsi14": _f(last.get("rsi14"), 50.0),
         "rs_percentile": _f(sig.rs_percentile, 50.0),
-        "sector_percentile": _f(sector_percentile, 50.0),
+        "sector_return_1d": _f(sector_return_1d),
+        "sector_return_5d": _f(sector_return_5d),
         "atr_pct": _f(last.get("atr_pct")),
         "stop_atr": sig.risk_per_share / atr,
         "room_r": 5.0 if room is None else min(float(room), 5.0),

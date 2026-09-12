@@ -42,6 +42,18 @@ __all__ = [
 
 
 def probability(bundle: ModelBundle, features: dict[str, float]) -> float:
+    """Refuses to score a bundle trained against a different FEATURE_NAMES/FEATURE_VERSION
+    (e.g. a v2 bundle after the v3 sector_return_1d/5d change, 2026-09-13) rather than
+    silently building a DataFrame with mismatched columns - a stale bundle's `.features`
+    list would produce garbage predictions with no error otherwise."""
+    from tradedesk.prediction.features import FEATURE_VERSION
+
+    if bundle.feature_version is not None and bundle.feature_version != FEATURE_VERSION:
+        raise ValueError(
+            f"model {bundle.version} was trained on feature_version="
+            f"{bundle.feature_version!r}, current is {FEATURE_VERSION!r} - retrain before "
+            "scoring with this bundle"
+        )
     X = pd.DataFrame([features], columns=FEATURE_NAMES).astype(float)
     return float(bundle.predict_proba(X)[0])
 

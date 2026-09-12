@@ -459,6 +459,37 @@ def _reference_code(
     return code
 
 
+def _sector_config(store: CandleStore, root: Path) -> tuple[dict[str, str], dict[str, str]]:
+    """NSE-only sector context for prediction/train.py::market_context()'s
+    sector_return_1d/5d (Phase 2, 2026-09-13): reads config/sector_membership.yaml
+    (symbol -> sector index name, curated from real NSE constituent lists - only BANK
+    NIFTY/Nifty Financial are populated, see that file's header comment for why the other
+    7 originally-planned sectors were dropped) and resolves it into the two dicts
+    BacktestConfig needs - `sector_of` (stock scrip_code -> sector name, also reused by
+    backtest/portfolio.py's sector-concentration cap, which was silently dead before this
+    since nothing ever populated it) and `sector_codes` (sector name -> that index's OWN
+    scrip code, so prepare_market() knows which candles to load). Missing/unresolvable
+    entries are silently skipped - same graceful-degradation posture as vix_code."""
+    import yaml
+
+    path = root / "config" / "sector_membership.yaml"
+    if not path.exists():
+        return {}, {}
+    membership: dict[str, list[str]] = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    sector_of: dict[str, str] = {}
+    sector_codes: dict[str, str] = {}
+    for sector_name, symbols in membership.items():
+        sector_code = store.index_code(sector_name)
+        if sector_code is None:
+            continue
+        sector_codes[sector_name] = sector_code
+        for symbol in symbols:
+            code = store.scrip_code_for(symbol, exch="NSE", kind="equity")
+            if code is not None:
+                sector_of[code] = sector_name
+    return sector_of, sector_codes
+
+
 @data_app.command("sync-instruments")
 def data_sync_instruments(db: Path = DB_OPTION, market: str = MARKET_OPTION) -> None:
     """Download the instrument master into the store's instruments table."""
@@ -588,6 +619,17 @@ def data_load(
             vix_code = store.index_code(vix_name) if vix_name else None
             if vix_code and vix_code not in targets:
                 targets.append(vix_code)
+            # Sector indices (config/universe.yaml::sector_indices) feed
+            # prediction/train.py::market_context()'s sector_return_1d/5d features - same
+            # "load the benchmark alongside the universe" pattern as VIX above. NSE only;
+            # BSE has no sector_indices configured (BseMarketConfig has no such field).
+            if market != "bse":
+                for sector_name in settings.universe.sector_indices:
+                    sector_code = store.index_code(sector_name)
+                    if sector_code is None:
+                        typer.echo(f"  WARNING sector index not found in instruments: {sector_name}")  # noqa: E501
+                    elif sector_code not in targets:
+                        targets.append(sector_code)
             if not targets:
                 raise typer.BadParameter("no codes: pass scrip codes or run data sync-instruments")
             typer.echo(
@@ -1247,6 +1289,48 @@ def review(
 
 
 @app.command()
+def ml(
+    what: str = typer.Argument("check-drift", help="check-drift"),
+    shadow_log: Path = typer.Option(Path("data/models/shadow.jsonl"), "--shadow-log"),
+    journal: Path = JOURNAL_OPTION,
+    review_path: Path = typer.Option(Path("data/reviews/queue.jsonl"), "--review-path"),
+    root: Path = ROOT_OPTION,
+) -> None:
+    """Close the loop on prediction/calibration.py::drift_check(): it was a pure function
+    nothing in production ever called. This resolves outcomes for shadow-logged signals and
+    flags a review-queue item (never auto-pauses config/ml.yaml) if a well-populated
+    probability bucket has drifted from reality.
+
+    Outcome proxy: a shadow-logged signal's outcome is read from the NSE paper book
+    (`journal.trades(source="paper")`), not re-derived via the exact triple-barrier rule the
+    model trains on - `r_multiple > 0` is a real, already-resolved economic outcome and a
+    reasonable drift proxy, but it is not literally "hit T1 before the stop". Building the
+    exact triple-barrier resolution for live signals would need the same MarketData/feature
+    pipeline build_dataset() uses for backtests, which is out of scope for closing this one
+    gap - see the ML training plan for why this was scoped as a proxy, not exact."""
+    from tradedesk.journal import Journal
+    from tradedesk.prediction.calibration import check_and_flag_drift
+
+    if what != "check-drift":
+        raise typer.BadParameter("only `ml check-drift` exists")
+    _ = load_config(root)
+    with Journal(journal) as jn:
+        outcomes = {
+            row["signal_id"]: (1 if row["r_multiple"] > 0 else 0)
+            for row in jn.trades(source="paper")
+        }
+    if not outcomes:
+        typer.echo("no resolved paper trades yet; nothing to check")
+        return
+    report = check_and_flag_drift(shadow_log, outcomes, review_path=review_path)
+    typer.echo(f"paused={report.paused}: {report.reason}")
+    for lo, mp, rr, n in report.buckets:
+        typer.echo(f"  bucket {lo:.2f}+: predicted={mp:.2f} realised={rr:.2f} n={n}")
+    if report.paused:
+        typer.echo(f"flagged for review: {review_path}")
+
+
+@app.command()
 def mcp() -> None:
     """Serve the read-only MCP server over stdio (registered in .mcp.json for Claude Code)."""
     from tradedesk.mcp_server import main
@@ -1482,6 +1566,8 @@ def scan(
             day = datetime.strptime(on, "%Y-%m-%d").date()
         cfg = scan_config(settings, day, kinds, market=mkt)
         cfg.vix_code = vix
+        if market == "nse":
+            cfg.sector_of, cfg.sector_codes = _sector_config(store, root)
         codes = [c for c in store.codes(Interval.D1) if c not in (ref, vix)]
         typer.echo(f"scanning {len(codes)} codes as of {day} with {[k.value for k in cfg.setups]}")
         md = prep_market(store, codes, ref, cfg)
@@ -1618,6 +1704,8 @@ def backtest(
             ref = _reference_code(store, root)
             vix = store.index_code(settings.universe.volatility_index)
         cfg.vix_code = vix
+        if market == "nse":
+            cfg.sector_of, cfg.sector_codes = _sector_config(store, root)
         universe = (
             list(codes) if codes else [c for c in store.codes(Interval.D1) if c != ref and c != vix]
         )
@@ -1751,6 +1839,7 @@ def train(
         ref = _reference_code(store, root)
         vix = store.index_code(settings.universe.volatility_index)
         cfg.vix_code = vix
+        cfg.sector_of, cfg.sector_codes = _sector_config(store, root)
         codes = [c for c in store.codes(Interval.D1) if c not in (ref, vix)]
         typer.echo(f"backtesting {len(codes)} codes {start} -> {end} for the dataset")
         md = prepare_market(store, codes, ref, cfg)

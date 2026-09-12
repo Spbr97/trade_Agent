@@ -90,15 +90,25 @@ def build_dataset(md: MarketData, result: BacktestResult, *, max_hold: int = 10)
     return pd.DataFrame(rows, columns=[*META_COLUMNS, *FEATURE_NAMES])
 
 
+def _pct_return_1d_5d(closes: pd.Series, on: date) -> tuple[float | None, float | None]:
+    s = closes.loc[:on].dropna()
+    if len(s) <= 1:
+        return None, None
+    r1 = (float(s.iloc[-1]) / float(s.iloc[-2]) - 1) * 100
+    r5 = (float(s.iloc[-1]) / float(s.iloc[-6]) - 1) * 100 if len(s) > 5 else None
+    return r1, r5
+
+
 def market_context(md: MarketData, code: str, on: date) -> dict[str, Any]:
-    """Breadth, VIX, results proximity and benchmark returns, all as of `on` (nothing after
-    it). `nifty_return_1d/5d` reuse `md.benchmark` - already loaded for the regime
-    calculation, so this is two more return calculations on data already on hand, not a
-    new data pipeline (see FEATURE_VERSION's docstring for why sector_return_1d/5d was
-    NOT added alongside these: there is no stock-to-sector-index mapping or sector-index
-    candle loading anywhere in the codebase today - config/universe.yaml's
-    `sector_indices` list is genuinely unused - so a sector return feature would need real
-    new infrastructure, not a small addition, and was deliberately left out of this pass)."""
+    """Breadth, VIX, results proximity and benchmark/sector returns, all as of `on`
+    (nothing after it). `nifty_return_1d/5d` reuse `md.benchmark` - already loaded for the
+    regime calculation - and `sector_return_1d/5d` (Phase 2, 2026-09-13) reuse
+    `md.sector_of`/`md.sector_candles`, populated from config/sector_membership.yaml via the
+    CLI's `data_load`/`scan_config` call sites - both None when `code`'s stock has no mapped
+    sector or that sector has no loaded candles, the same graceful-degradation pattern as
+    every other optional context value here (see FEATURE_VERSION's docstring: only 2 of the
+    originally-planned 9 sector indices actually have historical data via INDstocks, so
+    coverage here is intentionally partial, not a bug)."""
     breadth = md.breadth.get(on)
     vix_last = vix_chg = None
     if md.vix is not None:
@@ -110,9 +120,11 @@ def market_context(md: MarketData, code: str, on: date) -> dict[str, Any]:
     nifty_1d = nifty_5d = None
     bench_close = md.benchmark["close"].loc[:on].dropna() if "close" in md.benchmark else None
     if bench_close is not None and len(bench_close) > 1:
-        nifty_1d = (float(bench_close.iloc[-1]) / float(bench_close.iloc[-2]) - 1) * 100
-        if len(bench_close) > 5:
-            nifty_5d = (float(bench_close.iloc[-1]) / float(bench_close.iloc[-6]) - 1) * 100
+        nifty_1d, nifty_5d = _pct_return_1d_5d(bench_close, on)
+    sector_1d = sector_5d = None
+    sector_name = md.sector_of.get(code)
+    if sector_name and sector_name in md.sector_candles:
+        sector_1d, sector_5d = _pct_return_1d_5d(md.sector_candles[sector_name], on)
     return {
         "breadth_pct": float(breadth) if breadth is not None and pd.notna(breadth) else None,
         "vix": vix_last,
@@ -120,6 +132,8 @@ def market_context(md: MarketData, code: str, on: date) -> dict[str, Any]:
         "sessions_to_results": _sessions_to_results(md, code, on),
         "nifty_return_1d": nifty_1d,
         "nifty_return_5d": nifty_5d,
+        "sector_return_1d": sector_1d,
+        "sector_return_5d": sector_5d,
     }
 
 
@@ -381,6 +395,135 @@ def xgboost_hyperparameters(seed: int = DEFAULT_SEED) -> dict[str, Any]:
     }
 
 
+# ---------------------------------------------------- hyperparameter grids (tuning)
+#
+# Small, fixed grids - not optuna/hyperopt, ParameterGrid-style manual loops are enough on a
+# dataset this size and keep everything deterministic under `seed`. Each grid entry is
+# (hyperparameters actually used, the fitted-estimator prototype) so the winning entry's
+# hyperparameters can be recorded verbatim in the saved artifact, rather than a fixed
+# constant that may not match what was actually chosen.
+
+
+def _baseline_grid(seed: int) -> list[tuple[dict[str, Any], Any]]:
+    from sklearn.calibration import CalibratedClassifierCV
+    from sklearn.linear_model import LogisticRegression
+    from sklearn.pipeline import make_pipeline
+    from sklearn.preprocessing import StandardScaler
+
+    out = []
+    for c in (0.1, 0.3, 0.5, 1.0, 3.0):
+        base = make_pipeline(StandardScaler(), LogisticRegression(C=c, max_iter=1000, random_state=seed))  # noqa: E501
+        hp = {"C": c, "max_iter": 1000, "random_state": seed, "calibration": "sigmoid", "cv": 3}
+        out.append((hp, CalibratedClassifierCV(base, method="sigmoid", cv=_cv(seed))))
+    return out
+
+
+def _lightgbm_grid(seed: int) -> list[tuple[dict[str, Any], Any]]:
+    try:
+        from lightgbm import LGBMClassifier
+        from sklearn.calibration import CalibratedClassifierCV
+    except Exception:  # noqa: BLE001 - optional dependency (Smart App Control may block it)
+        return []
+    out = []
+    for n in (100, 200, 400):
+        for nl in (7, 15, 31):
+            hp = {
+                "n_estimators": n, "learning_rate": 0.03, "num_leaves": nl,
+                "min_child_samples": 20, "random_state": seed, "calibration": "isotonic", "cv": 3,
+            }  # fmt: skip
+            model = CalibratedClassifierCV(
+                LGBMClassifier(
+                    n_estimators=n, learning_rate=0.03, num_leaves=nl,
+                    min_child_samples=20, random_state=seed, verbose=-1,
+                ),  # fmt: skip
+                method="isotonic", cv=_cv(seed),
+            )
+            out.append((hp, model))
+    return out
+
+
+def _xgboost_grid(seed: int) -> list[tuple[dict[str, Any], Any]]:
+    try:
+        from sklearn.calibration import CalibratedClassifierCV
+        from xgboost import XGBClassifier
+    except Exception:  # noqa: BLE001 - optional dependency (Smart App Control may block it)
+        return []
+    out = []
+    for n in (100, 200, 400):
+        for d in (3, 4, 6):
+            hp = {
+                "n_estimators": n, "learning_rate": 0.03, "max_depth": d, "min_child_weight": 5,
+                "subsample": 0.8, "colsample_bytree": 0.8, "random_state": seed,
+                "calibration": "isotonic", "cv": 3,
+            }  # fmt: skip
+            model = CalibratedClassifierCV(
+                XGBClassifier(
+                    n_estimators=n, learning_rate=0.03, max_depth=d, min_child_weight=5,
+                    subsample=0.8, colsample_bytree=0.8, random_state=seed, eval_metric="logloss",
+                ),  # fmt: skip
+                method="isotonic", cv=_cv(seed),
+            )
+            out.append((hp, model))
+    return out
+
+
+def _coefficients_of(model: Any, features: Sequence[str]) -> dict[str, float] | None:
+    """Free-function version of ModelBundle.coefficients() that takes a raw fitted
+    estimator instead of `self` - lets the per-fold tuning/stability loop in train() reuse
+    the exact same reflection logic the saved bundle uses, instead of a second copy."""
+    try:
+        cals = model.calibrated_classifiers_
+        coefs = np.mean([c.estimator[-1].coef_[0] for c in cals], axis=0)
+        return dict(zip(features, (float(x) for x in coefs), strict=True))
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _feature_importance_of(model: Any, features: Sequence[str]) -> dict[str, float] | None:
+    """Free-function version of ModelBundle.feature_importance() - see _coefficients_of()."""
+    coefs = _coefficients_of(model, features)
+    if coefs is not None:
+        return dict(sorted(coefs.items(), key=lambda kv: -abs(kv[1])))
+    try:
+        cals = model.calibrated_classifiers_
+        vals = np.mean([c.estimator.feature_importances_ for c in cals], axis=0)
+        ranked = sorted(
+            zip(features, (float(x) for x in vals), strict=True), key=lambda kv: -kv[1]
+        )
+        return dict(ranked)
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _feature_stability(
+    fold_importances: list[dict[str, float]], top_n: int = 10
+) -> tuple[dict[str, list[float]], list[str]]:
+    """Per-feature importance across walk-forward folds for the WINNING model, not just the
+    single final refit - `feature_importance()` used to run once, on one fit, which is
+    exactly why a sign anomaly (e.g. rs_percentile's coefficient pointing the "wrong" way -
+    see the sanity check below) could be fold noise or a real problem and nobody could tell
+    which. Returns (top-N per-feature value lists by mean |importance|, human-readable
+    sign-flip warnings) - a feature whose sign differs across folds is flagged explicitly
+    rather than silently averaged away."""
+    if not fold_importances:
+        return {}, []
+    all_features: set[str] = set()
+    for d in fold_importances:
+        all_features.update(d.keys())
+    per_feature = {f: [d.get(f, 0.0) for d in fold_importances] for f in all_features}
+    warnings = []
+    for f, vals in per_feature.items():
+        pos = sum(1 for v in vals if v > 0)
+        neg = sum(1 for v in vals if v < 0)
+        if pos and neg:
+            warnings.append(
+                f"unstable sign: {f} (+ in {pos} fold{'s' if pos != 1 else ''}, "
+                f"- in {neg} fold{'s' if neg != 1 else ''}) - treat with caution"
+            )
+    ranked = sorted(per_feature.items(), key=lambda kv: -float(np.mean([abs(v) for v in kv[1]])))
+    return dict(ranked[:top_n]), warnings
+
+
 @dataclass
 class ModelBundle:
     version: str
@@ -398,18 +541,15 @@ class ModelBundle:
     random_seed: int | None = None
     final_test: dict[str, Any] | None = None
     threshold_grid: list[dict[str, Any]] = field(default_factory=list)
+    per_setup: dict[str, dict[str, Any]] | None = None
+    feature_stability: dict[str, list[float]] | None = None
 
     def predict_proba(self, X: pd.DataFrame) -> np.ndarray:
         return np.asarray(self.model.predict_proba(X[self.features].to_numpy(dtype=float))[:, 1])
 
     def coefficients(self) -> dict[str, float] | None:
         """Baseline coefficients (mean over calibration folds) for the sanity check."""
-        try:
-            cals = self.model.calibrated_classifiers_
-            coefs = np.mean([c.estimator[-1].coef_[0] for c in cals], axis=0)
-            return dict(zip(self.features, (float(x) for x in coefs), strict=True))
-        except Exception:  # noqa: BLE001
-            return None
+        return _coefficients_of(self.model, self.features)
 
     def feature_importance(self) -> dict[str, float] | None:
         """Ranked, model-kind-agnostic: logistic's own coefficients (by magnitude) if this
@@ -417,18 +557,7 @@ class ModelBundle:
         expose it identically on the raw estimator). None if neither is reachable, rather
         than fabricating a ranking - feature importance is not proof of causality either
         way, it just answers "what is the model actually using"."""
-        coefs = self.coefficients()
-        if coefs is not None:
-            return dict(sorted(coefs.items(), key=lambda kv: -abs(kv[1])))
-        try:
-            cals = self.model.calibrated_classifiers_
-            vals = np.mean([c.estimator.feature_importances_ for c in cals], axis=0)
-            ranked = sorted(
-                zip(self.features, (float(x) for x in vals), strict=True), key=lambda kv: -kv[1]
-            )
-            return dict(ranked)
-        except Exception:  # noqa: BLE001
-            return None
+        return _feature_importance_of(self.model, self.features)
 
     def save(self, folder: Path) -> Path:
         folder.mkdir(parents=True, exist_ok=True)
@@ -452,9 +581,11 @@ class ModelBundle:
                     "random_seed": self.random_seed,
                     "final_test": self.final_test,
                     "threshold_grid": self.threshold_grid,
+                    "per_setup": self.per_setup,
                     "feature_importance": (
                         dict(list((importance or {}).items())[:10])
                     ),
+                    "feature_stability": self.feature_stability,
                 },
                 indent=2,
                 default=str,
@@ -517,6 +648,34 @@ def select_threshold(
     return float(best["threshold"]), rows, has_edge
 
 
+def per_setup_breakdown(
+    setups: np.ndarray,
+    mask: np.ndarray,
+    oos_p: np.ndarray,
+    y: np.ndarray,
+    r: np.ndarray,
+    threshold: float,
+    min_above: int = 20,
+) -> dict[str, dict[str, Any]]:
+    """The pooled OOS number (`oos` in train()) can hide a real edge in one setup under
+    noise from another - a single 0.556 AUC could mean every setup is equally weak, or it
+    could mean one setup works and the others are dragging it down. Runs the exact same
+    evaluate()/select_threshold() machinery `train()` already uses, once per setup, on
+    validation-fold OOS predictions only (never the locked final test set - same rule as
+    everywhere else in this module). A setup with fewer than `min_above` resolved OOS rows
+    is skipped rather than reported with a single-digit-sample AUC that would look precise
+    but mean nothing."""
+    out: dict[str, dict[str, Any]] = {}
+    for setup in sorted(set(setups[mask])):
+        sel = mask & (setups == setup)
+        if int(sel.sum()) < min_above:
+            continue
+        m = evaluate(y[sel], oos_p[sel], r[sel], threshold)
+        _, _, has_edge = select_threshold(y[sel], oos_p[sel], r[sel], min_above=min_above)
+        out[setup] = {**m.to_dict(), "has_edge": has_edge}
+    return out
+
+
 @dataclass
 class TrainReport:
     folds: list[dict[str, Any]]
@@ -526,6 +685,7 @@ class TrainReport:
     notes: list[str]
     final_test: Metrics | None = None
     threshold_grid: list[dict[str, Any]] | None = None
+    per_setup: dict[str, dict[str, Any]] | None = None
 
     def text(self) -> str:
         lines = [f"folds: {len(self.folds)}"]
@@ -539,6 +699,14 @@ class TrainReport:
             lines.append(f"validation (walk-forward, used for model/threshold selection): {o}")
         if self.threshold_grid:
             lines.append(f"threshold grid (validation only): {self.threshold_grid}")
+        if self.per_setup:
+            lines.append("per-setup breakdown (validation, min_above-eligible setups only):")
+            for setup, m in self.per_setup.items():
+                lines.append(
+                    f"  {setup}: auc={m.get('roc_auc')} "
+                    f"expectancy_above_r={m['expectancy_above_r']:+.3f} "
+                    f"n_above={m['n_above']} has_edge={m['has_edge']}"
+                )
         if self.final_test:
             lines.append(f"FINAL TEST (locked, scored once): {self.final_test.to_dict()}")
         if self.plain_expectancy_above_r is not None:
@@ -599,45 +767,66 @@ def train(
             [], None, None, None, ["not enough history for a purged walk-forward split"]
         )
 
-    candidates: list[tuple[str, Any]] = [("logistic", make_baseline(seed))]
-    lgb = make_lightgbm(seed) if prefer_lightgbm else None
-    if lgb is not None:
-        candidates.append(("lightgbm", lgb))
-    else:
-        notes.append("lightgbm not available; baseline only")
-    xgb = make_xgboost(seed) if prefer_xgboost else None
-    if xgb is not None:
-        candidates.append(("xgboost", xgb))
-    else:
-        notes.append("xgboost not available")
+    # Hyperparameter tuning (Phase 1.1, 2026-09-13): each kind now searches a small grid
+    # instead of one fixed, guessed config, scored the same way model-selection already
+    # worked (lowest pooled OOS Brier across the dev-only walk-forward folds) - never the
+    # locked final test set. This is a straightforward widening of "pick among 3 fixed
+    # models" to "pick among 3 families x a small grid of settings per family", using the
+    # exact same folds/brier/OOS-prediction machinery, so it introduces no new leakage
+    # surface. Along the way, also collect each fold's feature importance for the eventual
+    # winner (Phase 1.3) - see _feature_stability().
+    grids: dict[str, list[tuple[dict[str, Any], Any]]] = {"logistic": _baseline_grid(seed)}
+    if prefer_lightgbm:
+        lgb_grid = _lightgbm_grid(seed)
+        if lgb_grid:
+            grids["lightgbm"] = lgb_grid
+        else:
+            notes.append("lightgbm not available; baseline only")
+    if prefer_xgboost:
+        xgb_grid = _xgboost_grid(seed)
+        if xgb_grid:
+            grids["xgboost"] = xgb_grid
+        else:
+            notes.append("xgboost not available")
 
-    results: dict[str, tuple[list[dict[str, Any]], np.ndarray, np.ndarray]] = {}
-    for kind, proto in candidates:
-        fold_rows = []
-        oos_p = np.full(len(y), np.nan)
-        for f in folds:
-            model = _clone(proto)
-            if len(np.unique(y[f.train_idx])) < 2:
-                continue
-            model.fit(X[f.train_idx], y[f.train_idx])
-            p = model.predict_proba(X[f.test_idx])[:, 1]
-            oos_p[f.test_idx] = p
-            m = evaluate(y[f.test_idx], p, r[f.test_idx], threshold)
-            fold_rows.append({"test_start": f.test_start, "test_end": f.test_end, **m.to_dict()})
-        mask = np.isfinite(oos_p)
-        results[kind] = (fold_rows, oos_p, mask)
+    # kind -> (hp, proto, fold_rows, oos_p, mask, fold_importances) for the WINNING config
+    # within that kind (selected by pooled OOS Brier among the kind's own grid).
+    per_kind_best: dict[str, tuple[dict[str, Any], Any, list[dict[str, Any]], np.ndarray, np.ndarray, list[dict[str, float]]]] = {}  # noqa: E501
+    for kind, grid in grids.items():
+        kind_candidates = []
+        for hp, proto in grid:
+            fold_rows = []
+            oos_p = np.full(len(y), np.nan)
+            fold_importances = []
+            for f in folds:
+                model = _clone(proto)
+                if len(np.unique(y[f.train_idx])) < 2:
+                    continue
+                model.fit(X[f.train_idx], y[f.train_idx])
+                p = model.predict_proba(X[f.test_idx])[:, 1]
+                oos_p[f.test_idx] = p
+                m = evaluate(y[f.test_idx], p, r[f.test_idx], threshold)
+                fold_rows.append({"test_start": f.test_start, "test_end": f.test_end, **m.to_dict()})  # noqa: E501
+                imp = _feature_importance_of(model, FEATURE_NAMES)
+                if imp is not None:
+                    fold_importances.append(imp)
+            config_mask = np.isfinite(oos_p)
+            brier = float(np.mean((oos_p[config_mask] - y[config_mask]) ** 2)) if config_mask.any() else 1.0  # noqa: E501
+            kind_candidates.append((brier, hp, proto, fold_rows, oos_p, config_mask, fold_importances))  # noqa: E501
+        winner = min(kind_candidates, key=lambda t: t[0])
+        per_kind_best[kind] = winner[1:]
 
     def brier_of(kind: str) -> float:
-        rows, p, mask = results[kind]
+        _, _, _, p, mask, _ = per_kind_best[kind]
         return float(np.mean((p[mask] - y[mask]) ** 2)) if mask.any() else 1.0
 
-    best = min(results, key=brier_of)
+    best = min(per_kind_best, key=brier_of)
     if best != "logistic":
         notes.append(
             f"{best} beat the baseline out of sample "
             f"({brier_of(best):.4f} vs {brier_of('logistic'):.4f})"
         )
-    rows, oos_p, mask = results[best]
+    best_hp, best_proto, rows, oos_p, mask, best_fold_importances = per_kind_best[best]
 
     # Phase 2c: threshold selection on validation (dev walk-forward OOS) predictions ONLY -
     # never on the final test set reserved above, or the "lock before final test" guarantee
@@ -657,13 +846,26 @@ def train(
 
     oos = evaluate(y[mask], oos_p[mask], r[mask], chosen_threshold) if mask.any() else None
 
+    # Per-setup breakdown (Phase 1.2): the pooled `oos` above can hide a real edge in one
+    # setup under noise from another - see per_setup_breakdown()'s docstring.
+    per_setup = (
+        per_setup_breakdown(dev_df["setup"].to_numpy(), mask, oos_p, y, r, chosen_threshold)
+        if mask.any() and "setup" in dev_df.columns
+        else None
+    )
+
+    # Feature-importance stability across folds (Phase 1.3), for the winning kind only -
+    # see _feature_stability()'s docstring for why this matters.
+    stability, stability_warnings = _feature_stability(best_fold_importances)
+    notes.extend(stability_warnings)
+
     plain_above = None
     if dev_df["plain_score"].notna().any():
         ps = dev_df["plain_score"].to_numpy(dtype=float)
         top = np.isfinite(r) & (ps >= np.nanmedian(ps))
         plain_above = float(r[top].mean()) if top.any() else None
 
-    final = _clone(dict(candidates)[best])
+    final = _clone(best_proto)
     final.fit(X, y)
 
     # Score the locked final test set exactly once, with the already-chosen model and
@@ -677,11 +879,6 @@ def train(
         pf = final.predict_proba(Xf)[:, 1]
         final_metrics = evaluate(yf, pf, rf, chosen_threshold)
 
-    hp_fn = {
-        "logistic": baseline_hyperparameters,
-        "lightgbm": lightgbm_hyperparameters,
-        "xgboost": xgboost_hyperparameters,
-    }[best]
     bundle = ModelBundle(
         version=datetime.now(IST).strftime("%Y%m%d-%H%M%S"),
         model=final,
@@ -694,10 +891,12 @@ def train(
         training_data_range=(str(min(dates)), str(max(dates))) if dates else None,
         feature_version=FEATURE_VERSION,
         target_definition={"labeling": "triple_barrier", "max_hold": max_hold},
-        hyperparameters=hp_fn(seed),
+        hyperparameters=best_hp,
         random_seed=seed,
         final_test=final_metrics.to_dict() if final_metrics else None,
         threshold_grid=threshold_grid,
+        per_setup=per_setup,
+        feature_stability=stability or None,
     )
     coefs = bundle.coefficients()
     if coefs is not None:
@@ -707,7 +906,7 @@ def train(
                     f"sanity: coefficient of {name} has an unexpected sign ({coefs[name]:+.3f})"
                 )
     bundle.notes = notes
-    return TrainReport(rows, oos, plain_above, bundle, notes, final_test=final_metrics, threshold_grid=threshold_grid)  # noqa: E501
+    return TrainReport(rows, oos, plain_above, bundle, notes, final_test=final_metrics, threshold_grid=threshold_grid, per_setup=per_setup)  # noqa: E501
 
 
 def _clone(model: Any) -> Any:

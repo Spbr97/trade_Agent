@@ -7,14 +7,13 @@ atr_pct_band:
   max: 0.05
 exclude_surveillance: true             # ASM / GSM lists
 benchmark: NIFTY 50
-sector_indices:
-  - NIFTY BANK
-  - NIFTY IT
-  - NIFTY AUTO
-  - NIFTY PHARMA
-  - NIFTY FMCG
-  - NIFTY METAL
-  - NIFTY REALTY
-  - NIFTY ENERGY
-  - NIFTY FIN SERVICE
+sector_indices:                        # must match the feed's trading_symbol exactly
+  # Verified against the live INDstocks historical-candle API 2026-09-13: only these 2 of
+  # the original 9 configured sector indices actually return history - NIFTY IT/AUTO/
+  # PHARMA/FMCG/METAL/REALTY/ENERGY exist in the instruments table (so they resolve via
+  # index_code) but the historical endpoint rejects all 7 with "Invalid scrip codes",
+  # consistently, regardless of date range. The other 7 were removed here rather than left
+  # in to fail silently on every `data load` run.
+  - BANK NIFTY                         # feed calls it this, not "NIFTY BANK"
+  - Nifty Financial                    # feed calls it this, not "NIFTY FIN SERVICE"
 volatility_index: INDIA VIX
