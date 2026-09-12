@@ -96,12 +96,13 @@ def main() -> None:
         newly_resolved = resolve_outcomes(store, rows, MAX_HOLD)
         save_log(rows, LOG)
         save_dashboard("crypto", rows, DASHBOARD)
-        report = render_session_report("Crypto", day, new_rows, newly_resolved, rows)
-        report_path = save_session_report(day, report, SESSIONS_DIR)
+        run_at = datetime.now(IST).strftime("%H:%M IST")
+        report = render_session_report("Crypto", day, new_rows, newly_resolved, rows, run_at=run_at)  # noqa: E501
+        report_path = save_session_report(day, report, SESSIONS_DIR, append=True)
         flagged = flag_setup_failures("crypto", rows)
         print(
-            f"{day}: {len(wl.entries)} signals detected "
-            f"({len(wl.active)} would be tradeable, {len(new_rows)} new today), "
+            f"{day} run at {run_at}: {len(wl.entries)} signals detected "
+            f"({len(wl.active)} would be tradeable, {len(new_rows)} new this run), "
             f"{len(newly_resolved)} newly resolved"
         )
         print(scoreboard(rows))

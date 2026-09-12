@@ -153,8 +153,20 @@ def render_session_report(
     new_rows: list[TrackedSignal],
     newly_resolved: list[TrackedSignal],
     rows: dict[str, TrackedSignal],
+    *,
+    run_at: str | None = None,
 ) -> str:
-    lines = [f"# {market} session report - {day.isoformat()}", "", f"New calls today: {len(new_rows)}"]  # noqa: E501
+    """`run_at` (e.g. "13:02 IST") labels one check within a day for markets that run
+    more than once daily (crypto: 3x/day - see scripts/crypto_signal_tracker.py). Since
+    crypto's setups are daily-bar only, a later same-day run typically finds 0 new calls
+    (the daily candle hasn't advanced) - that's expected, not a bug, and worth saying
+    plainly rather than leaving the reader to wonder why nothing new showed up."""
+    header = f"# {market} session report - {day.isoformat()}"
+    if run_at:
+        header += f" (run at {run_at})"
+    lines = [header, "", f"New calls this run: {len(new_rows)}"]
+    if not new_rows and run_at:
+        lines.append("  (expected on a later same-day run - the daily candle hasn't advanced yet)")  # noqa: E501
     for r in new_rows:
         tradeable = "tradeable" if not r.rejected_for else f"rejected ({', '.join(r.rejected_for)})"
         lines.append(
@@ -175,10 +187,16 @@ def render_session_report(
     return "\n".join(lines)
 
 
-def save_session_report(day: date, text: str, sessions_dir: Path) -> Path:
+def save_session_report(day: date, text: str, sessions_dir: Path, *, append: bool = False) -> Path:
+    """`append=True` (crypto's multiple-runs-per-day case) adds this run's report to the
+    day's existing file instead of overwriting it, so a day with 3 checks shows all 3 in
+    one place rather than the earlier runs vanishing when the last one overwrites them."""
     sessions_dir.mkdir(parents=True, exist_ok=True)
     path = sessions_dir / f"{day.isoformat()}.md"
-    path.write_text(text, encoding="utf-8")
+    if append and path.exists():
+        path.write_text(path.read_text(encoding="utf-8") + "\n---\n\n" + text, encoding="utf-8")
+    else:
+        path.write_text(text, encoding="utf-8")
     return path
 
 
