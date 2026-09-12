@@ -125,6 +125,16 @@ def market_context(md: MarketData, code: str, on: date) -> dict[str, Any]:
     sector_name = md.sector_of.get(code)
     if sector_name and sector_name in md.sector_candles:
         sector_1d, sector_5d = _pct_return_1d_5d(md.sector_candles[sector_name], on)
+    # PLANNED, NOT BUILT - options context (`nifty_atm_iv`, `nifty_pcr`). scripts/
+    # options_snapshot.py has been appending ATM implied volatility and the put/call OI
+    # ratio to data/reports/options_snapshot.jsonl daily since 2026-09-13; once that log
+    # has a few months of history, those two could join here exactly the way `vix` does
+    # above (a `.loc[:on]` lookup against a loaded series). They are deliberately NOT in
+    # FEATURE_NAMES yet: INDstocks has no HISTORICAL option-chain endpoint, only a live
+    # one, so every already-labelled signal in the training set predates the snapshot log
+    # and would get None for 100% of training rows - that is noise, not a feature. Revisit
+    # when the log covers a meaningful slice of the dataset's date range.
+
     return {
         "breadth_pct": float(breadth) if breadth is not None and pd.notna(breadth) else None,
         "vix": vix_last,

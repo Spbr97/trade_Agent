@@ -28,6 +28,7 @@ from tradedesk.engine.scoring import Grade
 from tradedesk.engine.signals import SetupKind, Signal
 from tradedesk.prediction import (
     FEATURE_NAMES,
+    FEATURE_VERSION,
     ModelBundle,
     apply_probability,
     build_dataset,
@@ -140,6 +141,63 @@ def test_features_have_every_name_and_never_look_ahead() -> None:
     assert f_full_slice["setup_base_breakout"] == 1.0 and f_full_slice["regime_risk_on"] == 1.0
     assert f_full_slice["base_tests"] == 2.0 and f_full_slice["inside_day"] == 1.0
     assert to_frame([f_full_slice]).shape == (1, len(FEATURE_NAMES))
+
+
+def _market_data_with_sector(sector_name: str = "BANK NIFTY") -> object:
+    """Minimal MarketData stand-in for market_context()'s sector-return path. Only the
+    attributes market_context() actually reads are populated."""
+    from types import SimpleNamespace
+
+    idx = pd.Index([date(2026, 3, 1) + timedelta(days=i) for i in range(10)])
+    # a series that JUMPS after the arming date - if market_context leaked, the computed
+    # return would pick up the jump instead of the pre-arming value
+    closes = pd.Series([100.0, 101.0, 102.0, 103.0, 104.0, 105.0, 900.0, 901.0, 902.0, 903.0], index=idx)  # noqa: E501
+    return SimpleNamespace(
+        breadth=pd.Series(dtype=float),
+        vix=None,
+        benchmark=pd.DataFrame(),
+        results_dates={},
+        calendar=list(idx),
+        sector_of={"NSE_1": sector_name},
+        sector_candles={sector_name: closes},
+    )
+
+
+def test_sector_return_never_looks_past_the_arming_date() -> None:
+    """market_context()'s sector-return path has its own leakage surface (a `.loc[:on]`
+    slice), separate from signal_features() - the generic feature leakage test above
+    cannot reach it, since the value arrives pre-computed."""
+    from tradedesk.prediction.train import market_context
+
+    md = _market_data_with_sector()
+    on = date(2026, 3, 6)  # index position 5 (close 105.0); the 900.0 jump is the NEXT day
+    ctx = market_context(md, "NSE_1", on)  # type: ignore[arg-type]
+    # 1-day return as of `on` is 105/104 - 1, NOT anything involving the 900 jump after it
+    assert ctx["sector_return_1d"] == pytest.approx((105.0 / 104.0 - 1) * 100)
+    assert ctx["sector_return_5d"] == pytest.approx((105.0 / 100.0 - 1) * 100)
+
+
+def test_sector_return_is_none_for_an_unmapped_symbol() -> None:
+    """A stock with no curated sector (only ~29 are mapped, and only 2 sector indices have
+    real history) degrades to None -> the feature's 0.0 default, never a crash."""
+    from tradedesk.prediction.train import market_context
+
+    md = _market_data_with_sector()
+    ctx = market_context(md, "NSE_UNMAPPED", date(2026, 3, 6))  # type: ignore[arg-type]
+    assert ctx["sector_return_1d"] is None and ctx["sector_return_5d"] is None
+    f = signal_features(sig(), feature_frame(60).iloc[:40], **ctx)  # type: ignore[arg-type]
+    assert f["sector_return_1d"] == 0.0 and f["sector_return_5d"] == 0.0
+
+
+def test_sector_return_is_none_when_the_sector_has_no_loaded_candles() -> None:
+    """Mapped to a sector whose index candles were never loaded (7 of the 9 configured
+    sector indices have no history available via INDstocks at all)."""
+    from tradedesk.prediction.train import market_context
+
+    md = _market_data_with_sector()
+    md.sector_of = {"NSE_1": "NIFTY IT"}  # type: ignore[attr-defined]  # mapped, but no candles
+    ctx = market_context(md, "NSE_1", date(2026, 3, 6))  # type: ignore[arg-type]
+    assert ctx["sector_return_1d"] is None and ctx["sector_return_5d"] is None
 
 
 # ---------------------------------------------------------- walk-forward
@@ -345,10 +403,35 @@ def test_artifact_json_has_every_field_the_bundle_promises(tmp_path: Path) -> No
         "version", "kind", "threshold", "oos", "trained_on", "notes", "feature_list",
         "training_data_range", "feature_version", "target_definition", "hyperparameters",
         "random_seed", "final_test", "threshold_grid", "feature_importance",
+        "per_setup", "feature_stability",
     ):  # fmt: skip
         assert key in payload, f"missing artifact field: {key}"
     assert payload["target_definition"]["max_hold"] == 10
     assert payload["random_seed"] == rep.bundle.random_seed
+    assert payload["feature_version"] == FEATURE_VERSION
+    # tuned, not a fixed constant: the winning grid entry's own hyperparameters
+    assert payload["hyperparameters"]["random_state"] == rep.bundle.random_seed
+
+
+def test_a_stale_feature_version_bundle_is_refused_not_silently_misscored() -> None:
+    """v3 replaced sector_percentile with sector_return_1d/5d. Scoring a v2-trained bundle
+    against v3 features would silently produce garbage (mismatched columns, no error), so
+    probability() refuses outright. A bundle with no recorded feature_version (pre-dating
+    that field) is still allowed through, for backward compatibility."""
+    rep = train(
+        synthetic_dataset(), n_splits=4, embargo_sessions=10,
+        prefer_lightgbm=False, prefer_xgboost=False,
+    )  # fmt: skip
+    assert rep.bundle is not None
+    f = dict.fromkeys(FEATURE_NAMES, 0.0)
+    assert 0.0 <= probability(rep.bundle, f) <= 1.0  # current version scores fine
+
+    rep.bundle.feature_version = "v2"
+    with pytest.raises(ValueError, match="feature_version"):
+        probability(rep.bundle, f)
+
+    rep.bundle.feature_version = None  # an old artifact without the field: still allowed
+    assert 0.0 <= probability(rep.bundle, f) <= 1.0
 
 
 def test_feature_importance_is_ranked_and_works_for_the_logistic_baseline() -> None:
