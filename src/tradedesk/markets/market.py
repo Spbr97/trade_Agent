@@ -25,7 +25,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import time
 
-from tradedesk.config.models import Settings
+from tradedesk.config.models import AtrBand, Settings
 from tradedesk.data.universe import UniverseRules
 from tradedesk.live.models import SessionRules
 from tradedesk.markets.costs import CostModel, CryptoCostModel, EquityCostModel
@@ -39,6 +39,7 @@ class Market:
     session_rules: SessionRules
     universe_rules: UniverseRules
     benchmark_name: str  # the reference instrument the calendar and regime derive from
+    atr_pct_band: AtrBand | None = None  # None: engine/filters.py skips the ATR-band check
 
 
 def nse_market(settings: Settings) -> Market:
@@ -57,6 +58,7 @@ def nse_market(settings: Settings) -> Market:
             min_price=float(settings.universe.min_price),
         ),
         benchmark_name=settings.universe.benchmark,
+        atr_pct_band=settings.universe.atr_pct_band,
     )
 
 
@@ -65,7 +67,9 @@ def crypto_market(settings: Settings) -> Market:
     (00:00-23:59, no-entry/late-trigger windows disabled) - not yet meaningfully
     exercised, since only daily crypto candles are loaded so far (Phase 3) and
     confirm_trigger only binds when intraday bars exist. Revisit once crypto intraday
-    data lands (Phase 5, live feed)."""
+    data lands (Phase 5, live feed). `atr_pct_band` is left None: no crypto-calibrated
+    band exists yet, so engine/filters.py skips that check for this market entirely
+    rather than applying NSE's."""
     cfg = settings.crypto_market
     return Market(
         name="crypto",

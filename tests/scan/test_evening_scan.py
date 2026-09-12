@@ -16,6 +16,7 @@ from tradedesk.engine.filters import apply_filters
 from tradedesk.engine.lifecycle import SignalState
 from tradedesk.engine.scoring import Grade, ScoreInputs, TrackRecord, score_signal
 from tradedesk.engine.signals import SetupKind, Signal
+from tradedesk.markets import EquityCostModel
 from tradedesk.scan import (
     OpenPositionInfo,
     build_watchlist,
@@ -102,21 +103,24 @@ def test_score_grades_and_components() -> None:
 def test_filters_reasons_and_net_rr() -> None:
     risk = RiskConfig(trading_capital=100000)  # type: ignore[arg-type]
     uni = UniverseConfig()
-    ok = apply_filters(
-        sig(), qty=50, atr_pct=2.5, avg_turnover=1e8, regime="risk_on", risk=risk, universe=uni
+    costs = EquityCostModel(risk.costs)
+    common = dict(
+        costs=costs,
+        min_net_rr=risk.min_net_rr,
+        min_avg_daily_turnover_inr=uni.min_avg_daily_turnover_inr,
+        atr_pct_band=uni.atr_pct_band,
     )
+    ok = apply_filters(sig(), qty=50, atr_pct=2.5, avg_turnover=1e8, regime="risk_on", **common)  # type: ignore[arg-type]
     assert ok.ok and ok.net_rr_t2 is not None and ok.net_rr_t2 > 2.0 and ok.net_rr_t1 is not None
     bad = apply_filters(
-        sig(t2=104.0), qty=50, atr_pct=7.0, avg_turnover=1e6, regime="risk_off", risk=risk,
-        universe=uni, surveillance={"ONE": "ASM"}, upper_circuit=100.2,
-    )  # fmt: skip
+        sig(t2=104.0), qty=50, atr_pct=7.0, avg_turnover=1e6, regime="risk_off",
+        surveillance={"ONE": "ASM"}, upper_circuit=100.2, **common,
+    )  # type: ignore[arg-type]  # fmt: skip
     assert not bad.ok
     joined = " ".join(bad.reasons)
     for word in ("turnover", "ATR", "ASM", "circuit", "risk_off", "net R:R"):
         assert word in joined, word
-    none = apply_filters(
-        sig(), qty=0, atr_pct=None, avg_turnover=None, regime=None, risk=risk, universe=uni
-    )
+    none = apply_filters(sig(), qty=0, atr_pct=None, avg_turnover=None, regime=None, **common)  # type: ignore[arg-type]
     assert none.ok and none.net_rr_t2 is None
 
 

@@ -876,7 +876,11 @@ def journal_exit(
             pos.stop = max(pos.stop, pos.entry_price)
             jn.record_stop_update(signal_id, day, old, pos.stop, "partial -> breakeven")
         if pos.closed:
-            pf = Portfolio(risk=settings.risk, costs=settings.risk.costs, equity=1.0)
+            from tradedesk.markets import EquityCostModel
+
+            pf = Portfolio(
+                risk=settings.risk, costs=EquityCostModel(settings.risk.costs), equity=1.0
+            )
             trade = pf.settle(pos)
             jn.record_trade(trade, source="live")
             ts = jn.load_signal(signal_id)
@@ -1249,20 +1253,28 @@ def scan(
     db: Path = DB_OPTION,
     journal: Path = JOURNAL_OPTION,
     root: Path = ROOT_OPTION,
+    market: str = MARKET_OPTION,
 ) -> None:
     """Evening scan: build, print and save tomorrow's watchlist from stored daily candles.
     With Claude enabled (config or --claude), the top setups get a three-line chart read."""
     from tradedesk.alerts.charts import render_signal_chart
-    from tradedesk.backtest.runner import prepare_market
+    from tradedesk.backtest.runner import prepare_market as prep_market
     from tradedesk.broker.indstocks.models import Interval
     from tradedesk.engine.signals import SetupKind
+    from tradedesk.markets import crypto_market, nse_market
     from tradedesk.scan import build_watchlist, render_text, save_watchlist, scan_config
 
     settings = load_config(root)
+    db = _resolve_db(db, market)
+    mkt = crypto_market(settings) if market == "crypto" else nse_market(settings)
     kinds = [SetupKind(k) for k in setup] if setup else None
     with _store(db) as store:
-        ref = _reference_code(store, root)
-        vix = store.index_code(settings.universe.volatility_index)
+        if market == "crypto":
+            ref = f"{mkt.code_prefix}{mkt.benchmark_name}"  # CDX_BTCINR - trades every day
+            vix = None
+        else:
+            ref = _reference_code(store, root)
+            vix = store.index_code(settings.universe.volatility_index)
         if on == "today":
             last = store.last_ts(ref, Interval.D1)
             if last is None:
@@ -1270,11 +1282,11 @@ def scan(
             day = last.date()
         else:
             day = datetime.strptime(on, "%Y-%m-%d").date()
-        cfg = scan_config(settings, day, kinds)
+        cfg = scan_config(settings, day, kinds, market=mkt)
         cfg.vix_code = vix
         codes = [c for c in store.codes(Interval.D1) if c not in (ref, vix)]
         typer.echo(f"scanning {len(codes)} codes as of {day} with {[k.value for k in cfg.setups]}")
-        md = prepare_market(store, codes, ref, cfg)
+        md = prep_market(store, codes, ref, cfg)
     from tradedesk.journal import Journal
     from tradedesk.journal.stats import track_records
     from tradedesk.scan import OpenPositionInfo
@@ -1285,7 +1297,9 @@ def scan(
             for p in jn.open_positions(source="live")
         ]
         records = track_records(jn, [k.value for k in cfg.setups])
-    wl = build_watchlist(md, cfg, settings, day, open_positions=held, track_records=records)
+    wl = build_watchlist(
+        md, cfg, settings, day, open_positions=held, track_records=records, market=mkt
+    )
     typer.echo(render_text(wl, include_rejected=include_rejected))
     if charts:
         chart_dir = out_dir / day.isoformat()
@@ -1351,6 +1365,7 @@ def backtest(
     out: Path | None = typer.Option(None, "--out", help="Write trades CSV"),
     db: Path = DB_OPTION,
     root: Path = ROOT_OPTION,
+    market: str = MARKET_OPTION,
 ) -> None:
     """Event-driven backtest on stored daily candles (gap-aware fills, portfolio limits)."""
     from tradedesk.backtest import (
@@ -1361,10 +1376,12 @@ def backtest(
         walk_forward,
     )
     from tradedesk.broker.indstocks.models import IST, Interval
-    from tradedesk.data.universe import UniverseRules
     from tradedesk.engine.signals import SetupKind
+    from tradedesk.markets import crypto_market, nse_market
 
     settings = load_config(root)
+    db = _resolve_db(db, market)
+    mkt = crypto_market(settings) if market == "crypto" else nse_market(settings)
     kinds = [SetupKind(s) for s in setup]
     start = datetime.strptime(from_, "%Y-%m-%d").date()
     end = datetime.strptime(to, "%Y-%m-%d").date() if to else datetime.now(IST).date()
@@ -1376,15 +1393,17 @@ def backtest(
         risk=settings.risk,
         engine=settings.engine,
         setup_params={k: v.model_dump() for k, v in settings.setups.setups.items()},
-        universe_rules=UniverseRules(
-            min_avg_turnover_inr=float(settings.universe.min_avg_daily_turnover_inr),
-            min_price=float(settings.universe.min_price),
-        ),
-        slippage_pct=float(settings.risk.costs.slippage_pct),
+        universe_rules=mkt.universe_rules,
+        slippage_pct=float(mkt.costs.slippage_pct),
+        costs=mkt.costs,
     )
     with _store(db) as store:
-        ref = _reference_code(store, root)
-        vix = store.index_code(settings.universe.volatility_index)
+        if market == "crypto":
+            ref = f"{mkt.code_prefix}{mkt.benchmark_name}"
+            vix = None
+        else:
+            ref = _reference_code(store, root)
+            vix = store.index_code(settings.universe.volatility_index)
         cfg.vix_code = vix
         universe = (
             list(codes) if codes else [c for c in store.codes(Interval.D1) if c != ref and c != vix]

@@ -10,6 +10,7 @@ from tradedesk.backtest.portfolio import Portfolio
 from tradedesk.config.models import RiskConfig
 from tradedesk.engine.lifecycle import IllegalTransition, SignalState, TrackedSignal
 from tradedesk.engine.signals import SetupKind, Signal
+from tradedesk.markets import EquityCostModel
 from tradedesk.risk.sizing import SizeInputs, gap95_pct, position_size
 
 RISK = RiskConfig(trading_capital=Decimal("100000"))
@@ -46,7 +47,7 @@ def close_pos(
 
 
 def portfolio(**kw: object) -> Portfolio:
-    pf = Portfolio(risk=RISK, costs=RISK.costs, equity=100_000.0, **kw)  # type: ignore[arg-type]
+    pf = Portfolio(risk=RISK, costs=EquityCostModel(RISK.costs), equity=100_000.0, **kw)  # type: ignore[arg-type]
     pf.start_session(D0, 0)
     return pf
 

@@ -30,7 +30,6 @@ from tradedesk.backtest.runner import (
 from tradedesk.broker.indstocks.models import IST, Interval
 from tradedesk.config.models import Settings
 from tradedesk.data.candle_store import CandleStore
-from tradedesk.data.universe import UniverseRules
 from tradedesk.engine.engine import scan_day
 from tradedesk.engine.filters import apply_filters
 from tradedesk.engine.regime import RegimeSnapshot
@@ -45,8 +44,8 @@ from tradedesk.engine.scoring import (
     trend_strength,
 )
 from tradedesk.engine.signals import SetupKind, Signal
+from tradedesk.markets import Market, nse_market
 from tradedesk.models import Side, TradeType
-from tradedesk.risk.costs import leg_cost
 from tradedesk.risk.sizing import SizeInputs, gap95_pct, position_size
 
 
@@ -111,8 +110,15 @@ class Watchlist(BaseModel):
 
 
 def scan_config(
-    settings: Settings, on: date, setups: Sequence[SetupKind] | None = None
+    settings: Settings,
+    on: date,
+    setups: Sequence[SetupKind] | None = None,
+    market: Market | None = None,
 ) -> BacktestConfig:
+    """`market` defaults to NSE (nse_market(settings)) so every existing caller - the CLI,
+    mcp_server.py, run_evening_scan's own default - is unaffected; pass crypto_market(settings)
+    to scan a different market (M13 Phase 4)."""
+    market = market or nse_market(settings)
     kinds = (
         list(setups)
         if setups
@@ -128,11 +134,9 @@ def scan_config(
         risk=settings.risk,
         engine=settings.engine,
         setup_params={k: v.model_dump() for k, v in settings.setups.setups.items()},
-        universe_rules=UniverseRules(
-            min_avg_turnover_inr=float(settings.universe.min_avg_daily_turnover_inr),
-            min_price=float(settings.universe.min_price),
-        ),
-        slippage_pct=float(settings.risk.costs.slippage_pct),
+        universe_rules=market.universe_rules,
+        slippage_pct=float(market.costs.slippage_pct),
+        costs=market.costs,
     )
 
 
@@ -142,19 +146,16 @@ def _heat(positions: Sequence[OpenPositionInfo], capital: float) -> float:
     return sum(max(0.0, p.entry - p.stop) * p.qty for p in positions) / capital
 
 
-def _round_trip_cost(sig: Signal, qty: int, settings: Settings) -> float:
+def _round_trip_cost(sig: Signal, qty: int, market: Market) -> float:
     if qty <= 0:
         return 0.0
-    sched = settings.risk.costs
-    buy = leg_cost(
-        sched,
+    buy = market.costs.leg_cost(
         side=Side.BUY,
         trade_type=TradeType.DELIVERY,
         qty=qty,
         price=Decimal(str(round(sig.trigger, 2))),
     )
-    sell = leg_cost(
-        sched,
+    sell = market.costs.leg_cost(
         side=Side.SELL,
         trade_type=TradeType.DELIVERY,
         qty=qty,
@@ -173,7 +174,12 @@ def build_watchlist(
     track_records: Mapping[str, TrackRecord] | None = None,
     surveillance: Mapping[str, str] | None = None,
     sector_percentile: Mapping[str, float] | None = None,
+    market: Market | None = None,
 ) -> Watchlist:
+    """`market` defaults to NSE, same reasoning as scan_config - pass crypto_market(settings)
+    to build a crypto watchlist (M13 Phase 4). `cfg` should come from the matching
+    scan_config(..., market=market) call so cfg.costs/universe_rules agree with it."""
+    market = market or nse_market(settings)
     regime = regime_on(md, on, cfg)
     held = {p.scrip_code for p in open_positions}
     snapshot = build_snapshot(md, on, cfg, regime=regime, exclude=held)
@@ -217,8 +223,10 @@ def build_watchlist(
             atr_pct=atr_pct,
             avg_turnover=turnover,
             regime=regime_name,
-            risk=cfg.risk,
-            universe=settings.universe,
+            costs=market.costs,
+            min_net_rr=cfg.risk.min_net_rr,
+            min_avg_daily_turnover_inr=Decimal(str(market.universe_rules.min_avg_turnover_inr)),
+            atr_pct_band=market.atr_pct_band,
             surveillance=surveillance,
         )
         score: Score = score_signal(
@@ -254,7 +262,7 @@ def build_watchlist(
                 risk_pct=size.risk_pct,
                 position_value=size.position_value,
                 size_caps=size.caps,
-                costs_round_trip=_round_trip_cost(sig, size.qty, settings),
+                costs_round_trip=_round_trip_cost(sig, size.qty, market),
                 net_rr_t1=flt.net_rr_t1,
                 net_rr_t2=flt.net_rr_t2,
                 results_in_sessions=snapshot.results_in_sessions.get(sig.scrip_code),
@@ -285,9 +293,14 @@ def run_evening_scan(
     codes: Sequence[str] | None = None,
     setups: Sequence[SetupKind] | None = None,
     vix_code: str | None = None,
+    market: Market | None = None,
     **kw: Any,
 ) -> Watchlist:
-    cfg = scan_config(settings, on, setups)
+    """`market` (default NSE) is threaded through both scan_config and build_watchlist so
+    cfg.costs/universe_rules always agree with the market build_watchlist actually prices
+    against - never pass a different market via **kw."""
+    market = market or nse_market(settings)
+    cfg = scan_config(settings, on, setups, market=market)
     cfg.vix_code = vix_code
     universe = (
         list(codes)
@@ -295,7 +308,7 @@ def run_evening_scan(
         else [c for c in store.codes(Interval.D1) if c not in (benchmark_code, vix_code)]
     )
     md = prepare_market(store, universe, benchmark_code, cfg)
-    return build_watchlist(md, cfg, settings, on, **kw)
+    return build_watchlist(md, cfg, settings, on, market=market, **kw)
 
 
 def save_watchlist(wl: Watchlist, folder: Path) -> Path:

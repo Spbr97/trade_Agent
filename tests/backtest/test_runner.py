@@ -184,3 +184,92 @@ def test_risk_off_regime_blocks_entries() -> None:
     spike_from = CAL[BREAKOUT - 3]
     assert all(t.entry_date < spike_from for t in res.portfolio.closed)  # nothing after the spike
     assert any(why == "regime risk_off" for _, _, why in res.portfolio.rejections)
+
+
+# ------------------------------------------------------- duplicate-day bars (M13 Phase 4)
+
+
+def test_dedupe_by_calendar_day_keeps_the_later_bar() -> None:
+    """Real quirk found running a crypto backtest: some of CoinDCX's early history has a
+    synthetic, flat, zero-volume filler bar timestamped ~1 second before the real one for
+    that day. Un-deduped, this crashes prepare_market's reindex outright (pandas refuses
+    duplicate axis labels) - and even where it didn't, would double-count the day."""
+    import pandas as pd
+
+    from tradedesk.backtest.runner import _dedupe_by_calendar_day
+
+    idx = pd.DatetimeIndex(
+        [
+            pd.Timestamp("2019-01-06 05:30:00", tz=IST),
+            pd.Timestamp("2019-01-07 05:29:59", tz=IST),  # phantom filler
+            pd.Timestamp("2019-01-07 05:30:00", tz=IST),  # the real bar
+            pd.Timestamp("2019-01-08 05:30:00", tz=IST),
+        ],
+        name="ts",
+    )
+    df = pd.DataFrame(
+        {
+            "open": [100.0, 105.0, 105.0, 103.0],
+            "high": [102.0, 105.0, 107.0, 104.0],
+            "low": [99.0, 105.0, 104.0, 101.0],
+            "close": [101.0, 105.0, 103.0, 102.0],
+            "volume": [5, 0, 3, 4],
+        },
+        index=idx,
+    )
+    out = _dedupe_by_calendar_day(df)
+    assert len(out) == 3
+    assert list(out.index.date) == [date(2019, 1, 6), date(2019, 1, 7), date(2019, 1, 8)]
+    kept = out.loc[out.index.date == date(2019, 1, 7)]
+    assert len(kept) == 1 and kept["volume"].iloc[0] == 3  # the real bar, not the phantom
+
+
+def test_dedupe_by_calendar_day_is_a_noop_when_nothing_duplicated() -> None:
+
+    from tradedesk.backtest.runner import _dedupe_by_calendar_day
+
+    days = sessions(date(2026, 1, 1), 5)
+    store = CandleStore()
+    from tests.data.synth import daily
+    from tradedesk.broker.indstocks.models import Instrument
+
+    store.upsert_instruments(
+        [Instrument(exch="NSE", segment="E", security_id="1", instrument_name="EQUITY",
+                    trading_symbol="X", series="EQ")]
+    )  # fmt: skip
+    store.upsert_candles(daily("NSE_1", days))
+    df = store.load("NSE_1", Interval.D1)
+    out = _dedupe_by_calendar_day(df)
+    assert len(out) == len(df) == 5
+    store.close()
+
+
+def test_prepare_market_survives_a_duplicate_day_reference_code() -> None:
+    """End-to-end: a reference/benchmark code with the phantom-bar quirk must not crash
+    prepare_market's closes_wide.reindex(calendar) call."""
+    days = sessions(date(2024, 1, 1), 130)
+    store = CandleStore()
+    store.upsert_instruments([NIFTY])
+    bench_candles = list(benchmark(REF, days))
+    # inject a phantom filler bar 1 second before day 30's real bar, same shape as the
+    # real CoinDCX quirk (flat OHLC at the previous close, zero volume)
+    real = bench_candles[30]
+    from datetime import timedelta as _td
+
+    from tradedesk.broker.indstocks.models import Candle
+
+    phantom = Candle(
+        scrip_code=REF, interval=Interval.D1, ts=real.ts - _td(seconds=1),
+        open=bench_candles[29].close, high=bench_candles[29].close,
+        low=bench_candles[29].close, close=bench_candles[29].close, volume=0,
+    )  # fmt: skip
+    store.upsert_candles([*bench_candles, phantom])
+    stocks = {"NSE_A": ("win", 1)}
+    for code, (aftermath, seed) in stocks.items():
+        store.upsert_candles(
+            breakout_stock(code, days, breakout_index=100, aftermath=aftermath, seed=seed)
+        )
+    cfg = config(days[80], days[-1])
+    md = prepare_market(store, list(stocks), REF, cfg)  # must not raise
+    assert len(md.calendar) > 0
+    store.close()

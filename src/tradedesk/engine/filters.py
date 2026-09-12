@@ -4,6 +4,10 @@ Reject when: average turnover too low, ATR% outside the band, on a surveillance 
 list, price near a circuit limit, the regime forbids entries, or the net reward:risk to the
 final target is below the minimum after costs. Results-in-window and sector/heat checks
 happen elsewhere (setups and the portfolio). Each rejection carries a reason.
+
+M13 Phase 4: takes a CostModel + primitives instead of RiskConfig/UniverseConfig, so it
+does not assume NSE's config shape. `atr_pct_band=None` skips that check entirely (no
+calibrated crypto band exists yet) rather than applying NSE's.
 """
 
 from __future__ import annotations
@@ -12,10 +16,10 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from decimal import Decimal
 
-from tradedesk.config.models import ChargeSchedule, RiskConfig, UniverseConfig
+from tradedesk.config.models import AtrBand
 from tradedesk.engine.signals import Signal
+from tradedesk.markets.costs import CostModel
 from tradedesk.models import TradeType
-from tradedesk.risk.costs import net_reward_risk
 
 
 @dataclass(frozen=True)
@@ -26,12 +30,12 @@ class FilterResult:
     net_rr_t2: float | None = None
 
 
-def net_rr(sig: Signal, qty: int, schedule: ChargeSchedule) -> tuple[float | None, float | None]:
+def net_rr(sig: Signal, qty: int, costs: CostModel) -> tuple[float | None, float | None]:
     if qty <= 0:
         return None, None
     common = dict(trade_type=TradeType.DELIVERY, qty=qty, entry=_d(sig.trigger), stop=_d(sig.stop))
-    t1 = float(net_reward_risk(schedule, target=_d(sig.t1), **common))  # type: ignore[arg-type]
-    t2 = float(net_reward_risk(schedule, target=_d(sig.t2), **common))  # type: ignore[arg-type]
+    t1 = float(costs.net_reward_risk(target=_d(sig.t1), **common))  # type: ignore[arg-type]
+    t2 = float(costs.net_reward_risk(target=_d(sig.t2), **common))  # type: ignore[arg-type]
     return t1, t2
 
 
@@ -46,16 +50,18 @@ def apply_filters(
     atr_pct: float | None,
     avg_turnover: float | None,
     regime: str | None,
-    risk: RiskConfig,
-    universe: UniverseConfig,
+    costs: CostModel,
+    min_net_rr: Decimal,
+    min_avg_daily_turnover_inr: Decimal,
+    atr_pct_band: AtrBand | None = None,
     surveillance: Mapping[str, str] | None = None,  # symbol -> list name (ASM/GSM)
     upper_circuit: float | None = None,
 ) -> FilterResult:
     reasons: list[str] = []
-    if avg_turnover is not None and avg_turnover < float(universe.min_avg_daily_turnover_inr):
+    if avg_turnover is not None and avg_turnover < float(min_avg_daily_turnover_inr):
         reasons.append(f"turnover {avg_turnover / 1e7:.1f} cr < min")
-    if atr_pct is not None:
-        lo, hi = float(universe.atr_pct_band.min) * 100, float(universe.atr_pct_band.max) * 100
+    if atr_pct is not None and atr_pct_band is not None:
+        lo, hi = float(atr_pct_band.min) * 100, float(atr_pct_band.max) * 100
         if not lo <= atr_pct <= hi:
             reasons.append(f"ATR {atr_pct:.1f}% outside {lo:.1f}-{hi:.1f}%")
     if surveillance and sig.symbol in surveillance:
@@ -64,7 +70,7 @@ def apply_filters(
         reasons.append("trigger at the upper circuit")
     if regime == "risk_off":
         reasons.append("regime risk_off: no new swing entries")
-    rr1, rr2 = net_rr(sig, qty, risk.costs)
-    if rr2 is not None and rr2 < float(risk.min_net_rr):
-        reasons.append(f"net R:R {rr2:.2f} < {risk.min_net_rr} to final target")
+    rr1, rr2 = net_rr(sig, qty, costs)
+    if rr2 is not None and rr2 < float(min_net_rr):
+        reasons.append(f"net R:R {rr2:.2f} < {min_net_rr} to final target")
     return FilterResult(ok=not reasons, reasons=reasons, net_rr_t1=rr1, net_rr_t2=rr2)

@@ -45,7 +45,13 @@ class CostModel(Protocol):
     """Same five operations as risk/costs.py's free functions, minus the leading
     `schedule` argument - a CostModel is bound to one schedule for its lifetime.
     `dp_applies` is an equity-only concept (NSE's demat depository charge); a market with
-    no such charge just ignores it."""
+    no such charge just ignores it. `slippage_pct` is exposed because BacktestConfig and
+    scan_config need it and both schedules already carry it - reading `.schedule.slippage_pct`
+    off a concrete instance works without this, but declaring it here makes it part of
+    the contract instead of an implementation detail callers happen to rely on."""
+
+    @property
+    def slippage_pct(self) -> Decimal: ...
 
     def leg_cost(
         self, *, side: Side, trade_type: TradeType, qty: int, price: Decimal,
@@ -77,6 +83,10 @@ class EquityCostModel:
 
     def __init__(self, schedule: ChargeSchedule) -> None:
         self.schedule = schedule
+
+    @property
+    def slippage_pct(self) -> Decimal:
+        return self.schedule.slippage_pct
 
     def leg_cost(
         self, *, side: Side, trade_type: TradeType, qty: int, price: Decimal,
@@ -146,6 +156,10 @@ class CryptoCostModel:
 
     def __init__(self, schedule: CryptoChargeSchedule) -> None:
         self.schedule = schedule
+
+    @property
+    def slippage_pct(self) -> Decimal:
+        return self.schedule.slippage_pct
 
     def _round(self, value: Decimal) -> Decimal:
         if self.schedule.rounding == "paise":

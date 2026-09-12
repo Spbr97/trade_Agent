@@ -21,6 +21,7 @@ from tradedesk.backtest.portfolio import ClosedTrade, Portfolio
 from tradedesk.config.models import RiskConfig
 from tradedesk.engine.signals import Signal
 from tradedesk.journal.db import Journal
+from tradedesk.markets.costs import EquityCostModel
 
 
 class RiskStatus(BaseModel):
@@ -57,9 +58,11 @@ class RiskManager:
         return bisect.bisect_left(list(self.calendar), on)
 
     def rebuild(self) -> None:
+        # NSE only for now - see paper/book.py's identical note.
         pf = Portfolio(
-            risk=self.risk, costs=self.risk.costs, equity=self.capital, sector_of=self.sector_of
-        )
+            risk=self.risk, costs=EquityCostModel(self.risk.costs), equity=self.capital,
+            sector_of=self.sector_of,
+        )  # fmt: skip
         trades = sorted(
             self.journal.trades(source="live"), key=lambda r: (r["exit_date"], r["signal_id"])
         )

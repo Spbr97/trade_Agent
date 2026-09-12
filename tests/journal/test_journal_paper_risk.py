@@ -19,6 +19,7 @@ from tradedesk.engine.signals import SetupKind, Signal
 from tradedesk.journal import Journal
 from tradedesk.journal.stats import live_vs_paper, summary, track_record, track_records
 from tradedesk.live.models import Alert, AlertKind, AlertLevel
+from tradedesk.markets import EquityCostModel
 from tradedesk.models import Side, TradeType
 from tradedesk.paper import PaperBook
 from tradedesk.risk.costs import leg_cost
@@ -189,7 +190,7 @@ def test_paper_book_survives_restart() -> None:
 def _record_live_trade(
     j: Journal, code: str, entry: date, exit_: date, pnl: float, reason: str = "stop"
 ) -> None:
-    pf = Portfolio(risk=RISK, costs=RISK.costs, equity=1_000_000.0)
+    pf = Portfolio(risk=RISK, costs=EquityCostModel(RISK.costs), equity=1_000_000.0)
     pf.start_session(exit_, 0)
     s = sig(code, 100.0, 95.0, entry)
     pos = Position(
@@ -264,7 +265,7 @@ def _paper_trade(j: Journal, i: int, r: float, setup: str = "base_breakout") -> 
         setup=SetupKind(setup), armed_on=CAL[0], trigger=100.0, stop=95.0, t1=110.0, t2=115.0,
         atr=2.0,
     )  # fmt: skip
-    pf = Portfolio(risk=RISK, costs=RISK.costs, equity=1_000_000.0)
+    pf = Portfolio(risk=RISK, costs=EquityCostModel(RISK.costs), equity=1_000_000.0)
     pos = Position(
         signal=s, entry_date=CAL[1], entry_price=100.0, qty_initial=100, qty_open=0, stop=95.0,
         highest_close=100.0, sessions_held=2,

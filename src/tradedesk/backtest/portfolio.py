@@ -14,10 +14,10 @@ from datetime import date
 from decimal import Decimal
 
 from tradedesk.backtest.fills import Fill, FillReason, Position
-from tradedesk.config.models import ChargeSchedule, RiskConfig
+from tradedesk.config.models import RiskConfig
 from tradedesk.engine.signals import Signal
+from tradedesk.markets.costs import CostModel
 from tradedesk.models import Side, TradeType
-from tradedesk.risk.costs import leg_cost
 
 
 @dataclass
@@ -38,7 +38,7 @@ class ClosedTrade:
 @dataclass
 class Portfolio:
     risk: RiskConfig
-    costs: ChargeSchedule
+    costs: CostModel
     equity: float
     sector_of: Mapping[str, str] = field(default_factory=dict)
     open: dict[str, Position] = field(default_factory=dict)
@@ -148,8 +148,7 @@ class Portfolio:
         exit_date = sells[-1].on
         same_day = exit_date == pos.entry_date and all(f.on == pos.entry_date for f in sells)
         trade_type = TradeType.INTRADAY if same_day else TradeType.DELIVERY
-        total = leg_cost(
-            self.costs,
+        total = self.costs.leg_cost(
             side=Side.BUY,
             trade_type=trade_type,
             qty=pos.qty_initial,
@@ -157,8 +156,7 @@ class Portfolio:
         ).total
         seen_days: set[date] = set()
         for f in sells:
-            total += leg_cost(
-                self.costs,
+            total += self.costs.leg_cost(
                 side=Side.SELL,
                 trade_type=trade_type,
                 qty=f.qty,

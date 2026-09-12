@@ -21,6 +21,7 @@ from tradedesk.backtest.portfolio import ClosedTrade, Portfolio
 from tradedesk.config.models import RiskConfig
 from tradedesk.engine.lifecycle import TrackedSignal
 from tradedesk.journal.db import Journal
+from tradedesk.markets.costs import EquityCostModel
 from tradedesk.risk.sizing import SizeInputs, gap95_pct, position_size
 
 
@@ -49,7 +50,11 @@ class PaperBook:
     _settler: Portfolio = field(init=False)
 
     def __post_init__(self) -> None:
-        self._settler = Portfolio(risk=self.risk, costs=self.risk.costs, equity=self.capital)
+        # NSE only for now (M13 Phase 4 covers costs+scan+backtest; paper trading and the
+        # live risk manager stay NSE-only until a later phase actually needs them for crypto).
+        self._settler = Portfolio(
+            risk=self.risk, costs=EquityCostModel(self.risk.costs), equity=self.capital
+        )
         for p in self.journal.open_positions(source="paper"):
             self.positions[p.signal.id] = p
 

@@ -36,6 +36,7 @@ from tradedesk.engine.relative_strength import rs_rank
 from tradedesk.engine.signals import SetupKind, Signal
 from tradedesk.live.confirmation import Decision, confirm_trigger, is_chased
 from tradedesk.live.models import IntradayBar, SessionRules
+from tradedesk.markets.costs import CostModel, EquityCostModel
 from tradedesk.risk.sizing import SizeInputs, gap95_pct, position_size
 
 
@@ -55,6 +56,9 @@ class BacktestConfig:
     vix_code: str | None = None
     session_rules: SessionRules = SessionRules()
     use_intraday: bool = True  # confirm on 15-minute bars when the store has them
+    costs: CostModel | None = (
+        None  # M13 Phase 4: None -> EquityCostModel(risk.costs), NSE as before
+    )
 
 
 @dataclass
@@ -101,6 +105,24 @@ def _date_index(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
+def _dedupe_by_calendar_day(df: pd.DataFrame) -> pd.DataFrame:
+    """Keep the last bar per IST calendar day. Guards against a real quirk found running
+    a crypto backtest (M13 Phase 4): some of CoinDCX's early (2019-2020) daily history
+    carries a synthetic, flat, zero-volume filler bar timestamped a second or so before
+    the real one for that day - 29 of 33 duplicate-day cases checked on CDX_BTCINR match
+    that exact pattern (open=high=low=close=prev close, volume=0). Two bars sharing a
+    calendar day breaks `closes_wide.reindex(calendar)` below outright (pandas refuses to
+    reindex an axis with duplicate labels), and even where it didn't, keeping both would
+    double-count that day. `df` is already ascending by ts (CandleStore.load() orders it),
+    so `keep="last"` picks the real bar over the earlier filler. A no-op for NSE, whose
+    INDstocks timestamps are always clean 09:15 IST anchors with no such duplicates."""
+    if df.empty:
+        return df
+    day = pd.DatetimeIndex(df.index).tz_convert("Asia/Kolkata").date
+    keep = ~pd.Series(day, index=df.index).duplicated(keep="last")
+    return df[keep.to_numpy()]
+
+
 def prepare_market(
     store: CandleStore,
     codes: Sequence[str],
@@ -114,7 +136,9 @@ def prepare_market(
     )
     load_to = datetime.combine(cfg.end + timedelta(days=1), time.min, tzinfo=IST)
     calendar = trading_days(store, benchmark_code, load_from.date(), cfg.end)
-    bench = store.load(benchmark_code, Interval.D1, load_from, load_to, adjusted=False)
+    bench = _dedupe_by_calendar_day(
+        store.load(benchmark_code, Interval.D1, load_from, load_to, adjusted=False)
+    )
 
     features: dict[str, pd.DataFrame] = {}
     symbols: dict[str, str] = {}
@@ -122,7 +146,9 @@ def prepare_market(
     closes: dict[str, pd.Series] = {}
     turnover: dict[str, pd.Series] = {}
     for code in codes:
-        df = store.load(code, Interval.D1, load_from, load_to, adjusted=True)
+        df = _dedupe_by_calendar_day(
+            store.load(code, Interval.D1, load_from, load_to, adjusted=True)
+        )
         if len(df) < 30:
             continue
         feats = daily_features(df)
@@ -140,7 +166,9 @@ def prepare_market(
 
     vix: pd.Series | None = None
     if cfg.vix_code:
-        v = store.load(cfg.vix_code, Interval.D1, load_from, load_to, adjusted=False)
+        v = _dedupe_by_calendar_day(
+            store.load(cfg.vix_code, Interval.D1, load_from, load_to, adjusted=False)
+        )
         if not v.empty:
             vix = pd.Series(v["close"].to_numpy(), index=pd.Index(ist_dates(v)))
 
@@ -336,7 +364,10 @@ def build_snapshot(
 
 def run_backtest(md: MarketData, cfg: BacktestConfig) -> BacktestResult:
     portfolio = Portfolio(
-        risk=cfg.risk, costs=cfg.risk.costs, equity=cfg.capital, sector_of=cfg.sector_of
+        risk=cfg.risk,
+        costs=cfg.costs or EquityCostModel(cfg.risk.costs),
+        equity=cfg.capital,
+        sector_of=cfg.sector_of,
     )
     tracked: list[TrackedSignal] = []
     live_by_code: dict[str, TrackedSignal] = {}  # one live (armed/open) signal per code
