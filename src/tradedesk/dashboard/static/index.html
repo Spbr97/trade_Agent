@@ -38,7 +38,7 @@
   .perf-controls { display:flex; flex-wrap:wrap; align-items:center; gap:20px; background:var(--card); border:1px solid var(--line); border-radius:8px; padding:10px 12px; }
   .perf-controls .group { display:flex; align-items:center; gap:8px; }
   .perf-controls label { color:var(--dim); font-size:12px; text-transform:uppercase; letter-spacing:.05em; }
-  .perf-controls input[type=date] { background:#0c0e12; color:var(--fg); border:1px solid var(--line); border-radius:5px; padding:4px 8px; font:inherit; }
+  .perf-controls input[type=date], .perf-controls select { background:#0c0e12; color:var(--fg); border:1px solid var(--line); border-radius:5px; padding:4px 8px; font:inherit; }
   .seg { display:inline-flex; border:1px solid var(--line); border-radius:6px; overflow:hidden; }
   .seg button { background:#0c0e12; color:var(--dim); border:none; padding:5px 12px; font:inherit; font-weight:600; cursor:pointer; }
   .seg button.active { background:var(--accent); color:#08111f; }
@@ -73,6 +73,21 @@
 </main>
 
 <main id="tab-crypto" hidden>
+  <section class="perf-controls">
+    <div class="group">
+      <label for="crypto-filter-symbol">Coin</label>
+      <select id="crypto-filter-symbol"><option value="">All</option></select>
+    </div>
+    <div class="group">
+      <label for="crypto-filter-setup">Setup</label>
+      <select id="crypto-filter-setup"><option value="">All</option></select>
+    </div>
+    <div class="group">
+      <label for="crypto-filter-status">Status</label>
+      <select id="crypto-filter-status"><option value="">All</option></select>
+    </div>
+    <span class="muted" id="crypto-filter-count"></span>
+  </section>
   <section>
     <h2>Crypto calls <span class="muted" style="text-transform:none;">- research/paper only, own dataset, not pooled with NSE</span></h2>
     <table id="crypto-calls"></table>
@@ -221,18 +236,45 @@ async function decideReview(id, status) {
 }
 
 // ---------------------------------------------------------------- Crypto tab
+let cryptoData = [];
 async function loadCryptoCalls() {
-  const r = await fetch('/api/crypto/calls?limit=100');
-  const data = r.ok ? await r.json() : [];
+  const r = await fetch('/api/crypto/calls?limit=2000');
+  cryptoData = r.ok ? await r.json() : [];
+  populateCryptoFilters();
+  renderCryptoCalls();
+}
+function populateCryptoFilters() {
+  const fill = (id, values) => {
+    const cur = $(id).value;
+    $(id).innerHTML = '<option value="">All</option>' + values.map(v => `<option value="${v}">${v}</option>`).join('');
+    if (values.includes(cur)) $(id).value = cur;
+  };
+  fill('crypto-filter-symbol', [...new Set(cryptoData.map(d => d.symbol))].sort());
+  fill('crypto-filter-setup', [...new Set(cryptoData.map(d => d.setup))].sort());
+  fill('crypto-filter-status', [...new Set(cryptoData.map(d => d.outcome || 'pending'))].sort());
+}
+function renderCryptoCalls() {
+  const symF = $('crypto-filter-symbol').value;
+  const setupF = $('crypto-filter-setup').value;
+  const statusF = $('crypto-filter-status').value;
+  const data = cryptoData.filter(d =>
+    (!symF || d.symbol === symF) && (!setupF || d.setup === setupF)
+    && (!statusF || (d.outcome || 'pending') === statusF)
+  );
   const resolved = data.filter(d => d.outcome);
   const byId = (o) => o === 'target' ? 'closed' : (o ? 'stopped' : '');
   rows($('crypto-calls'), ['Sym','Setup','Grade','Armed','Tradeable','Status','#R'],
     data.map(d => `<tr><td>${d.symbol}</td><td>${d.setup}</td><td class="${d.grade}">${d.grade}</td><td>${d.armed_on}</td><td>${d.rejected_for.length ? 'no' : 'yes'}</td><td class="${byId(d.outcome)}">${d.outcome || 'pending'}</td><td class="num">${d.r_multiple!=null?fmt(d.r_multiple,2):'-'}</td></tr>`));
+  let countText = `${data.length} of ${cryptoData.length} shown`;
   if (resolved.length) {
     const wins = resolved.filter(d => d.outcome === 'target').length;
-    $('crypto-calls').insertAdjacentHTML('afterbegin', `<caption style="caption-side:top; text-align:left; color:var(--dim); padding-bottom:6px;">${wins}/${resolved.length} resolved calls hit target (${pct(wins/resolved.length)})</caption>`);
+    countText += ` — ${wins}/${resolved.length} resolved hit target (${pct(wins/resolved.length)})`;
   }
+  $('crypto-filter-count').textContent = countText;
 }
+['crypto-filter-symbol', 'crypto-filter-setup', 'crypto-filter-status'].forEach(id => {
+  $(id).addEventListener('change', renderCryptoCalls);
+});
 
 // ---------------------------------------------------------------- Lookup tab
 let lookupMarket = 'nse';
@@ -242,6 +284,9 @@ document.querySelectorAll('#lookup-market button').forEach(btn => {
     btn.classList.add('active');
     lookupMarket = btn.dataset.market;
     $('lookup-code').value = '';
+    $('lookup-options').innerHTML = '';  // stale suggestions from the other market otherwise
+    // linger until the next keystroke - a click into the (now-empty) input can show them
+    $('lookup-result').innerHTML = '<div class="empty-note">pick a symbol and hit Analyze</div>';
   });
 });
 let searchTimer = null;
