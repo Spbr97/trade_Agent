@@ -202,6 +202,29 @@ def test_sector_return_is_none_when_the_sector_has_no_loaded_candles() -> None:
     assert ctx["sector_return_1d"] is None and ctx["sector_return_5d"] is None
 
 
+def test_sessions_to_results_caps_at_the_safe_notice_period() -> None:
+    """results_events stores only the meeting date, never when it was announced, so an
+    UNCAPPED distance risks claiming knowledge a training row could not actually have had
+    that far ahead - fixed 2026-09-13 (the mean-reversion proof plan) by capping at
+    SAFE_RESULTS_SESSIONS (SEBI LODR's ~2-working-day minimum notice period)."""
+    from types import SimpleNamespace
+
+    from tradedesk.prediction.train import SAFE_RESULTS_SESSIONS, _sessions_to_results
+
+    cal = [date(2026, 3, 1) + timedelta(days=i) for i in range(20)]
+    on = date(2026, 3, 6)  # index 5
+    within = cal[5 + SAFE_RESULTS_SESSIONS]  # exactly at the cap - still allowed
+    beyond = cal[5 + SAFE_RESULTS_SESSIONS + 1]  # one session past the cap - must be None
+
+    md_within = SimpleNamespace(results_dates={"NSE_1": [within]}, calendar=cal)
+    md_beyond = SimpleNamespace(results_dates={"NSE_1": [beyond]}, calendar=cal)
+    md_none = SimpleNamespace(results_dates={}, calendar=cal)
+
+    assert _sessions_to_results(md_within, "NSE_1", on) == SAFE_RESULTS_SESSIONS  # type: ignore[arg-type]
+    assert _sessions_to_results(md_beyond, "NSE_1", on) is None  # type: ignore[arg-type]
+    assert _sessions_to_results(md_none, "NSE_1", on) is None  # type: ignore[arg-type]
+
+
 # ---------------------------------------------------------- walk-forward
 
 

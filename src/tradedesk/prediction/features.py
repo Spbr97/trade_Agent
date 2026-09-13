@@ -27,6 +27,16 @@ FEATURE_VERSION = "v4"  # bump whenever FEATURE_NAMES changes, so a saved model'
 # daily_features had been computing all along but nothing ever fed the model - overhead
 # supply (52w high/range position, 20d high), momentum (roc5/20, macd, di_spread, rsi2),
 # volatility state (bb_width, atr_pct_rank, range_contraction) and vol_dryup)
+#
+# NOT a version bump (no column added, removed or renamed - this note exists so a reader
+# comparing two v4 artifacts' behaviour knows the values differ): 2026-09-13,
+# prediction/train.py::_sessions_to_results was capped at SAFE_RESULTS_SESSIONS (2, SEBI
+# LODR's minimum board-meeting notice period) instead of returning an uncapped raw distance
+# to the next historical results_events row - the table records only the meeting date, never
+# when it was announced, so the uncapped version could claim knowledge a training row could
+# not actually have had that far ahead. Any v4 bundle trained before this date used the
+# leaky value for this one feature; retrain to pick up the fix (predict.py's version guard
+# cannot detect this since the column list is unchanged).
 
 FEATURE_NAMES: list[str] = [
     "dist_ema10_atr",

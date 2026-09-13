@@ -154,7 +154,29 @@ def _fill_from_note(note: str) -> float | None:
     return float(m.group(1)) if m else None
 
 
+SAFE_RESULTS_SESSIONS = 2  # SEBI LODR's minimum board-meeting advance-intimation period
+
+
 def _sessions_to_results(md: MarketData, code: str, on: date) -> int | None:
+    """Sessions to the next results date, capped at `SAFE_RESULTS_SESSIONS`.
+
+    Found and fixed 2026-09-13 (the mean-reversion proof plan): `results_events` stores only
+    the meeting date, never when it was publicly announced, so returning the raw distance to
+    ANY future event in that table risks claiming knowledge a historical training row could
+    not actually have had at `on` - a company that reports in 15 sessions was very unlikely
+    to have said so publicly that far ahead, since SEBI LODR requires only ~2 WORKING days'
+    notice. Capping at that regulatory minimum (returning None - the same "nothing known"
+    encoding signal_features() already uses beyond this) is the conservative, defensible
+    choice: it will occasionally under-report a date some companies do pre-announce further
+    out, but it cannot claim knowledge it can't defend. scripts/mr_model.py's
+    `_near_term_results()` applies the identical reasoning independently for the RSI(2)
+    proof-plan dataset (a 4-CALENDAR-day cap there, to cover 2 working days across a
+    weekend, since that script works in calendar days rather than session positions).
+
+    Deliberately NOT changed here: the results BLACKOUT gate (risk/limits.py, populated via
+    backtest/runner.py's own `results_in_sessions` computation) is a real-time risk control,
+    not a historical training feature reconstructed after the fact - a different mechanism
+    with a different (and, for live use, not leaky) knowledge assumption. Out of scope."""
     import bisect
 
     dates = md.results_dates.get(code)
@@ -165,7 +187,8 @@ def _sessions_to_results(md: MarketData, code: str, on: date) -> int | None:
         return None
     j = bisect.bisect_left(md.calendar, dates[k])
     i = bisect.bisect_left(md.calendar, on)
-    return j - i
+    sessions = j - i
+    return sessions if sessions <= SAFE_RESULTS_SESSIONS else None
 
 
 # ------------------------------------------------------------ walk-forward
