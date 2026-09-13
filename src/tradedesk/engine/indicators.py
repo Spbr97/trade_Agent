@@ -182,6 +182,71 @@ def anchored_vwap(df: pd.DataFrame, anchor: int) -> pd.Series:
     return pd.Series(out, index=df.index)
 
 
+def _session_ids(index: pd.Index) -> np.ndarray:
+    """Integer id per IST trading date, so every intraday accumulation restarts at the open.
+
+    Uses the exchange date of each bar's timestamp, never the local clock (CLAUDE.md: candle
+    logic uses exchange timestamps). A tz-naive index is assumed to already be IST rather
+    than silently localised, which would shift every bar near the session boundary."""
+    idx = pd.DatetimeIndex(index)
+    if idx.tz is not None:
+        idx = idx.tz_convert("Asia/Kolkata")
+    dates = idx.normalize()
+    _, ids = np.unique(dates.to_numpy(), return_inverse=True)
+    return np.asarray(ids, dtype=int)
+
+
+def session_vwap(df: pd.DataFrame) -> pd.Series:
+    """Volume-weighted average price accumulated from each session's OPEN, reset daily.
+
+    This is the intraday reference the SDD's VWAP Reclaim setup is built on, and it is a
+    different object from `anchored_vwap`: that one accumulates from a single positional
+    anchor forever, which across multiple days drifts into a multi-session average nobody
+    trades off. Causal by construction - bar i only ever sees bars <= i within its own
+    session."""
+    tp = (df["high"] + df["low"] + df["close"]) / 3
+    pv = (tp * df["volume"]).to_numpy(dtype=float)
+    v = df["volume"].to_numpy(dtype=float)
+    sess = _session_ids(df.index)
+    out = np.full(len(df), np.nan)
+    start = 0
+    for i in range(1, len(sess) + 1):
+        if i == len(sess) or sess[i] != sess[start]:
+            cum_pv = np.cumsum(pv[start:i])
+            cum_v = np.cumsum(v[start:i])
+            with np.errstate(divide="ignore", invalid="ignore"):
+                out[start:i] = np.where(cum_v > 0, cum_pv / cum_v, np.nan)
+            start = i
+    return pd.Series(out, index=df.index)
+
+
+def vwap_bands(df: pd.DataFrame, k: float = 1.0) -> tuple[pd.Series, pd.Series, pd.Series]:
+    """(vwap, upper, lower) where the band is k volume-weighted standard deviations of the
+    typical price about the session VWAP, accumulated from the session open.
+
+    Volume-weighted, not a plain stdev of price: a band that ignores volume drifts away from
+    where the session actually traded, which is the whole point of using VWAP as the
+    reference. Population (biased) form, matching this module's `stdev` convention."""
+    tp = (df["high"] + df["low"] + df["close"]) / 3
+    tpv = tp.to_numpy(dtype=float)
+    v = df["volume"].to_numpy(dtype=float)
+    sess = _session_ids(df.index)
+    vwap = session_vwap(df).to_numpy(dtype=float)
+    dev = np.full(len(df), np.nan)
+    start = 0
+    for i in range(1, len(sess) + 1):
+        if i == len(sess) or sess[i] != sess[start]:
+            cum_v = np.cumsum(v[start:i])
+            # E[(tp - vwap)^2] weighted by volume, accumulated within the session
+            sq = np.cumsum(v[start:i] * (tpv[start:i] - vwap[start:i]) ** 2)
+            with np.errstate(divide="ignore", invalid="ignore"):
+                dev[start:i] = np.where(cum_v > 0, np.sqrt(sq / cum_v), np.nan)
+            start = i
+    w = pd.Series(vwap, index=df.index)
+    d = pd.Series(dev, index=df.index)
+    return w, w + k * d, w - k * d
+
+
 def rolling_high(s: pd.Series, n: int) -> pd.Series:
     return s.rolling(n, min_periods=1).max()
 
@@ -226,4 +291,50 @@ def daily_features(df: pd.DataFrame) -> pd.DataFrame:
     out["high20"] = rolling_high(out["high"], 20)
     out["prev_week_high"] = out["high"].shift(1).rolling(5, min_periods=1).max()
     out["prev_week_low"] = out["low"].shift(1).rolling(5, min_periods=1).min()
+    return out
+
+
+def intraday_features(df: pd.DataFrame) -> pd.DataFrame:
+    """Indicators for a single intraday timeframe (SDD sections 4-7), as extra columns.
+
+    Deliberately NOT a superset of daily_features. Anything anchored to a session - VWAP and
+    its bands, the day's running high/low, the opening range - is meaningless on daily bars,
+    and anything needing a year of history (52-week position, 200 EMA) is meaningless on a
+    frame of 1-minute bars. Keeping them apart stops a caller from reading a column that is
+    technically present but nonsense at its timeframe.
+
+    `df` must be ONE interval's bars, ascending, with an IST (or IST-naive) index. Every
+    column is causal: bar i uses bars <= i only, and session-anchored columns additionally
+    reset at each session open - the leakage test covers both."""
+    out = df.copy()
+    c = out["close"]
+    for n in (9, 20, 50):
+        out[f"ema{n}"] = ema(c, n)
+    d = adx(out, 14)
+    out["plus_di"], out["minus_di"], out["adx14"] = d["plus_di"], d["minus_di"], d["adx"]
+    out["rsi14"] = rsi(c, 14)
+    out["atr14"] = atr(out, 14)
+    out["atr_pct"] = out["atr14"] / c * 100
+    out["bb_width"] = bollinger_width(c, 20)
+    out["range_contraction"] = range_contraction(out)
+    out["vol_ratio20"] = volume_ratio(out, 20)
+
+    vwap, upper, lower = vwap_bands(out, 1.0)
+    out["vwap"] = vwap
+    out["vwap_upper1"] = upper
+    out["vwap_lower1"] = lower
+    _, upper2, lower2 = vwap_bands(out, 2.0)
+    out["vwap_upper2"] = upper2
+    out["vwap_lower2"] = lower2
+    # Distance to VWAP in ATR units: comparable across instruments, unlike a raw rupee gap.
+    with np.errstate(divide="ignore", invalid="ignore"):
+        out["dist_vwap_atr"] = (c - vwap) / out["atr14"].replace(0, np.nan)
+    out["above_vwap"] = c > vwap
+
+    # Session-anchored running extremes, reset each day (SDD section 4 market structure).
+    sess = pd.Series(_session_ids(out.index), index=out.index)
+    g = out.groupby(sess, sort=False)
+    out["session_high"] = g["high"].cummax()
+    out["session_low"] = g["low"].cummin()
+    out["session_bar"] = g.cumcount()
     return out

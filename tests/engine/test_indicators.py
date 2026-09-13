@@ -178,3 +178,107 @@ def test_daily_features_columns(df: pd.DataFrame) -> None:
     ):  # fmt: skip
         assert col in f.columns, col
     assert len(f) == len(df)
+
+
+# ------------------------------------------------- intraday: session VWAP and bands
+
+
+def _intraday_frame(days: int = 3, bars: int = 8) -> pd.DataFrame:
+    """`days` IST sessions of `bars` 15-minute bars from 09:15, with varying volume so a
+    volume-WEIGHTED mean is distinguishable from a plain one."""
+    rows, idx = [], []
+    for d in range(days):
+        day = pd.Timestamp("2026-09-07", tz="Asia/Kolkata") + pd.Timedelta(days=d)
+        for b in range(bars):
+            base = 100.0 + d * 10 + b
+            rows.append(
+                {
+                    "open": base,
+                    "high": base + 1.0,
+                    "low": base - 1.0,
+                    "close": base + 0.5,
+                    "volume": 1000 * (b + 1),
+                }
+            )
+            idx.append(day + pd.Timedelta(minutes=15 * b) + pd.Timedelta(hours=9, minutes=15))
+    return pd.DataFrame(rows, index=pd.DatetimeIndex(idx))
+
+
+def test_session_vwap_matches_a_hand_computed_reference() -> None:
+    """VWAP anchors the whole intraday setup library, so it is checked against an explicit
+    cumulative sum(tp*v)/sum(v) rather than only against itself."""
+    df = _intraday_frame()
+    got = ind.session_vwap(df)
+    tp = (df["high"] + df["low"] + df["close"]) / 3
+    sess = pd.DatetimeIndex(df.index).tz_convert("Asia/Kolkata").normalize()
+    for day in sess.unique():
+        m = sess == day
+        cum_pv = (tp[m] * df["volume"][m]).cumsum()
+        cum_v = df["volume"][m].cumsum()
+        expected = cum_pv / cum_v
+        for a, b in zip(got[m].to_numpy(), expected.to_numpy(), strict=True):
+            assert a == pytest.approx(b)
+
+
+def test_session_vwap_resets_every_session() -> None:
+    """The bug this guards: accumulating from one anchor forever turns VWAP into a
+    multi-session average nobody trades off. The first bar of each day must equal that
+    bar's own typical price."""
+    df = _intraday_frame()
+    v = ind.session_vwap(df)
+    sess = pd.DatetimeIndex(df.index).tz_convert("Asia/Kolkata").normalize()
+    tp = (df["high"] + df["low"] + df["close"]) / 3
+    first = ~pd.Series(sess, index=df.index).duplicated()
+    assert first.sum() == 3
+    for ts in df.index[first.to_numpy()]:
+        assert v.loc[ts] == pytest.approx(tp.loc[ts])
+
+
+def test_vwap_bands_straddle_vwap_and_widen_with_dispersion() -> None:
+    df = _intraday_frame()
+    vwap, up, lo = ind.vwap_bands(df, 1.0)
+    ok = vwap.notna()
+    assert (up[ok] >= vwap[ok]).all() and (lo[ok] <= vwap[ok]).all()
+    _, up2, lo2 = ind.vwap_bands(df, 2.0)
+    # 2 sigma must be at least as wide as 1 sigma everywhere it is defined
+    w1, w2 = (up - lo)[ok], (up2 - lo2)[ok]
+    assert (w2 >= w1 - 1e-9).all()
+    # first bar of a session has zero dispersion so far, so the band is degenerate
+    assert (up.iloc[0] - lo.iloc[0]) == pytest.approx(0.0)
+
+
+def test_intraday_features_have_no_look_ahead() -> None:
+    """Same property the daily frame is held to, and it matters more here: the session
+    columns accumulate, so an off-by-one in the session boundary would leak the day's
+    later bars into an earlier one."""
+    df = _intraday_frame(days=4, bars=10)
+    full = ind.intraday_features(df)
+    for k in (5, 11, 25, 33):
+        partial = ind.intraday_features(df.iloc[: k + 1])
+        a, b = full.iloc[k], partial.iloc[-1]
+        for col in full.columns:
+            va, vb = a[col], b[col]
+            if isinstance(va, (float, np.floating)) and math.isnan(va):
+                assert math.isnan(vb), col
+            else:
+                assert va == pytest.approx(vb), f"{col} at bar {k} differs: {va} vs {vb}"
+
+
+def test_intraday_features_session_columns_reset_daily() -> None:
+    f = ind.intraday_features(_intraday_frame(days=3, bars=8))
+    assert (f["session_bar"].to_numpy() == list(range(8)) * 3).all()
+    # session_high/low are running extremes WITHIN the day, never across it
+    day2 = f.iloc[8:16]
+    assert day2["session_high"].iloc[0] == pytest.approx(day2["high"].iloc[0])
+    assert day2["session_high"].iloc[-1] == pytest.approx(day2["high"].max())
+
+
+def test_intraday_features_omit_daily_only_columns() -> None:
+    """Not a superset of daily_features on purpose - a 200 EMA or 52-week range computed
+    off 1-minute bars is a number with no meaning, and having the column present would
+    invite exactly that mistake."""
+    f = ind.intraday_features(_intraday_frame())
+    for col in ("ema200", "high52w", "low52w", "prev_week_high"):
+        assert col not in f.columns
+    for col in ("vwap", "vwap_upper1", "vwap_lower1", "dist_vwap_atr", "session_high"):
+        assert col in f.columns
