@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     from tradedesk.alerts import AlertRouter
     from tradedesk.broker.indstocks import IndstocksClient
     from tradedesk.data.candle_store import CandleStore
+    from tradedesk.prediction import ModelBundle
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)
 config_app = typer.Typer(no_args_is_help=True)
@@ -1642,11 +1643,18 @@ def scan(
             for n in e.score_notes:
                 if n.startswith("Claude ("):
                     typer.echo(f"  {e.signal.symbol}: {n}")
-    bundle = None
+    bundle: ModelBundle | dict[str, ModelBundle] | None = None
     if settings.ml.enabled or settings.ml.shadow:
         from tradedesk.prediction import latest_bundle
+        from tradedesk.prediction.predict import latest_bundles_by_setup
 
-        bundle = latest_bundle(Path("data/models"))
+        # Per-setup bundles (train --per-setup) are preferred when any exist - one model
+        # tuned per setup beats one model pooled across all of them (see
+        # train_per_setup()'s docstring). Falls back to the single pooled bundle only when
+        # no per-setup bundles have ever been saved, so a fresh install with only pooled
+        # models keeps working exactly as before.
+        per_setup_bundles = latest_bundles_by_setup(Path("data/models"))
+        bundle = per_setup_bundles if per_setup_bundles else latest_bundle(Path("data/models"))
     if bundle is not None:
         from tradedesk.prediction.predict import score_watchlist
 
@@ -1654,8 +1662,13 @@ def scan(
             bundle, wl, md, settings.ml, shadow_log=Path("data/models/shadow.jsonl")
         )
         label = "shadow" if (settings.ml.shadow or not settings.ml.enabled) else "ENABLED"
+        version_desc = (
+            ", ".join(f"{k}={v.version}" for k, v in bundle.items())
+            if isinstance(bundle, dict)
+            else bundle.version
+        )
         typer.echo(
-            f"model {bundle.version} ({label}): "
+            f"model [{version_desc}] ({label}): "
             + ", ".join(f"{k} {v:.2f}" for k, v in probs.items())
         )
     # Filenames are date-only ("{date}.json"), and `dashboard`/`live`'s auto-discovery
@@ -1839,6 +1852,15 @@ def train(
     ),
     models_dir: Path = typer.Option(Path("data/models"), "--models-dir"),
     dataset_out: Path | None = typer.Option(None, "--dataset", help="Also write the CSV"),
+    per_setup: bool = typer.Option(
+        False,
+        "--per-setup",
+        help="Train one independently-tuned model PER SETUP instead of one pooled across "
+        "all of them (2026-09-13: nr7_breakout is 81% of the data and has the weakest "
+        "signal, so pooling lets it dominate and dilute base_breakout's comparatively real "
+        "signal - see train_per_setup()'s docstring). Saves one bundle per setup with >= "
+        "200 resolved signals; `tradedesk scan` prefers per-setup bundles when present.",
+    ),
     db: Path = DB_OPTION,
     root: Path = ROOT_OPTION,
 ) -> None:
@@ -1851,7 +1873,7 @@ def train(
     from tradedesk.backtest import prepare_market, run_backtest
     from tradedesk.broker.indstocks.models import IST, Interval
     from tradedesk.engine.signals import SetupKind
-    from tradedesk.prediction import build_dataset, compare_strategies
+    from tradedesk.prediction import build_dataset, compare_strategies, train_per_setup
     from tradedesk.prediction import train as train_model
     from tradedesk.scan import scan_config
 
@@ -1882,8 +1904,7 @@ def train(
         dataset_out.parent.mkdir(parents=True, exist_ok=True)
         df.to_csv(dataset_out, index=False)
         typer.echo(f"dataset written to {dataset_out}")
-    rep = train_model(
-        df,
+    train_kwargs: dict[str, Any] = dict(
         n_splits=n_splits,
         embargo_sessions=settings.ml.embargo_sessions,
         threshold=float(settings.ml.grade_a_min_probability),
@@ -1891,6 +1912,26 @@ def train(
         auto_threshold=auto_threshold,
         max_hold=max_hold,
     )
+    if per_setup:
+        reports = train_per_setup(df, **train_kwargs)
+        saved_any = False
+        for setup_name, rep in reports.items():
+            typer.echo(f"\n=== {setup_name} ===")
+            typer.echo(rep.text())
+            if rep.bundle is None:
+                continue
+            saved_any = True
+            comparison = compare_strategies(
+                result, rep.bundle, df, starting_capital=cfg.capital, setup=setup_name
+            )
+            typer.echo(f"strategy A vs C ({setup_name} only): {comparison}")
+            path = rep.bundle.save(models_dir)
+            typer.echo(f"saved {path} (shadow only; ml.yaml enabled={settings.ml.enabled})")
+        if not saved_any:
+            typer.echo("no per-setup model saved (every setup below --min-rows)", err=True)
+            raise typer.Exit(code=1)
+        return
+    rep = train_model(df, **train_kwargs)
     typer.echo(rep.text())
     if rep.bundle is None:
         typer.echo("no model saved", err=True)

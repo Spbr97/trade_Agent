@@ -36,9 +36,11 @@ from tradedesk.prediction import (
     drift_check,
     label_signal,
     latest_bundle,
+    latest_bundles_by_setup,
     probability,
     signal_features,
     train,
+    train_per_setup,
     triple_barrier,
 )
 from tradedesk.prediction.features import to_frame
@@ -279,6 +281,104 @@ def test_per_setup_breakdown_reports_each_setup_separately() -> None:
     assert "roc_auc" in rep.per_setup["good"]
     # the pooled oos metric is unaffected by per-setup breakdown existing
     assert rep.oos is not None
+
+
+# --------------------------------------------------------- per-setup MODELS
+
+
+def test_train_per_setup_trains_independent_models_versioned_distinctly() -> None:
+    """train_per_setup() (2026-09-13): one independently-tuned model PER SETUP instead of
+    one pooled across all of them - motivated by nr7_breakout being 81% of the real
+    dataset and dragging down base_breakout's comparatively real signal. Both "good" and
+    "noise" here have >= min_rows, so both should train; each bundle's version must carry
+    its own setup suffix so saving them side by side never collides on one filename."""
+    reports = train_per_setup(
+        synthetic_dataset_with_setups(n=1200), min_rows=200,
+        n_splits=4, embargo_sessions=10, prefer_lightgbm=False, prefer_xgboost=False,
+    )  # fmt: skip
+    assert set(reports) == {"good", "noise"}
+    for setup, rep in reports.items():
+        assert rep.bundle is not None, f"{setup} should have trained (n=600 >= min_rows=200)"
+        assert rep.bundle.version.endswith(f"-{setup}")
+    # each setup got its OWN oos/per-setup-of-one report, not a shared pooled number
+    assert reports["good"].bundle is not reports["noise"].bundle
+
+
+def test_train_per_setup_skips_a_setup_below_min_rows() -> None:
+    """A setup with too few resolved signals is skipped with an explicit note, not
+    silently trained on a sample too small to trust - the same min_above/min_rows
+    discipline used everywhere else in this module."""
+    df = synthetic_dataset_with_setups(n=1200)
+    tiny = df["setup"] == "noise"
+    # shrink "noise" down to 50 rows, well under any reasonable min_rows floor
+    df = pd.concat([df[~tiny], df[tiny].iloc[:50]], ignore_index=True)
+    reports = train_per_setup(
+        df, min_rows=200, n_splits=4, embargo_sessions=10,
+        prefer_lightgbm=False, prefer_xgboost=False,
+    )  # fmt: skip
+    assert reports["good"].bundle is not None  # unaffected - still has 600 rows
+    assert reports["noise"].bundle is None
+    assert any("skipped" in n and "50" in n for n in reports["noise"].notes)
+
+
+def test_compare_strategies_setup_filter_isolates_that_setups_trades() -> None:
+    """The `setup` filter added to compare_strategies() alongside train_per_setup() -
+    without it, scoring every OTHER setup's rows with a bundle tuned on just one setup, and
+    comparing against Strategy A's full multi-setup trade population, would be a real
+    correctness bug (a base_breakout-only model has no business judging a trend_pullback
+    trade). Uses the real synthetic backtest fixture (two setups worth of real closed
+    trades) to prove the filter actually narrows both sides."""
+    from tradedesk.prediction import compare_strategies
+
+    _, cfg, md, res = run({"NSE_WIN": ("win", 1), "NSE_GAP": ("gap", 2)})
+    df = build_dataset(md, res, max_hold=10)
+    assert df["setup"].nunique() >= 1
+    only_setup = df["setup"].iloc[0]
+    rep = train(synthetic_dataset(400), n_splits=3, embargo_sessions=5, prefer_lightgbm=False)
+    assert rep.bundle is not None
+    unfiltered = compare_strategies(res, rep.bundle, df, starting_capital=cfg.capital)
+    filtered = compare_strategies(
+        res, rep.bundle, df, starting_capital=cfg.capital, setup=only_setup
+    )
+    # both trades in this fixture share the same setup, so filtering to it changes nothing
+    # here numerically - the real assertion is that passing an ABSENT setup name empties
+    # Strategy A/C entirely, proving the filter is actually applied rather than ignored.
+    absent = compare_strategies(
+        res, rep.bundle, df, starting_capital=cfg.capital, setup="__no_such_setup__"
+    )
+    assert absent["strategy_a_existing_rules"]["trades"] == 0
+    assert unfiltered["strategy_a_existing_rules"]["trades"] == filtered["strategy_a_existing_rules"]["trades"]  # noqa: E501
+
+
+def test_latest_bundles_by_setup_and_pooled_lookup_never_cross_contaminate(
+    tmp_path: Path,
+) -> None:
+    """Per-setup files are named "<version>-<setup>.joblib" using REAL SetupKind values
+    (base_breakout/trend_pullback/nr7_breakout - what train_per_setup() actually produces
+    in production, off the real "setup" column). A plain pooled "<version>.joblib" must
+    never be mistaken for one setup's dedicated model, and a per-setup file must never be
+    returned by the POOLED latest_bundle() lookup either - each function must only ever
+    see its own kind of artifact."""
+    df = synthetic_dataset_with_setups(n=1200)
+    df["setup"] = df["setup"].map({"good": "base_breakout", "noise": "trend_pullback"})
+    reports = train_per_setup(
+        df, min_rows=200, n_splits=3, embargo_sessions=5,
+        prefer_lightgbm=False, prefer_xgboost=False,
+    )  # fmt: skip
+    assert set(reports) == {"base_breakout", "trend_pullback"}
+    for rep in reports.values():
+        assert rep.bundle is not None
+        rep.bundle.save(tmp_path)
+    pooled_rep = train(synthetic_dataset(400), n_splits=3, embargo_sessions=5, prefer_lightgbm=False)  # noqa: E501
+    assert pooled_rep.bundle is not None
+    pooled_rep.bundle.save(tmp_path)
+
+    by_setup = latest_bundles_by_setup(tmp_path)
+    assert set(by_setup) == {"base_breakout", "trend_pullback"}
+    assert by_setup["base_breakout"].version.endswith("-base_breakout")
+    # the pooled lookup finds ONLY the plain "<version>.joblib", never a "-<setup>" one
+    pooled = latest_bundle(tmp_path)
+    assert pooled is not None and pooled.version == pooled_rep.bundle.version
 
 
 def test_feature_stability_flags_a_sign_flip() -> None:
@@ -594,3 +694,23 @@ def test_build_dataset_from_the_synthetic_backtest_and_score_watchlist(
     assert scored.entries[0].grade is e.grade and scored.entries[0].qty == e.qty
     assert len(read_shadow(tmp_path / "shadow.jsonl")) == 1
     assert isinstance(Decimal(str(probs[win.symbol])), Decimal)
+
+    # --- per-setup routing (2026-09-13): a dict of setup -> bundle instead of one pooled
+    # bundle must score `win` with ITS OWN setup's model, and must leave an entry whose
+    # setup has no dedicated bundle completely unscored rather than silently reusing a
+    # different setup's model or falling back to nothing (see score_watchlist's docstring:
+    # "no model for this setup" must be visibly different from "the model said no").
+    by_setup = {win.setup.value: rep.bundle}
+    scored2, probs2 = score_watchlist(
+        by_setup, wl, md, SHADOW, shadow_log=tmp_path / "shadow2.jsonl"
+    )
+    assert set(probs2) == {win.symbol} and 0.0 <= probs2[win.symbol] <= 1.0
+    assert any("model p" in n for n in scored2.entries[0].score_notes)
+
+    empty_by_setup: dict[str, ModelBundle] = {}  # no bundle for ANY setup, including win's
+    scored3, probs3 = score_watchlist(
+        empty_by_setup, wl, md, SHADOW, shadow_log=tmp_path / "shadow3.jsonl"
+    )
+    assert probs3 == {}  # nothing scored
+    assert scored3.entries[0] == e  # entry passed through completely untouched
+    assert not (tmp_path / "shadow3.jsonl").exists()  # nothing logged either

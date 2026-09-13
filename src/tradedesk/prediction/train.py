@@ -919,6 +919,47 @@ def train(
     return TrainReport(rows, oos, plain_above, bundle, notes, final_test=final_metrics, threshold_grid=threshold_grid, per_setup=per_setup)  # noqa: E501
 
 
+def train_per_setup(
+    df: pd.DataFrame, *, min_rows: int = 200, **train_kwargs: Any
+) -> dict[str, TrainReport]:
+    """One independently-tuned model PER SETUP instead of a single model pooled across all
+    of them (2026-09-13, real-data motivated): `nr7_breakout` is 81% of the training rows
+    (24,358 of 29,964) and has the weakest per-setup signal (AUC ~0.54-0.57), so pooling all
+    three into one training run lets it dominate hyperparameter selection and drown out
+    `base_breakout`'s comparatively real (if still modest, AUC ~0.59) signal - confirmed by
+    every per_setup_breakdown() this project has run. Training separately means each setup
+    gets its own tuned hyperparameters, its own calibration, its own threshold, and its own
+    locked final test set - the exact same rigor `train()` already has, just not diluted by
+    a different setup's noise.
+
+    Reuses `train()` completely unmodified (calls it once per setup on that setup's own
+    slice) rather than duplicating any of its walk-forward/tuning/calibration logic - this
+    function is a thin fan-out, not a second training pipeline.
+
+    A setup with fewer than `min_rows` resolved signals is skipped with an explicit note in
+    the returned dict (key still present, `TrainReport` with `bundle=None`) rather than
+    trained on a sample too small to trust - same "min_above" discipline used everywhere
+    else in this module (select_threshold, per_setup_breakdown)."""
+    reports: dict[str, TrainReport] = {}
+    for setup in sorted(df["setup"].dropna().unique()):
+        sub = df[df["setup"] == setup].reset_index(drop=True)
+        if len(sub) < min_rows:
+            reports[setup] = TrainReport(
+                [], None, None, None,
+                [f"skipped: only {len(sub)} resolved signals for {setup!r}, need >= {min_rows}"],
+            )  # fmt: skip
+            continue
+        rep = train(sub, **train_kwargs)
+        if rep.bundle is not None:
+            # Distinguish each setup's saved artifact - train()'s version is a bare
+            # timestamp, and three setups trained in the same run/second would otherwise
+            # collide on the same "<timestamp>.joblib" filename and silently overwrite
+            # each other.
+            rep.bundle.version = f"{rep.bundle.version}-{setup}"
+        reports[setup] = rep
+    return reports
+
+
 def _clone(model: Any) -> Any:
     from sklearn.base import clone
 
@@ -929,7 +970,12 @@ def _clone(model: Any) -> Any:
 
 
 def compare_strategies(
-    result: BacktestResult, bundle: ModelBundle, df: pd.DataFrame, starting_capital: float
+    result: BacktestResult,
+    bundle: ModelBundle,
+    df: pd.DataFrame,
+    starting_capital: float,
+    *,
+    setup: str | None = None,
 ) -> dict[str, Any]:
     """Strategy A (existing rules, every triggered signal) vs Strategy C (rules + ML filter
     at the bundle's threshold) - the actual economic question, not just a classification
@@ -950,12 +996,25 @@ def compare_strategies(
     capital-constrained one)."""
     from tradedesk.backtest import reports
 
+    # `setup` (2026-09-13, added for train_per_setup()'s CLI reporting): a per-setup bundle
+    # was only ever tuned on ONE setup's feature distribution, so scoring every OTHER
+    # setup's rows with it (and comparing against Strategy A's full, all-setups trade
+    # population) would be a real correctness bug, not a smaller/faster comparison -
+    # base_breakout's model has no business judging a trend_pullback trade. Both `df` and
+    # the closed-trade population are restricted to `setup` before anything else runs, so
+    # Strategy A and Strategy C are the same, single-setup population - the default
+    # `setup=None` keeps every existing (pooled-model) call site's behaviour identical.
+    if setup is not None:
+        df = df[df["setup"] == setup]
+
     probs: dict[str, float] = {}
     if len(df):
         p = bundle.predict_proba(df)
         probs = dict(zip(df["signal_id"], p, strict=True))
 
     all_trades = list(result.portfolio.closed)
+    if setup is not None:
+        all_trades = [t for t in all_trades if t.position.signal.setup.value == setup]
     filtered = [t for t in all_trades if probs.get(t.position.signal.id, 0.0) >= bundle.threshold]
 
     start = result.calendar[0] if result.calendar else date.today()

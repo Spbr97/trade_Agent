@@ -34,6 +34,7 @@ __all__ = [
     "apply_probability",
     "drift_check",
     "latest_bundle",
+    "latest_bundles_by_setup",
     "log_shadow",
     "probability",
     "read_shadow",
@@ -121,12 +122,41 @@ def read_shadow(path: Path) -> pd.DataFrame:
 
 
 def latest_bundle(folder: Path) -> ModelBundle | None:
-    files = sorted(folder.glob("*.joblib"))
+    """Newest single POOLED bundle - a plain "<timestamp>.joblib" with no setup suffix.
+    Per-setup bundles (see `latest_bundles_by_setup`) are named "<timestamp>-<setup>.joblib"
+    and are skipped here via the glob, so a pooled-model call site never accidentally picks
+    up one setup's specialised model."""
+    files = sorted(f for f in folder.glob("*.joblib") if not _is_per_setup_bundle(f))
     return ModelBundle.load(files[-1]) if files else None
 
 
+def _is_per_setup_bundle(path: Path) -> bool:
+    from tradedesk.engine.signals import SetupKind
+
+    stem = path.stem
+    return any(stem.endswith(f"-{k.value}") for k in SetupKind)
+
+
+def latest_bundles_by_setup(folder: Path) -> dict[str, ModelBundle]:
+    """Newest "<timestamp>-<setup>.joblib" bundle per setup (see
+    `train.py::train_per_setup`) - one independently-tuned model per setup instead of one
+    pooled across all of them. A setup with no saved bundle (e.g. it had fewer than
+    `min_rows` resolved signals) is simply absent from the returned dict; callers must
+    treat a missing setup as "no ML opinion for this setup" (see `score_watchlist`'s
+    handling below), never as a reason to fall back to a different setup's model - a
+    base_breakout signal must never be scored by a trend_pullback-tuned model."""
+    from tradedesk.engine.signals import SetupKind
+
+    out: dict[str, ModelBundle] = {}
+    for kind in SetupKind:
+        files = sorted(folder.glob(f"*-{kind.value}.joblib"))
+        if files:
+            out[kind.value] = ModelBundle.load(files[-1])
+    return out
+
+
 def score_watchlist(
-    bundle: ModelBundle,
+    bundle: ModelBundle | dict[str, ModelBundle],
     wl: Watchlist,
     md: MarketData,
     cfg: MlConfig,
@@ -135,7 +165,16 @@ def score_watchlist(
 ) -> tuple[Watchlist, dict[str, float]]:
     """Score every active entry with the model. Shadow (default): note + log only.
     Enabled: `apply_probability` (which can only lower). Returns the new watchlist and
-    the probabilities by symbol."""
+    the probabilities by symbol.
+
+    `bundle` accepts either a single pooled `ModelBundle` (existing behaviour, unchanged)
+    or a `dict[setup_value, ModelBundle]` from `latest_bundles_by_setup()` (2026-09-13):
+    each entry is then scored by ITS OWN setup's model instead of one model averaged
+    across all setups - see `train_per_setup()`'s docstring for why that dilutes signal.
+    An entry whose setup has no dedicated bundle in the dict is left completely unscored
+    (no note added, `probs` has no entry for it) rather than silently reused with a
+    different setup's model or the pooled one - "no model for this setup" must be visibly
+    different from "the model said no", not papered over."""
     probs: dict[str, float] = {}
     entries: list[WatchlistEntry] = []
     for e in wl.entries:
@@ -144,16 +183,20 @@ def score_watchlist(
         if not e.on_watchlist or pos is None:
             entries.append(e)
             continue
+        b = bundle.get(e.signal.setup.value) if isinstance(bundle, dict) else bundle
+        if b is None:
+            entries.append(e)
+            continue
         feats = md.features[code].iloc[: pos + 1]
         f = signal_features(e.signal, feats, **market_context(md, code, wl.on))
-        p = probability(bundle, f)
+        p = probability(b, f)
         probs[e.signal.symbol] = p
         if shadow_log is not None:
             log_shadow(
                 shadow_log,
                 e.signal.id,
                 p,
-                bundle.version,
+                b.version,
                 symbol=e.signal.symbol,
                 grade=e.grade.value,
                 on=wl.on,
