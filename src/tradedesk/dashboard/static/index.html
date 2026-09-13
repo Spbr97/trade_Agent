@@ -51,6 +51,14 @@
 
   #perf-chart { width:100%; height:140px; display:block; }
   @media (max-width: 600px) { table { font-size:12px; } }
+
+  /* ---- status banner + review badge ---- */
+  .banner { max-width:1100px; margin:10px auto 0; padding:8px 14px; border-radius:8px; font-size:13px; background:#1a2233; border:1px solid var(--line); color:var(--dim); }
+  .banner b { color:var(--fg); }
+  .badge { display:inline-flex; align-items:center; justify-content:center; min-width:16px; height:16px; padding:0 4px; margin-left:6px; border-radius:8px; background:var(--warn); color:#08111f; font-size:10px; font-weight:700; }
+  .eligible-yes { color:var(--ok); font-weight:600; }
+  .eligible-no { color:var(--dim); }
+  .why-note { color:var(--dim); font-size:12px; }
 </style>
 </head>
 <body>
@@ -65,9 +73,12 @@
   <button class="tab-btn" data-tab="performance">Report</button>
   <button class="tab-btn" data-tab="crypto">Crypto</button>
   <button class="tab-btn" data-tab="bse">BSE</button>
+  <button class="tab-btn" data-tab="research">Research</button>
   <button class="tab-btn" data-tab="lookup">Lookup</button>
-  <button class="tab-btn" data-tab="review">Review</button>
+  <button class="tab-btn" data-tab="review">Review<span id="review-badge" class="badge" hidden></span></button>
 </nav>
+
+<div id="status-banner" class="banner"></div>
 
 <main id="tab-today">
   <section class="perf-controls">
@@ -209,6 +220,44 @@
       <table id="bse-calls"></table>
     </section>
   </div>
+</main>
+
+<main id="tab-research" hidden>
+  <section>
+    <h2>Candidate rules <span class="muted" style="text-transform:none;">- forward, out-of-sample only, no backfill. Cannot alert. Compared against `random_eligible`, a matched random pick from the same universe on the same days.</span></h2>
+    <table id="research-summary"></table>
+  </section>
+  <section class="perf-controls">
+    <div class="group">
+      <label for="research-filter-rule">Rule</label>
+      <select id="research-filter-rule"><option value="">All</option></select>
+    </div>
+    <div class="group">
+      <label for="research-filter-status">Result</label>
+      <select id="research-filter-status">
+        <option value="">All</option>
+        <option value="target">Hit (target)</option>
+        <option value="stop">Not hit (stop)</option>
+        <option value="gap_stop">Not hit (gap stop)</option>
+        <option value="timeout">Not hit (timed out)</option>
+        <option value="pending">Pending</option>
+      </select>
+    </div>
+    <div class="group">
+      <label for="research-filter-rows">Rows</label>
+      <select id="research-filter-rows">
+        <option value="25">25</option>
+        <option value="50" selected>50</option>
+        <option value="100">100</option>
+        <option value="all">All</option>
+      </select>
+    </div>
+    <span class="muted" id="research-filter-count"></span>
+  </section>
+  <section>
+    <h2>Calls</h2>
+    <table id="research-calls"></table>
+  </section>
 </main>
 
 <main id="tab-lookup" hidden>
@@ -360,7 +409,7 @@ fetch('/api/state').then(r => r.json()).then(s => render('today', s)).then(() =>
 fetch('/api/state/bse').then(r => r.ok ? r.json() : null).then(s => { if (s) { render('bsetoday', s); connect('bsetoday', '/events/bse'); } });
 
 // ---------------------------------------------------------------- tabs
-const TAB_IDS = ['today', 'performance', 'crypto', 'bse', 'lookup', 'review'];
+const TAB_IDS = ['today', 'performance', 'crypto', 'bse', 'research', 'lookup', 'review'];
 document.querySelectorAll('.tab-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -370,9 +419,13 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     if (target === 'performance') loadPerformance();
     if (target === 'crypto') loadCalls('crypto');
     if (target === 'bse') loadCalls('bse');
+    if (target === 'research') loadResearch();
     if (target === 'review') loadReview();
   });
 });
+
+// ---------------------------------------------------------------- status banner
+$('status-banner').innerHTML = 'Live NSE alerts are currently <b>off</b> - the three built-in setups (base_breakout / trend_pullback / nr7_breakout) have not cleared the evidence gate (measured worse than random entry timing), so no live buy alert will fire. The <b>Research</b> tab tracks forward, out-of-sample candidate ideas that cannot alert on their own - if one ever clears the same evidence bar, it shows up automatically in <b>Review</b> for you to look at.';
 
 // ---------------------------------------------------------------- Review tab
 function reviewCard(item) {
@@ -393,11 +446,23 @@ async function loadReview() {
   const decided = items.filter(i => i.status !== 'pending');
   $('review-pending').innerHTML = pending.length ? pending.map(reviewCard).join('') : '<div class="empty-note">nothing pending - run `tradedesk review week` to generate one</div>';
   $('review-decided').innerHTML = decided.length ? decided.map(reviewCard).join('') : '<div class="empty-note">no decisions yet</div>';
+  updateReviewBadge(pending.length);
 }
 async function decideReview(id, status) {
   await fetch(`/api/review/decide?item_id=${encodeURIComponent(id)}&status=${status}`, {method: 'POST'});
   loadReview();
 }
+function updateReviewBadge(n) {
+  const b = $('review-badge');
+  b.textContent = n > 0 ? String(n) : '';
+  b.hidden = n <= 0;
+}
+// Poll silently even while the Review tab isn't open, so a flagged item (a research
+// candidate clearing the evidence bar, or a weekly review proposal) shows up as a badge
+// without the user needing to click in and check - the whole point of "I will keep
+// monitoring it" is that the dashboard should surface it, not require a manual look.
+loadReview();
+setInterval(loadReview, 60000);
 
 // ---------------------------------------------------------------- Crypto / BSE call-log tabs
 // Same JSONL-log shape (signal_tracker.py) for both markets, so one set of functions
@@ -472,6 +537,70 @@ function renderCalls(market) {
   ['symbol', 'setup', 'status', 'resolved', 'rows'].forEach(kind => {
     $(`${market}-filter-${kind}`).addEventListener('change', () => renderCalls(market));
   });
+});
+
+// ---------------------------------------------------------------- Research tab
+// tradedesk.research_tracker's forward, out-of-sample candidate log - separate from
+// crypto/BSE's tracker shape (no grade/rejected_for; "rule" instead of "setup"), so this
+// gets its own render functions rather than overloading renderCalls() with extra branches.
+let researchCallsData = [];
+async function loadResearch() {
+  const [sumR, callsR] = await Promise.all([
+    fetch('/api/research/summary'), fetch('/api/research/calls?limit=2000'),
+  ]);
+  const summary = sumR.ok ? await sumR.json() : [];
+  researchCallsData = callsR.ok ? await callsR.json() : [];
+  renderResearchSummary(summary);
+  populateResearchFilters();
+  renderResearchCalls();
+}
+function renderResearchSummary(summary) {
+  const rows_ = summary.map(s => {
+    const isControl = s.rule === 'random_eligible';
+    const eligCell = isControl ? '<span class="muted">control</span>'
+      : (s.n === 0 ? '<span class="muted">-</span>'
+        : `<span class="${s.eligible ? 'eligible-yes' : 'eligible-no'}">${s.eligible ? 'CLEARS BAR' : 'not yet'}</span>`);
+    const reasonsNote = (!isControl && s.n > 0 && !s.eligible) ? `<div class="why-note">${s.reasons.join('; ')}</div>` : '';
+    return `<tr>
+      <td>${s.rule}${isControl ? ' <span class="muted">(control)</span>' : ''}<div class="why-note">${s.why}</div></td>
+      <td class="num">${s.n}</td>
+      <td class="num">${s.green_pct != null ? pct(s.green_pct) : '-'}</td>
+      <td class="num">${s.gross_r != null ? fmt(s.gross_r, 4) : '-'}</td>
+      <td class="num">${s.net_r != null ? fmt(s.net_r, 4) : '-'}</td>
+      <td class="num">${s.t != null ? fmt(s.t, 2) : '-'}</td>
+      <td class="num">${s.vs_control_edge != null ? fmt(s.vs_control_edge, 4) : '-'}</td>
+      <td>${eligCell}${reasonsNote}</td>
+    </tr>`;
+  });
+  rows($('research-summary'), ['Rule','#N','#Green%','#GrossR','#NetR','#t','#vs Control','Evidence gate'], rows_);
+}
+function populateResearchFilters() {
+  const cur = $('research-filter-rule').value;
+  const values = [...new Set(researchCallsData.map(d => d.rule))].sort();
+  $('research-filter-rule').innerHTML = '<option value="">All</option>' + values.map(v => `<option value="${v}">${v}</option>`).join('');
+  if (values.includes(cur)) $('research-filter-rule').value = cur;
+}
+function renderResearchCalls() {
+  const ruleF = $('research-filter-rule').value;
+  const statusF = $('research-filter-status').value;
+  const rowsF = $('research-filter-rows').value;
+  const all = researchCallsData;
+  const matched = all.filter(d => (!ruleF || d.rule === ruleF) && (!statusF || (d.outcome || 'pending') === statusF));
+  const data = rowsF === 'all' ? matched : matched.slice(0, Number(rowsF));
+  const byId = (o) => o === 'target' ? 'closed' : (o ? 'stopped' : '');
+  const resultLabel = (o) => o === 'target' ? 'hit' : (o ? 'not hit' : 'pending');
+  rows($('research-calls'), ['Sym','Rule','Armed','#Entry','#Exit','#Days','Result','#R','#% P/L'],
+    data.map(d => {
+      const p = plPct(d);
+      const plClass = p == null ? '' : (p >= 0 ? 'pos' : 'neg');
+      const dh = daysHeld(d);
+      const daysText = dh == null ? '-' : (dh.pending ? `${dh.days}+` : `${dh.days}`);
+      return `<tr><td>${d.symbol}</td><td>${d.rule}</td><td>${d.armed_on}</td><td class="num">${fmt(d.entry)}</td><td class="num">${d.exit_price!=null?fmt(d.exit_price):'-'}</td><td class="num">${daysText}</td><td class="${byId(d.outcome)}">${resultLabel(d.outcome)}${d.outcome && d.outcome !== 'target' ? ` (${d.outcome.replace('_',' ')})` : ''}</td><td class="num">${d.r_multiple!=null?fmt(d.r_multiple,2):'-'}</td><td class="num ${plClass}">${p!=null?pct(p):'-'}</td></tr>`;
+    }));
+  $('research-filter-count').textContent = `${data.length} of ${matched.length} matched (${all.length} total)`;
+}
+['rule', 'status', 'rows'].forEach(kind => {
+  $(`research-filter-${kind}`).addEventListener('change', () => renderResearchCalls());
 });
 
 // ---------------------------------------------------------------- BSE live/history sub-view
