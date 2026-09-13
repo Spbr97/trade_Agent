@@ -33,6 +33,7 @@ __all__ = [
     "DriftReport",
     "apply_probability",
     "drift_check",
+    "is_current",
     "latest_bundle",
     "latest_bundles_by_setup",
     "log_shadow",
@@ -57,6 +58,22 @@ def probability(bundle: ModelBundle, features: dict[str, float]) -> float:
         )
     X = pd.DataFrame([features], columns=FEATURE_NAMES).astype(float)
     return float(bundle.predict_proba(X)[0])
+
+
+def is_current(bundle: ModelBundle) -> bool:
+    """True when `bundle` was trained against the CURRENT FEATURE_VERSION.
+
+    `probability()` deliberately RAISES on a stale bundle - scoring v3 weights against v4
+    columns would be silently wrong, which is worse than an error. But that strictness must
+    never reach the evening scan: the prediction layer is advisory (shadow mode only ever
+    appends a note), so a stale model has to degrade to "no ML opinion", not take the
+    watchlist build down with it. Bumping FEATURE_VERSION without retraining did exactly
+    that on 2026-09-13 - `tradedesk scan` would have crashed on the next `tradedesk-after-
+    close` run, leaving the following morning's live session with no watchlist at all.
+    Callers select with this; `probability()` keeps the hard guard as the backstop."""
+    from tradedesk.prediction.features import FEATURE_VERSION
+
+    return bundle.feature_version is None or bundle.feature_version == FEATURE_VERSION
 
 
 def apply_probability(e: WatchlistEntry, p: float, cfg: MlConfig) -> WatchlistEntry:

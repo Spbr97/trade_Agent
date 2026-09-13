@@ -1646,15 +1646,31 @@ def scan(
     bundle: ModelBundle | dict[str, ModelBundle] | None = None
     if settings.ml.enabled or settings.ml.shadow:
         from tradedesk.prediction import latest_bundle
-        from tradedesk.prediction.predict import latest_bundles_by_setup
 
         # Per-setup bundles (train --per-setup) are preferred when any exist - one model
         # tuned per setup beats one model pooled across all of them (see
         # train_per_setup()'s docstring). Falls back to the single pooled bundle only when
         # no per-setup bundles have ever been saved, so a fresh install with only pooled
         # models keeps working exactly as before.
+        from tradedesk.prediction.features import FEATURE_VERSION
+        from tradedesk.prediction.predict import is_current, latest_bundles_by_setup
+
         per_setup_bundles = latest_bundles_by_setup(Path("data/models"))
+        stale = {k: v for k, v in per_setup_bundles.items() if not is_current(v)}
+        per_setup_bundles = {k: v for k, v in per_setup_bundles.items() if is_current(v)}
         bundle = per_setup_bundles if per_setup_bundles else latest_bundle(Path("data/models"))
+        # A model trained on an older feature set must not take the scan down with it - the
+        # prediction layer is advisory, so it degrades to "no ML opinion" and says so loudly.
+        if bundle is not None and not isinstance(bundle, dict) and not is_current(bundle):
+            stale[bundle.version] = bundle
+            bundle = None
+        if stale:
+            names = ", ".join(f"{v.version}({v.feature_version})" for v in stale.values())
+            typer.secho(
+                f"  ml: skipping stale model(s) {names} - features are now {FEATURE_VERSION}; "
+                "run `tradedesk train` to refresh. Scan continues without ML scoring.",
+                fg=typer.colors.YELLOW,
+            )
     if bundle is not None:
         from tradedesk.prediction.predict import score_watchlist
 

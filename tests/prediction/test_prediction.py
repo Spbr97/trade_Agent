@@ -44,7 +44,7 @@ from tradedesk.prediction import (
     triple_barrier,
 )
 from tradedesk.prediction.features import to_frame
-from tradedesk.prediction.predict import log_shadow, read_shadow, score_watchlist
+from tradedesk.prediction.predict import is_current, log_shadow, read_shadow, score_watchlist
 from tradedesk.prediction.train import make_xgboost, purged_walk_forward, select_threshold
 from tradedesk.review_queue import load_queue
 from tradedesk.scan.evening_scan import Watchlist, WatchlistEntry
@@ -532,6 +532,30 @@ def test_a_stale_feature_version_bundle_is_refused_not_silently_misscored() -> N
 
     rep.bundle.feature_version = None  # an old artifact without the field: still allowed
     assert 0.0 <= probability(rep.bundle, f) <= 1.0
+
+
+def test_a_stale_bundle_is_selectable_as_not_current_so_the_scan_can_skip_it() -> None:
+    """The counterpart to the test above, and the reason it exists: probability() RAISING on
+    a stale bundle is right for scoring but fatal for the evening scan, which must keep
+    building a watchlist whatever the model is doing (the layer is advisory - shadow mode
+    only appends a note). Bumping FEATURE_VERSION to v4 without retraining made every saved
+    bundle stale and would have crashed `tradedesk scan` on the next `tradedesk-after-close`
+    run, leaving the next morning's live session with no watchlist. `is_current` is what the
+    scan filters on; if this ever regresses, the scan starts dying on a version bump again."""
+    rep = train(
+        synthetic_dataset(), n_splits=4, embargo_sessions=10,
+        prefer_lightgbm=False, prefer_xgboost=False,
+    )  # fmt: skip
+    assert rep.bundle is not None
+    assert is_current(rep.bundle)
+
+    rep.bundle.feature_version = "v3"
+    assert not is_current(rep.bundle)
+    with pytest.raises(ValueError, match="feature_version"):
+        probability(rep.bundle, dict.fromkeys(FEATURE_NAMES, 0.0))
+
+    rep.bundle.feature_version = None  # pre-dates the field: treated as usable, as before
+    assert is_current(rep.bundle)
 
 
 def test_feature_importance_is_ranked_and_works_for_the_logistic_baseline() -> None:
