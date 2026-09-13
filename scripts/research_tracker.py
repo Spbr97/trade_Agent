@@ -9,8 +9,8 @@ market's log is its own dataset, never pooled (same discipline as everywhere els
 project). NSE keeps its original (non-suffixed) log path since it predates this option and
 is already scheduled; crypto/BSE get their own market-suffixed files automatically.
 
-Commands: `run` (nightly: resolve, then scan, then flag, then report), `report`, `scan`,
-`resolve`.
+Commands: `run` (nightly: resolve, then scan, then flag, then EOD-learn [nse/bse only], then
+report), `report`, `scan`, `resolve`.
 """
 
 from __future__ import annotations
@@ -115,7 +115,8 @@ def run(
     log: Path | None = typer.Option(None, "--log"),
 ) -> None:
     """The nightly job: grade what's ripe, log tonight's calls, flag anything that has
-    cleared the evidence bar, write the report."""
+    cleared the evidence bar, run the EOD self-learning step (NSE/BSE only), write the
+    report."""
     db = db or db_for(market)
     log = log or log_path_for(market)
     resolve(market=market, db=db, log=log)
@@ -123,6 +124,10 @@ def run(
     flagged = flag_research_findings(load_log(log), cost_r_for(market), market=market)
     if flagged:
         typer.echo(f"\nflagged for review: {flagged}")
+    if market in ("nse", "bse"):
+        from tradedesk.eod_learning import run_eod_learning
+
+        run_eod_learning(market, db, log=log, echo=typer.echo)
     report(market=market, log=log, cost_r=cost_r_for(market), sessions=sessions_dir_for(market), save=True)  # noqa: E501
 
 

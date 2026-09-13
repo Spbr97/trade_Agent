@@ -470,6 +470,10 @@
     <h2>Candidate rules <span class="muted" style="text-transform:none;">- forward, out-of-sample only, no backfill. Cannot alert. Compared against `random_eligible`, a matched random pick from the same universe on the same days.</span></h2>
     <table id="research-summary"></table>
   </section>
+  <section id="research-learning-section" hidden>
+    <h2>EOD self-learning <span class="muted" style="text-transform:none;">- once-daily retrain on this market's real forward evidence only, never the old backtest window. One row per day it has run. Cannot alert - only ever flags Review if it clears the same evidence bar as everything else.</span></h2>
+    <table id="research-learning"></table>
+  </section>
   <section class="perf-controls">
     <div class="group">
       <label for="research-filter-rule">Rule</label>
@@ -867,8 +871,33 @@ async function loadResearch() {
   renderResearchSummary(summary);
   populateResearchFilters();
   renderResearchCalls();
+  // EOD self-learning only runs for NSE/BSE (crypto was out of scope for that request).
+  $('research-learning-section').hidden = market === 'crypto';
+  if (market !== 'crypto') {
+    const r = await fetch(`/api/eod-learning?market=${market}`);
+    renderResearchLearning(r.ok ? await r.json() : []);
+  }
 }
 $('research-market-select').addEventListener('change', loadResearch);
+function renderResearchLearning(history) {
+  if (!history.length) {
+    rows($('research-learning'), ['Date','Status'], [`<tr><td colspan="2" class="empty-note">no EOD learning runs yet</td></tr>`]);
+    return;
+  }
+  rows($('research-learning'), ['Date','#Resolved','#Dev OOS Brier','#Test ROC-AUC','#Test Net R','Explored feature','Adopted?'],
+    history.map(h => {
+      if (h.status) {
+        return `<tr><td>${h.date}</td><td class="num">${h.n_resolved}</td><td colspan="5" class="muted">${h.status}</td></tr>`;
+      }
+      const adoptedCell = h.explored_feature == null ? '-'
+        : `<span class="${h.explored_adopted ? 'eligible-yes' : 'eligible-no'}">${h.explored_adopted ? 'YES' : 'no'}</span>`;
+      return `<tr><td>${h.date}</td><td class="num">${h.n_resolved}</td>
+        <td class="num">${h.dev_oos_brier != null ? fmt(h.dev_oos_brier, 4) : '-'}</td>
+        <td class="num">${h.test_roc_auc != null ? fmt(h.test_roc_auc, 3) : '-'}</td>
+        <td class="num">${h.test_net_r != null ? fmt(h.test_net_r, 4) : '-'}</td>
+        <td>${h.explored_feature || '-'}</td><td>${adoptedCell}</td></tr>`;
+    }));
+}
 function renderResearchSummary(summary) {
   const rows_ = summary.map(s => {
     const isControl = s.rule === 'random_eligible';
