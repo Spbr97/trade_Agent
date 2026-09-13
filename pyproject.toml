@@ -82,3 +82,4 @@ markers = [
 
 [tool.ruff.lint.per-file-ignores]
 "src/tradedesk/cli.py" = ["B008"]  # typer.Option() in defaults is the typer idiom
+"scripts/*.py" = ["B008"]  # same typer idiom in the standalone research scripts
