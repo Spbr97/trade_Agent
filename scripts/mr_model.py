@@ -22,6 +22,8 @@ half.
 
 from __future__ import annotations
 
+import bisect
+from datetime import date
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -55,7 +57,71 @@ FEATURES = [
     "nr7", "inside_day",
     "dist_52w_high_atr", "pct_in_52w_range", "dist_high20_atr",
     "day_of_week", "nifty_return_1d", "nifty_return_5d", "vix", "vix_change_5d",
+    # Event proximity (added for the "does the model just need more information" proof plan,
+    # 2026-09-13) - real data already loaded into results_events/corporate_actions but never
+    # fed to any model. See _near_term_results()/_days_since() below for why these are built
+    # deliberately more conservatively than prediction/train.py's existing
+    # _sessions_to_results, which is a real, separate look-ahead risk documented there.
+    "in_near_term_results_window", "days_since_last_results", "days_since_last_corp_action",
 ]  # fmt: skip
+
+
+def _days_since(dates: list[date], on: date, cap: float = 250.0) -> float:
+    """Calendar days since the most recent date strictly before `on`; `cap` if there is none
+    or the true gap exceeds it - the same "encode absence as a large sentinel" convention
+    prediction/features.py's `sessions_to_results` already uses for "nothing upcoming"."""
+    i = bisect.bisect_left(dates, on)
+    if i == 0:
+        return cap
+    return min(float((on - dates[i - 1]).days), cap)
+
+
+def _near_term_results(dates: list[date], on: date, window_days: int = 4) -> bool:
+    """True only if a results event falls within `window_days` CALENDAR days ahead - chosen
+    to match SEBI LODR's ~2-WORKING-day minimum board-meeting intimation requirement (4
+    calendar days safely covers 2 working days across a weekend). This is deliberately more
+    conservative than prediction/train.py's `_sessions_to_results`, which takes the nearest
+    FUTURE event from the full historical results_events table with no cap at all -
+    results_events stores only the meeting date, never when it was publicly announced, so an
+    uncapped "days to next event" feature can claim knowledge of a date that plausibly was
+    not yet public as of `on`. Capping at the regulatory minimum notice period is the
+    conservative, defensible version; it will miss some genuinely-known-further-out dates
+    (many boards pre-announce informally) but cannot claim knowledge it can't defend."""
+    i = bisect.bisect_right(dates, on)
+    if i >= len(dates):
+        return False
+    return (dates[i] - on).days <= window_days
+
+
+def _regime_by_date(
+    nifty: pd.DataFrame | None, vixdf: pd.DataFrame | None, cfg: Any
+) -> dict[date, str]:
+    """One regime classification per calendar date the benchmark traded, reusing
+    engine/regime.py::classify_regime exactly as the live scan/backtest do - breadth is
+    passed as None (not loaded here), the same graceful-degradation path regime.py already
+    supports for a missing optional input. Computed once per date and joined by date below,
+    not per row - a few hundred iterations over ~3 years of sessions, not per-signal."""
+    from tradedesk.engine.regime import classify_regime
+
+    if nifty is None or not len(nifty):
+        return {}
+    bench = nifty.copy()
+    bench.index = pd.DatetimeIndex(bench.index).tz_convert("Asia/Kolkata").date
+    vix_series = None
+    if vixdf is not None and len(vixdf):
+        vix_series = pd.Series(
+            vixdf["close"].to_numpy(),
+            index=pd.DatetimeIndex(vixdf.index).tz_convert("Asia/Kolkata").date,
+        )
+    out: dict[date, str] = {}
+    for d in bench.index:
+        snap = classify_regime(
+            bench.loc[:d], breadth_pct=None,
+            vix=vix_series.loc[:d] if vix_series is not None else None,
+            cfg=cfg, on=d,
+        )  # fmt: skip
+        out[d] = snap.regime.value
+    return out
 
 
 def _barrier(
@@ -126,6 +192,9 @@ def build(
             ctx = vx if ctx.empty else ctx.join(vx, how="outer")
         typer.echo(f"context: benchmark={bench} vix={vix_code} rows={len(ctx)}")
 
+        regime_by_date = _regime_by_date(nifty, vixdf, settings.engine.regime)
+        typer.echo(f"regime: {len(regime_by_date)} dates classified")
+
         rows: list[dict[str, Any]] = []
         codes = store.codes(Interval.D1)
         if max_codes:
@@ -139,6 +208,16 @@ def build(
                 continue
             f = daily_features(raw)
             f["_d"] = pd.DatetimeIndex(f.index).tz_convert("Asia/Kolkata").date
+            symbol = store.symbol_for(code)
+            res_dates: list[date] = []
+            ca_dates: list[date] = []
+            if symbol:
+                res_dates = sorted(
+                    r[0] for r in store.con.execute(
+                        "SELECT event_date FROM results_events WHERE symbol = ?", [symbol]
+                    ).fetchall()
+                )  # fmt: skip
+                ca_dates = sorted(a.ex_date for a in store.corporate_actions(symbol))
             turnover = (f["close"] * f["volume"]).rolling(20).mean()
             mask = (
                 (f["rsi2"] < 10) & (f["close"] > f["ema50"])
@@ -169,6 +248,7 @@ def build(
                     continue
                 label, gross_r = res
                 r = f.iloc[i]
+                d_i = f["_d"].iloc[i]
                 # `label` (reached 2R before the stop) has a ~3% base rate at this geometry -
                 # a 2R target on a 3xATR stop is a 6-ATR move inside 10 sessions, which
                 # almost never happens, so the rule's positive expectancy comes from the
@@ -218,8 +298,13 @@ def build(
                         "pct_in_52w_range": 50.0 if span <= 0 else (close_i - lo52) / span * 100,
                         "dist_high20_atr": (close_i - float(r.get("high20", close_i))) / a,
                         "day_of_week": float(pd.Timestamp(f.index[i]).weekday()),
+                        "in_near_term_results_window": 1.0
+                        if _near_term_results(res_dates, d_i) else 0.0,
+                        "days_since_last_results": _days_since(res_dates, d_i),
+                        "days_since_last_corp_action": _days_since(ca_dates, d_i),
+                        "regime": regime_by_date.get(d_i, "unknown"),
                     }
-                )
+                )  # fmt: skip
 
     df = pd.DataFrame(rows)
     if len(df) and not ctx.empty:
@@ -229,35 +314,20 @@ def build(
             df[col] = np.nan
     out.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(out, index=False)
+    regime_counts = df["regime"].value_counts().to_dict() if "regime" in df.columns else {}
     typer.echo(
         f"\n{len(df)} RSI(2) entries -> {out}\n"
         f"base rate (hit {TARGET_R}R before {STOP_ATR}xATR stop): {df['label'].mean():.4f}\n"
-        f"mean gross R: {df['gross_r'].mean():+.4f}"
+        f"mean gross R: {df['gross_r'].mean():+.4f}\n"
+        f"regime: {regime_counts}\n"
+        f"near-term results window: {df['in_near_term_results_window'].mean():.4f} of rows"
     )
 
 
-@app.command()
-def train(
-    dataset: Path = typer.Option(DATASET, "--dataset"),
-    root: Path = typer.Option(Path("."), "--root"),
-    n_splits: int = typer.Option(4, "--splits"),
-    final_test_frac: float = typer.Option(0.2, "--final-test-frac"),
-    risk_pct: float = typer.Option(0.0075, "--risk-pct"),
-    out: Path = typer.Option(Path("data/reports/mr_model_report.txt"), "--out"),
-) -> None:
-    """Purged walk-forward on the dev portion, one locked scoring of the reserved tail."""
+def _load_dataset(dataset: Path, settings: Any, risk_pct: float) -> pd.DataFrame:
     from tradedesk.markets.costs import EquityCostModel
     from tradedesk.models import TradeType
-    from tradedesk.prediction.train import (
-        DEFAULT_SEED,
-        evaluate,
-        make_baseline,
-        make_xgboost,
-        purged_walk_forward,
-        select_threshold,
-    )
 
-    settings = load_config(root)
     cm = EquityCostModel(settings.risk.costs)
     risk_rupees = float(settings.risk.trading_capital) * risk_pct
 
@@ -266,8 +336,9 @@ def train(
     df = df.sort_values("armed_date").reset_index(drop=True)
     df[FEATURES] = df[FEATURES].replace([np.inf, -np.inf], np.nan)
     df = df.dropna(subset=["label_profit", "gross_r"]).reset_index(drop=True)
+    if "regime" not in df.columns:
+        df["regime"] = "unknown"
 
-    # Per-trade cost in R, from the real cost model at the chosen sizing.
     cost_r = []
     for e, s in zip(df["entry"].to_numpy(), df["stop"].to_numpy(), strict=True):
         rps = e - s
@@ -279,6 +350,27 @@ def train(
         cost_r.append(float(c.total) / (qty * rps))
     df["cost_r"] = cost_r
     df["net_r"] = df["gross_r"] - df["cost_r"]
+    return df
+
+
+def _train_impl(
+    df: pd.DataFrame, settings: Any, *, n_splits: int, final_test_frac: float,
+    out: Path, label: str,
+) -> dict[str, Any]:
+    """Runs the full purged-walk-forward / locked-final-test protocol on whatever rows `df`
+    already contains. Returns the locked-test summary (n, net_r mean, t-stat) so a caller
+    comparing several slices (e.g. per-regime) can apply its own significance bar - this
+    function only reports what happened on the slice it was given, it never decides
+    "significant" on its own, so the Bonferroni correction across multiple calls stays the
+    caller's responsibility (see train_by_regime)."""  # fmt: skip
+    from tradedesk.prediction.train import (
+        DEFAULT_SEED,
+        evaluate,
+        make_baseline,
+        make_xgboost,
+        purged_walk_forward,
+        select_threshold,
+    )
 
     # Locked final test: the most recent final_test_frac of DISTINCT SESSIONS, reserved
     # before any fold, tuning or threshold choice sees the data.
@@ -293,13 +385,13 @@ def train(
         typer.echo(s)
         lines.append(s)
 
+    say(f"=== {label} ===")
     say(
-        f"dataset {dataset}  rows={len(df)}  "
-        f"base_rate(profitable)={df['label_profit'].mean():.4f}  "
+        f"rows={len(df)}  base_rate(profitable)={df['label_profit'].mean():.4f}  "
         f"base_rate(hit 2R)={df['label'].mean():.4f}"
     )
     say(f"dev={len(dev)} (< {cut})   LOCKED TEST={len(test)} (>= {cut})")
-    say(f"cost drag at {risk_pct:.2%} risk: mean {df['cost_r'].mean():.4f}R")
+    say(f"cost drag: mean {df['cost_r'].mean():.4f}R")
     say()
 
     X_dev = dev[FEATURES].to_numpy(float)
@@ -342,7 +434,9 @@ def train(
     if best_name is None or best_oos is None:
         say("no usable model")
         out.write_text("\n".join(lines), encoding="utf-8")
-        return
+        return {
+            "label": label, "n": 0, "net_r": float("nan"), "t": float("nan"), "roc_auc": None,
+        }
 
     oos_p, scored = best_oos
     say(f"\nchosen: {best_name} (OOS Brier {best_brier:.5f})")
@@ -395,6 +489,92 @@ def train(
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text("\n".join(lines), encoding="utf-8")
     typer.echo(f"\nreport -> {out}")
+    return {
+        "label": label, "n": len(test), "net_r": base_net,
+        "t": base_net / base_se if base_se > 0 else float("nan"), "roc_auc": m_te.roc_auc,
+    }  # fmt: skip
+
+
+@app.command()
+def train(
+    dataset: Path = typer.Option(DATASET, "--dataset"),
+    root: Path = typer.Option(Path("."), "--root"),
+    n_splits: int = typer.Option(4, "--splits"),
+    final_test_frac: float = typer.Option(0.2, "--final-test-frac"),
+    risk_pct: float = typer.Option(0.0075, "--risk-pct"),
+    out: Path = typer.Option(Path("data/reports/mr_model_report.txt"), "--out"),
+) -> None:
+    """Purged walk-forward on the dev portion, one locked scoring of the reserved tail."""
+    settings = load_config(root)
+    df = _load_dataset(dataset, settings, risk_pct)
+    _train_impl(
+        df, settings, n_splits=n_splits, final_test_frac=final_test_frac,
+        out=out, label="ALL regimes pooled",
+    )  # fmt: skip
+
+
+@app.command()
+def train_by_regime(
+    dataset: Path = typer.Option(DATASET, "--dataset"),
+    root: Path = typer.Option(Path("."), "--root"),
+    n_splits: int = typer.Option(4, "--splits"),
+    final_test_frac: float = typer.Option(0.2, "--final-test-frac"),
+    risk_pct: float = typer.Option(0.0075, "--risk-pct"),
+    min_rows: int = typer.Option(150, "--min-rows", help="skip a regime below this many rows"),
+    out_dir: Path = typer.Option(Path("data/reports/mr_regime"), "--out-dir"),
+) -> None:
+    """H2 of the proof plan: does pooling risk_on/neutral/risk_off into one model wash out a
+    real edge in a subgroup? Runs the exact same purged-walk-forward / locked-test protocol
+    (`_train_impl`, byte-identical to `train`'s) once per regime bucket found in the dataset's
+    `regime` column with at least `min_rows` rows, then reports a Bonferroni-corrected
+    verdict: testing K buckets means the real significance bar for calling any ONE of them
+    "found" is stricter than the usual two-sided t >= ~2 (alpha=0.05) - it is
+    norm.ppf(1 - 0.025/K), e.g. ~2.24 at K=3 - decided as a RULE before these numbers were
+    run, per the proof plan's pre-registration (2026-09-13), specifically to avoid the same
+    multiple-testing trap this project has already caught itself in three separate times."""
+    settings = load_config(root)
+    df = _load_dataset(dataset, settings, risk_pct)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    counts = df["regime"].value_counts()
+    typer.echo(f"regime counts in full dataset: {counts.to_dict()}\n")
+
+    results: list[dict[str, Any]] = []
+    for regime in sorted(df["regime"].unique()):
+        sub = df[df["regime"] == regime].reset_index(drop=True)
+        if len(sub) < min_rows:
+            typer.echo(f"=== {regime}: {len(sub)} rows, below --min-rows {min_rows}, skipped ===\n")  # noqa: E501
+            continue
+        summary = _train_impl(
+            sub, settings, n_splits=n_splits, final_test_frac=final_test_frac,
+            out=out_dir / f"{regime}.txt", label=f"regime={regime}",
+        )  # fmt: skip
+        summary["label"] = regime
+        results.append(summary)
+        typer.echo()
+
+    from scipy import stats
+
+    n_tested = len(results)
+    # Two-sided Bonferroni: divide alpha=0.05 by the number of buckets actually tested (not
+    # a fixed 3 - a bucket skipped below --min-rows was never a real test and doesn't count),
+    # then convert back to a t/z bar. Decided as a rule, not a number, before any bucket's
+    # result was looked at - see train_by_regime's docstring.
+    bonferroni_t = float(stats.norm.ppf(1 - 0.025 / max(n_tested, 1))) if n_tested else float("nan")  # noqa: E501
+    typer.echo("=" * 72)
+    typer.echo(f"REGIME SPLIT SUMMARY - Bonferroni bar for {n_tested} buckets tested: t >= {bonferroni_t:.1f}")  # noqa: E501
+    typer.echo(f"{'regime':<12} {'n':>6} {'net_r':>9} {'t':>7} {'roc_auc':>9} {'verdict':>12}")
+    for r in results:
+        t_val = r["t"]
+        verdict = (
+            "FOUND" if np.isfinite(t_val) and abs(t_val) >= bonferroni_t and r["net_r"] > 0
+            else "not significant"
+        )  # fmt: skip
+        auc = r["roc_auc"] if r["roc_auc"] is not None else float("nan")
+        typer.echo(
+            f"{r['label']:<12} {r['n']:>6} {r['net_r']:>+9.4f} {t_val:>7.2f} "
+            f"{auc:>9.3f} {verdict:>12}"
+        )
 
 
 if __name__ == "__main__":
