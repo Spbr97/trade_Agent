@@ -1,8 +1,15 @@
-# Swing setups (PLAN.md §6.5). All ship disabled until backtested (M5) and reviewed.
-# Thresholds are starting guesses; the backtest decides.
+# Swing setups (PLAN.md §6.5). Thresholds are starting guesses; the backtest decides.
+#
+# These `enabled` flags were NOT actually gating live scans before 2026-09-13: scan_config()
+# silently fell back to running every setup whenever none were individually enabled - a real
+# bug, fixed the same day (see scan/evening_scan.py::scan_config's docstring). Reviewed and
+# knowingly kept enabled (explicit user decision, 2026-09-13) despite none showing a real
+# edge yet on 2023-2026 backtest data - base_breakout AUC 0.59, trend_pullback/nr7_breakout
+# ~0.54 (near coin-flip), pooled expectancy -0.557R. This is a deliberate "keep live while we
+# investigate whether the setups can be tightened" choice, not a claim these are profitable.
 setups:
   base_breakout:
-    enabled: false
+    enabled: true
     base_len_sessions: {min: 5, max: 25}
     close_within_pct_of_base_high: 0.03
     rs_percentile_min: 75
@@ -10,13 +17,13 @@ setups:
     partial_at_r: 2.0
     trail: ema10_close
   trend_pullback:
-    enabled: false
+    enabled: true
     pullback_len_sessions: {min: 2, max: 5}
     rs_percentile_min: 75
     partial_at_r: 2.0
     trail: ema10_close
   nr7_breakout:
-    enabled: false
+    enabled: true
     within_pct_of_recent_high: 0.05
     partial_at_r: 2.0
     trail_atr_multiple: 2.0

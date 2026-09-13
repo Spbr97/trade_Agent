@@ -24,6 +24,7 @@ from tradedesk.scan import (
     render_markdown,
     render_text,
     save_watchlist,
+    scan_config,
     trade_card,
 )
 
@@ -122,6 +123,50 @@ def test_filters_reasons_and_net_rr() -> None:
         assert word in joined, word
     none = apply_filters(sig(), qty=0, atr_pct=None, avg_turnover=None, regime=None, **common)  # type: ignore[arg-type]
     assert none.ok and none.net_rr_t2 is None
+
+
+# ---------------------------------------------------------------- scan_config
+
+
+def _with_all_setups_disabled(settings: Settings) -> Settings:
+    """config/setups.yaml has flipped between all-disabled and all-enabled over this
+    project's life (see the 2026-09-13 fallback-bug note below) - tests that need the
+    "nothing enabled" case build it explicitly rather than depending on the live config's
+    current state."""
+    disabled = {k: v.model_copy(update={"enabled": False}) for k, v in settings.setups.setups.items()}  # noqa: E501
+    return settings.model_copy(update={"setups": settings.setups.model_copy(update={"setups": disabled})})  # noqa: E501
+
+
+def test_no_enabled_setups_finds_nothing_when_fallback_is_off() -> None:
+    """Real bug (2026-09-13): config/setups.yaml originally marked every setup `enabled:
+    false` ("ships disabled until reviewed"), but the live `tradedesk scan` scheduled task
+    called scan_config with no explicit --setup, and the old code silently fell back to
+    running every setup regardless of that flag - so "disabled" never actually meant
+    disabled in production (all three were live and alerting the whole time; the config was
+    later explicitly reviewed and re-enabled). `fallback_to_all_if_none_enabled=False`
+    (what the live `scan` CLI command now passes) must leave `cfg.setups` empty when
+    nothing is enabled, not quietly substitute every SetupKind."""
+    settings = _with_all_setups_disabled(load_config(ROOT))
+    assert not any(v.enabled for v in settings.setups.setups.values())
+    cfg = scan_config(settings, date(2026, 3, 2), fallback_to_all_if_none_enabled=False)
+    assert cfg.setups == []
+
+
+def test_no_enabled_setups_still_runs_everything_by_default() -> None:
+    """The permissive default stays for backtest/train/mcp callers - omitting --setup on a
+    RESEARCH tool reasonably means "try every setup", unlike the live scan path above."""
+    settings = _with_all_setups_disabled(load_config(ROOT))
+    cfg = scan_config(settings, date(2026, 3, 2))
+    assert set(cfg.setups) == set(SetupKind)
+
+
+def test_explicit_setup_list_is_respected_regardless_of_fallback_flag() -> None:
+    settings = load_config(ROOT)
+    cfg = scan_config(
+        settings, date(2026, 3, 2), [SetupKind.BASE_BREAKOUT],
+        fallback_to_all_if_none_enabled=False,
+    )  # fmt: skip
+    assert cfg.setups == [SetupKind.BASE_BREAKOUT]
 
 
 # ------------------------------------------------------------ watchlist e2e

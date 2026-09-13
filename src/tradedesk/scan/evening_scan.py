@@ -114,17 +114,32 @@ def scan_config(
     on: date,
     setups: Sequence[SetupKind] | None = None,
     market: Market | None = None,
+    *,
+    fallback_to_all_if_none_enabled: bool = True,
 ) -> BacktestConfig:
     """`market` defaults to NSE (nse_market(settings)) so every existing caller - the CLI,
     mcp_server.py, run_evening_scan's own default - is unaffected; pass crypto_market(settings)
-    to scan a different market (M13 Phase 4)."""
+    to scan a different market (M13 Phase 4).
+
+    `fallback_to_all_if_none_enabled` (added 2026-09-13): a REAL bug, found while
+    investigating why the ML layer's per-setup numbers looked as bad as they did -
+    config/setups.yaml marks every setup `enabled: false` with the comment "All ship
+    disabled until backtested (M5) and reviewed", but when no `setups` were explicitly
+    passed AND none were individually enabled, this function silently fell back to
+    `list(SetupKind)` - every setup, "disabled" flag notwithstanding. The live `tradedesk
+    scan` scheduled task calls this with no explicit setup filter, so that "ships disabled"
+    safety gate has never actually been in effect: all three setups have been live and
+    alerting the whole time. Kept `True` by default so `backtest`/`train`/research callers
+    that omit `--setup` still get the old "test everything" convenience (that's a
+    reasonable default when you're the one choosing to run the research tool) - the live
+    `scan` CLI command below is the one place this is now explicitly set `False`."""
     market = market or nse_market(settings)
     kinds = (
         list(setups)
         if setups
         else [SetupKind(k) for k, v in settings.setups.setups.items() if v.enabled]
     )
-    if not kinds:
+    if not kinds and fallback_to_all_if_none_enabled:
         kinds = list(SetupKind)
     return BacktestConfig(
         setups=kinds,

@@ -1584,7 +1584,15 @@ def scan(
             day = last.date()
         else:
             day = datetime.strptime(on, "%Y-%m-%d").date()
-        cfg = scan_config(settings, day, kinds, market=mkt)
+        cfg = scan_config(settings, day, kinds, market=mkt, fallback_to_all_if_none_enabled=False)
+        if not cfg.setups:
+            typer.echo(
+                "no setups enabled in config/setups.yaml and no --setup given; nothing to "
+                "scan. This used to silently run every setup regardless of `enabled: false` "
+                "- see scan_config()'s docstring. Enable at least one setup in config, or "
+                "pass --setup explicitly, to build a real watchlist."
+            )
+            raise typer.Exit(code=0)
         cfg.vix_code = vix
         if market == "nse":
             cfg.sector_of, cfg.sector_codes = _sector_config(store, root)

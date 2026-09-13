@@ -15,7 +15,12 @@ def test_loads_repo_config(settings: Settings) -> None:
     assert settings.risk.costs.gst_pct == Decimal("0.18")
     assert settings.claude.mode == "off"
     assert settings.ml.enabled is False
-    assert all(s.enabled is False for s in settings.setups.setups.values())
+    # All three explicitly enabled 2026-09-13, after real backtest review found no setup
+    # has a proven edge (base_breakout AUC 0.59, the others ~0.54) - a deliberate decision
+    # to keep live while investigating, not a claim of profitability. See
+    # config/setups.yaml's header comment and scan/evening_scan.py::scan_config's
+    # docstring for the fallback-bug this decision follows from.
+    assert all(s.enabled is True for s in settings.setups.setups.values())
 
 
 def test_decimal_fields_have_no_float_drift(settings: Settings) -> None:
