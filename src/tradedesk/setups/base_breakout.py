@@ -48,6 +48,7 @@ class BaseBreakout:
         supply = overhead_supply(df, base.high, cfg)
         exit_plan = ExitPlan(
             partial_at_r=float(params.get("partial_at_r", 2.0)),
+            partial_fraction=float(params.get("partial_fraction", 0.5)),
             trail="ema10_close",
         )
         return make_signal(

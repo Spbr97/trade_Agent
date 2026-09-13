@@ -15,6 +15,13 @@
 # baseline beats all three by 0.21-0.26R on the same stocks and window, so they are not
 # merely edgeless, they are anti-predictive. Expect NO TRADE with explicit reasons rather
 # than silence - that is the designed outcome (SDD section 17), not a broken scan.
+# 2026-09-13, partial_fraction raised 0.5 -> 1.0 on all three (whole position off at T1,
+# no runner). This is a MEASURED change, not a preference: on the same 612 portfolio-taken
+# trades, the half-out-at-2R-then-trail-ema10 exit realised -0.5579R/trade versus -0.4436R
+# for simply taking the whole position off at T1 - the runner half typically comes back to
+# the breakeven stop and contributes ~0, so a winning trade realised only +0.844R instead
+# of +2R. Worth +0.114R/trade. It does not make these setups profitable (nothing does - see
+# the header above); it stops giving away 0.11R on every trade that is taken.
 setups:
   base_breakout:
     enabled: true
@@ -23,17 +30,20 @@ setups:
     rs_percentile_min: 75
     max_stop_distance_atr: 2.0
     partial_at_r: 2.0
+    partial_fraction: 1.0
     trail: ema10_close
   trend_pullback:
     enabled: true
     pullback_len_sessions: {min: 2, max: 5}
     rs_percentile_min: 75
     partial_at_r: 2.0
+    partial_fraction: 1.0
     trail: ema10_close
   nr7_breakout:
     enabled: true
     within_pct_of_recent_high: 0.05
     partial_at_r: 2.0
+    partial_fraction: 1.0
     trail_atr_multiple: 2.0
 
 # Shared entry rules (PLAN.md §6.6)

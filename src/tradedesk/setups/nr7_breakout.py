@@ -43,6 +43,7 @@ class Nr7Breakout:
         supply = overhead_supply(df, sq.day_high, cfg)
         exit_plan = ExitPlan(
             partial_at_r=float(params.get("partial_at_r", 2.0)),
+            partial_fraction=float(params.get("partial_fraction", 0.5)),
             trail="atr",
             trail_atr_mult=float(params.get("trail_atr_multiple", 2.0)),
         )

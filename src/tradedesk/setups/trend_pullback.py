@@ -50,7 +50,11 @@ class TrendPullback:
         if 1.0 <= swing_r < partial_r:
             partial_r = swing_r
         supply = overhead_supply(df, trigger, cfg)
-        exit_plan = ExitPlan(partial_at_r=partial_r, trail="ema10_close")
+        exit_plan = ExitPlan(
+            partial_at_r=partial_r,
+            partial_fraction=float(params.get("partial_fraction", 0.5)),
+            trail="ema10_close",
+        )
         return make_signal(
             kind=self.kind,
             df=df,
