@@ -295,50 +295,177 @@
   <div id="bse-view-history" hidden>
     <section class="perf-controls">
       <div class="group">
-        <label for="bse-filter-symbol">Stock</label>
-        <select id="bse-filter-symbol"><option value="">All</option></select>
-      </div>
-      <div class="group">
-        <label for="bse-filter-setup">Setup</label>
-        <select id="bse-filter-setup"><option value="">All</option></select>
-      </div>
-      <div class="group">
-        <label for="bse-filter-status">Result</label>
-        <select id="bse-filter-status">
-          <option value="">All</option>
-          <option value="target">Hit (target)</option>
-          <option value="stop">Not hit (stop)</option>
-          <option value="gap_stop">Not hit (gap stop)</option>
-          <option value="timeout">Not hit (timed out)</option>
-          <option value="pending">Pending</option>
+        <label for="bse-data-select">Data</label>
+        <select id="bse-data-select">
+          <option value="live" selected>Live (current agent)</option>
+          <option value="past">Past (backfill)</option>
         </select>
       </div>
-      <div class="group">
-        <label for="bse-filter-resolved">Show</label>
-        <select id="bse-filter-resolved">
-          <option value="">All calls</option>
-          <option value="resolved">Resolved only</option>
+      <div class="group" id="bse-live-view-group">
+        <label for="bse-live-view-select">View</label>
+        <select id="bse-live-view-select">
+          <option value="ongoing" selected>Ongoing</option>
+          <option value="passfail">Pass/Fail</option>
         </select>
       </div>
-      <div class="group">
-        <label for="bse-filter-rows">Rows</label>
-        <select id="bse-filter-rows">
-          <option value="25">25</option>
-          <option value="50" selected>50</option>
-          <option value="100">100</option>
-          <option value="all">All</option>
-        </select>
-      </div>
-      <span class="muted" id="bse-filter-count"></span>
+      <span class="muted">5-stock tracker watchlist, own dataset, not pooled with NSE/crypto</span>
     </section>
-    <section>
-      <h2>BSE call history <span class="muted" style="text-transform:none;">- 5-stock tracker watchlist + backfilled history, own dataset, not pooled with NSE/crypto</span></h2>
-      <table id="bse-calls"></table>
-    </section>
+
+    <div id="bse-hist-view-live">
+      <div id="bse-live-ongoing">
+        <section class="perf-controls">
+          <div class="group">
+            <label for="bse-ongoing-filter-symbol">Stock</label>
+            <select id="bse-ongoing-filter-symbol"><option value="">All</option></select>
+          </div>
+          <div class="group">
+            <label for="bse-ongoing-filter-setup">Setup</label>
+            <select id="bse-ongoing-filter-setup"><option value="">All</option></select>
+          </div>
+          <div class="group">
+            <label for="bse-ongoing-filter-status">Result</label>
+            <select id="bse-ongoing-filter-status">
+              <option value="">All</option>
+              <option value="pending">Pending</option>
+            </select>
+          </div>
+          <div class="group">
+            <label for="bse-ongoing-filter-resolved">Show</label>
+            <select id="bse-ongoing-filter-resolved">
+              <option value="">All calls</option>
+              <option value="resolved">Resolved only</option>
+            </select>
+          </div>
+          <div class="group">
+            <label for="bse-ongoing-filter-rows">Rows</label>
+            <select id="bse-ongoing-filter-rows">
+              <option value="25">25</option>
+              <option value="50" selected>50</option>
+              <option value="100">100</option>
+              <option value="all">All</option>
+            </select>
+          </div>
+          <span class="muted" id="bse-ongoing-filter-count"></span>
+        </section>
+        <section>
+          <h2>Ongoing <span class="muted" style="text-transform:none;">- calls the current agent has made that haven't resolved yet</span></h2>
+          <table id="bse-ongoing-calls"></table>
+        </section>
+      </div>
+
+      <div id="bse-live-passfail" hidden>
+        <section>
+          <h2>Pass/Fail <span class="muted" style="text-transform:none;">- current agent's performance since Live/Past tagging shipped 2026-09-13</span></h2>
+          <div class="cards" id="bse-live-scoreboard">
+            <div class="card"><div class="label">Resolved</div><div class="value" id="bse-live-resolved">-</div></div>
+            <div class="card"><div class="label">Hit rate</div><div class="value" id="bse-live-hitrate">-</div></div>
+            <div class="card"><div class="label">Avg P/L</div><div class="value" id="bse-live-avgpl">-</div></div>
+            <div class="card"><div class="label">Still open</div><div class="value" id="bse-live-open">-</div></div>
+          </div>
+        </section>
+        <section class="perf-controls">
+          <div class="group">
+            <label for="bse-passfail-filter-symbol">Stock</label>
+            <select id="bse-passfail-filter-symbol"><option value="">All</option></select>
+          </div>
+          <div class="group">
+            <label for="bse-passfail-filter-setup">Setup</label>
+            <select id="bse-passfail-filter-setup"><option value="">All</option></select>
+          </div>
+          <div class="group">
+            <label for="bse-passfail-filter-status">Result</label>
+            <select id="bse-passfail-filter-status">
+              <option value="">All</option>
+              <option value="target">Hit (target)</option>
+              <option value="stop">Not hit (stop)</option>
+              <option value="gap_stop">Not hit (gap stop)</option>
+              <option value="timeout">Not hit (timed out)</option>
+            </select>
+          </div>
+          <div class="group">
+            <label for="bse-passfail-filter-resolved">Show</label>
+            <select id="bse-passfail-filter-resolved">
+              <option value="">All calls</option>
+              <option value="resolved">Resolved only</option>
+            </select>
+          </div>
+          <div class="group">
+            <label for="bse-passfail-filter-rows">Rows</label>
+            <select id="bse-passfail-filter-rows">
+              <option value="25">25</option>
+              <option value="50" selected>50</option>
+              <option value="100">100</option>
+              <option value="all">All</option>
+            </select>
+          </div>
+          <span class="muted" id="bse-passfail-filter-count"></span>
+        </section>
+        <section>
+          <h2>Resolved calls</h2>
+          <table id="bse-passfail-calls"></table>
+        </section>
+      </div>
+    </div>
+
+    <div id="bse-hist-past" hidden>
+      <section class="perf-controls">
+        <div class="group">
+          <label for="bse-past-filter-symbol">Stock</label>
+          <select id="bse-past-filter-symbol"><option value="">All</option></select>
+        </div>
+        <div class="group">
+          <label for="bse-past-filter-setup">Setup</label>
+          <select id="bse-past-filter-setup"><option value="">All</option></select>
+        </div>
+        <div class="group">
+          <label for="bse-past-filter-status">Result</label>
+          <select id="bse-past-filter-status">
+            <option value="">All</option>
+            <option value="target">Hit (target)</option>
+            <option value="stop">Not hit (stop)</option>
+            <option value="gap_stop">Not hit (gap stop)</option>
+            <option value="timeout">Not hit (timed out)</option>
+            <option value="pending">Pending</option>
+          </select>
+        </div>
+        <div class="group">
+          <label for="bse-past-filter-resolved">Show</label>
+          <select id="bse-past-filter-resolved">
+            <option value="">All calls</option>
+            <option value="resolved">Resolved only</option>
+          </select>
+        </div>
+        <div class="group">
+          <label for="bse-past-filter-rows">Rows</label>
+          <select id="bse-past-filter-rows">
+            <option value="25">25</option>
+            <option value="50" selected>50</option>
+            <option value="100">100</option>
+            <option value="all">All</option>
+          </select>
+        </div>
+        <span class="muted" id="bse-past-filter-count"></span>
+      </section>
+      <section>
+        <h2>Past (backfilled) calls <span class="muted" style="text-transform:none;">- historical replay, not the live tracker</span></h2>
+        <table id="bse-past-calls"></table>
+      </section>
+    </div>
   </div>
 </main>
 
 <main id="tab-research" hidden>
+  <section class="perf-controls">
+    <div class="group">
+      <label for="research-market-select">Market</label>
+      <select id="research-market-select">
+        <option value="nse" selected>NSE</option>
+        <option value="crypto">Crypto</option>
+        <option value="bse">BSE</option>
+      </select>
+    </div>
+    <span class="muted">each market's candidates run against its own universe and its own random control - never pooled</span>
+  </section>
   <section>
     <h2>Candidate rules <span class="muted" style="text-transform:none;">- forward, out-of-sample only, no backfill. Cannot alert. Compared against `random_eligible`, a matched random pick from the same universe on the same days.</span></h2>
     <table id="research-summary"></table>
@@ -533,8 +660,8 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     const target = btn.dataset.tab;
     TAB_IDS.forEach(id => { $('tab-' + id).hidden = target !== id; });
     if (target === 'performance') loadPerformance();
-    if (target === 'crypto') showCryptoLiveView($('crypto-live-view-select').value);
-    if (target === 'bse') loadCalls('bse');
+    if (target === 'crypto') showLiveView('crypto', $('crypto-live-view-select').value);
+    if (target === 'bse' && !$('bse-view-history').hidden) showLiveView('bse', $('bse-live-view-select').value);
     if (target === 'research') loadResearch();
     if (target === 'review') loadReview();
   });
@@ -589,38 +716,47 @@ setInterval(loadReview, 60000);
 //   'crypto-passfail' - source === 'live' AND resolved (the agent's actual track record)
 //   'crypto-past'     - source !== 'live' (the one-shot 2018-2026 backfill, and anything
 //                        logged before the Live/Past split shipped 2026-09-13)
-const callsData = { 'crypto-ongoing': [], 'crypto-passfail': [], 'crypto-past': [], bse: [] };
+// BSE gets the identical three-way split (bse-ongoing/bse-passfail/bse-past) over
+// /api/bse/calls, for the same reason and via the same generic renderCalls() - BSE's JSONL
+// log shares signal_tracker.py's TrackedSignal shape (including `source`) with crypto.
+const callsData = {
+  'crypto-ongoing': [], 'crypto-passfail': [], 'crypto-past': [],
+  'bse-ongoing': [], 'bse-passfail': [], 'bse-past': [],
+};
+const LIVE_SPLIT_API = { crypto: '/api/crypto/calls?limit=5000', bse: '/api/bse/calls?limit=5000' };
 async function loadCalls(market) {
-  if (market.startsWith('crypto-')) {
-    const r = await fetch('/api/crypto/calls?limit=5000');
+  const dash = market.indexOf('-');
+  const prefix = dash === -1 ? market : market.slice(0, dash);
+  if (LIVE_SPLIT_API[prefix]) {
+    const r = await fetch(LIVE_SPLIT_API[prefix]);
     const all = r.ok ? await r.json() : [];
     const live = all.filter(d => d.source === 'live');
-    callsData['crypto-ongoing'] = live.filter(d => !d.outcome);
-    callsData['crypto-passfail'] = live.filter(d => d.outcome);
-    callsData['crypto-past'] = all.filter(d => d.source !== 'live');
+    callsData[`${prefix}-ongoing`] = live.filter(d => !d.outcome);
+    callsData[`${prefix}-passfail`] = live.filter(d => d.outcome);
+    callsData[`${prefix}-past`] = all.filter(d => d.source !== 'live');
   } else {
     const r = await fetch(`/api/${market}/calls?limit=2000`);
     callsData[market] = r.ok ? await r.json() : [];
   }
   populateCallsFilters(market);
   renderCalls(market);
-  if (market === 'crypto-passfail') renderCryptoLiveScoreboard();
+  if (market.endsWith('-passfail')) renderLiveScoreboard(prefix);
 }
-function renderCryptoLiveScoreboard() {
-  const resolved = callsData['crypto-passfail'];
-  const open = callsData['crypto-ongoing'].length;
-  $('crypto-live-resolved').textContent = resolved.length;
-  $('crypto-live-open').textContent = open;
+function renderLiveScoreboard(prefix) {
+  const resolved = callsData[`${prefix}-passfail`];
+  const open = callsData[`${prefix}-ongoing`].length;
+  $(`${prefix}-live-resolved`).textContent = resolved.length;
+  $(`${prefix}-live-open`).textContent = open;
   if (!resolved.length) {
-    $('crypto-live-hitrate').textContent = '-';
-    $('crypto-live-avgpl').textContent = '-';
+    $(`${prefix}-live-hitrate`).textContent = '-';
+    $(`${prefix}-live-avgpl`).textContent = '-';
     return;
   }
   const wins = resolved.filter(d => d.outcome === 'target').length;
   const avgPl = resolved.reduce((s, d) => s + (plPct(d) || 0), 0) / resolved.length;
-  $('crypto-live-hitrate').textContent = pct(wins / resolved.length);
-  $('crypto-live-avgpl').textContent = pct(avgPl);
-  $('crypto-live-avgpl').className = 'value ' + (avgPl >= 0 ? 'pos' : 'neg');
+  $(`${prefix}-live-hitrate`).textContent = pct(wins / resolved.length);
+  $(`${prefix}-live-avgpl`).textContent = pct(avgPl);
+  $(`${prefix}-live-avgpl`).className = 'value ' + (avgPl >= 0 ? 'pos' : 'neg');
 }
 function populateCallsFilters(market) {
   const data = callsData[market];
@@ -681,32 +817,40 @@ function renderCalls(market) {
   }
   $(`${market}-filter-count`).textContent = countText;
 }
-['crypto-ongoing', 'crypto-passfail', 'crypto-past', 'bse'].forEach(market => {
+[
+  'crypto-ongoing', 'crypto-passfail', 'crypto-past',
+  'bse-ongoing', 'bse-passfail', 'bse-past',
+].forEach(market => {
   ['symbol', 'setup', 'status', 'resolved', 'rows'].forEach(kind => {
     $(`${market}-filter-${kind}`).addEventListener('change', () => renderCalls(market));
   });
 });
 
-// Crypto Data (Live/Past) and, within Live, View (Ongoing/Pass-Fail) - two dropdowns
-// instead of the earlier segmented buttons, so "past" reads as a deliberate, separate
-// choice rather than a peer toggle, and "ongoing" (open) vs "pass/fail" (resolved, i.e. the
-// agent's actual performance) are visibly different questions, not one mixed table.
-function showCryptoLiveView(view) {
-  $('crypto-live-ongoing').hidden = view !== 'ongoing';
-  $('crypto-live-passfail').hidden = view !== 'passfail';
-  loadCalls(view === 'ongoing' ? 'crypto-ongoing' : 'crypto-passfail');
+// Data (Live/Past) and, within Live, View (Ongoing/Pass-Fail) dropdowns - shared wiring for
+// crypto and BSE, whose element ids only differ by prefix (crypto-*/bse-*). "Past" reads as
+// a deliberate, separate choice rather than a peer toggle, and "ongoing" (open) vs
+// "pass/fail" (resolved, i.e. the agent's actual performance) are visibly different
+// questions, not one mixed table.
+function showLiveView(prefix, view) {
+  $(`${prefix}-live-ongoing`).hidden = view !== 'ongoing';
+  $(`${prefix}-live-passfail`).hidden = view !== 'passfail';
+  loadCalls(view === 'ongoing' ? `${prefix}-ongoing` : `${prefix}-passfail`);
 }
-$('crypto-data-select').addEventListener('change', () => {
-  const v = $('crypto-data-select').value;
-  $('crypto-view-live').hidden = v !== 'live';
-  $('crypto-view-past').hidden = v !== 'past';
-  $('crypto-live-view-group').hidden = v !== 'live';
-  if (v === 'live') showCryptoLiveView($('crypto-live-view-select').value);
-  else loadCalls('crypto-past');
-});
-$('crypto-live-view-select').addEventListener('change', () => showCryptoLiveView($('crypto-live-view-select').value));
-
-// BSE's own live/history segmented control (unchanged shape, unrelated to crypto's above).
+function wireLiveSplitDropdowns(prefix, viewLiveId, viewPastId) {
+  const dataSel = $(`${prefix}-data-select`);
+  const viewSel = $(`${prefix}-live-view-select`);
+  dataSel.addEventListener('change', () => {
+    const v = dataSel.value;
+    $(viewLiveId).hidden = v !== 'live';
+    $(viewPastId).hidden = v !== 'past';
+    $(`${prefix}-live-view-group`).hidden = v !== 'live';
+    if (v === 'live') showLiveView(prefix, viewSel.value);
+    else loadCalls(`${prefix}-past`);
+  });
+  viewSel.addEventListener('change', () => showLiveView(prefix, viewSel.value));
+}
+wireLiveSplitDropdowns('crypto', 'crypto-view-live', 'crypto-view-past');
+wireLiveSplitDropdowns('bse', 'bse-hist-view-live', 'bse-hist-past');
 
 // ---------------------------------------------------------------- Research tab
 // tradedesk.research_tracker's forward, out-of-sample candidate log - separate from
@@ -714,8 +858,9 @@ $('crypto-live-view-select').addEventListener('change', () => showCryptoLiveView
 // gets its own render functions rather than overloading renderCalls() with extra branches.
 let researchCallsData = [];
 async function loadResearch() {
+  const market = $('research-market-select').value;
   const [sumR, callsR] = await Promise.all([
-    fetch('/api/research/summary'), fetch('/api/research/calls?limit=2000'),
+    fetch(`/api/research/summary?market=${market}`), fetch(`/api/research/calls?market=${market}&limit=2000`),
   ]);
   const summary = sumR.ok ? await sumR.json() : [];
   researchCallsData = callsR.ok ? await callsR.json() : [];
@@ -723,6 +868,7 @@ async function loadResearch() {
   populateResearchFilters();
   renderResearchCalls();
 }
+$('research-market-select').addEventListener('change', loadResearch);
 function renderResearchSummary(summary) {
   const rows_ = summary.map(s => {
     const isControl = s.rule === 'random_eligible';
@@ -782,6 +928,7 @@ document.querySelectorAll('#bse-view-seg button').forEach(btn => {
     const view = btn.dataset.view;
     $('bse-view-live').hidden = view !== 'live';
     $('bse-view-history').hidden = view !== 'history';
+    if (view === 'history') showLiveView('bse', $('bse-live-view-select').value);
   });
 });
 

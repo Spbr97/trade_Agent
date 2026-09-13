@@ -143,24 +143,27 @@ def create_app(
         return JSONResponse(_read_call_log(BSE_LOG, limit))
 
     @app.get("/api/research/calls")
-    async def api_research_calls(limit: int = 500) -> JSONResponse:
-        """Research tracker's own call log (data/reports/research_calls.jsonl) - forward,
-        out-of-sample candidate calls, own dataset, cannot alert. See
-        tradedesk.research_tracker's module docstring for the full design rationale."""
-        from tradedesk.research_tracker import LOG as RESEARCH_LOG
+    async def api_research_calls(
+        market: Literal["nse", "crypto", "bse"] = "nse", limit: int = 500
+    ) -> JSONResponse:
+        """Research tracker's own call log for one market - forward, out-of-sample candidate
+        calls, own dataset per market, cannot alert. See tradedesk.research_tracker's module
+        docstring for the full design rationale (including the multi-market generalisation)."""
+        from tradedesk.research_tracker import log_path_for
 
-        return JSONResponse(_read_call_log(RESEARCH_LOG, limit))
+        return JSONResponse(_read_call_log(log_path_for(market), limit))
 
     @app.get("/api/research/summary")
-    async def api_research_summary() -> JSONResponse:
-        """One row per candidate rule (including the random_eligible control): n, hit rate,
-        gross/net R, t-stats, and whether it has cleared the SAME evidence bar the live NSE
-        setups are held to - the exact computation scripts/research_tracker.py's CLI report
-        and flag_research_findings() both use, so this can never show different numbers."""
-        from tradedesk.research_tracker import DEFAULT_COST_R, load_log, rule_stats
+    async def api_research_summary(market: Literal["nse", "crypto", "bse"] = "nse") -> JSONResponse:  # noqa: E501
+        """One row per candidate rule (including the random_eligible control) for one market:
+        n, hit rate, gross/net R, t-stats, and whether it has cleared the SAME evidence bar
+        the live setups on THAT market are held to - the exact computation
+        scripts/research_tracker.py's CLI report and flag_research_findings() both use, so
+        this can never show different numbers."""
+        from tradedesk.research_tracker import cost_r_for, load_log, log_path_for, rule_stats
 
-        rows = load_log()
-        return JSONResponse(rule_stats(rows, DEFAULT_COST_R))
+        rows = load_log(log_path_for(market))
+        return JSONResponse(rule_stats(rows, cost_r_for(market)))
 
     @app.get("/api/review")
     async def api_review_list() -> JSONResponse:

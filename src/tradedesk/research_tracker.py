@@ -40,7 +40,18 @@ the control, the grading and the report all come for free.
 Shared by scripts/research_tracker.py (the CLI: scan/resolve/report/run) and
 dashboard/app.py's /api/research/* endpoints, so the CLI report and the dashboard's Research
 tab can never show different numbers for the same log - the same reasoning `signal_tracker.py`
-already applies to crypto/BSE."""
+already applies to crypto/BSE.
+
+Multi-market (added 2026-09-14): the same candidate rules and harness run forward on NSE,
+crypto and BSE, each against its OWN eligible universe, its OWN random control, and its OWN
+log/session files (`log_path_for`/`sessions_dir_for`) - never pooled, same discipline as
+everywhere else in this project. Reusing IDENTICAL candidates across markets is deliberate,
+not an oversight: whether the RSI(2) mean-reversion edge measured on NSE generalises to
+crypto or BSE at all is itself an open, cheap-to-answer question, and forcing new
+market-specific rules before that question is answered would be premature. `market_for()`
+reuses `markets/market.py`'s existing Market bundle (universe turnover/price floor, and -
+importantly for crypto - its stablecoin `exclude_codes`, the same exclusion that keeps
+USDTINR/USDCINR peg noise out of every other crypto scan in this project)."""
 
 from __future__ import annotations
 
@@ -58,10 +69,27 @@ from tradedesk.broker.indstocks.models import IST, Interval
 from tradedesk.config import Settings
 from tradedesk.data.candle_store import CandleStore
 from tradedesk.engine.indicators import daily_features
+from tradedesk.markets.market import Market, bse_market, crypto_market, nse_market
 from tradedesk.prediction.labeling import triple_barrier
 
 LOG = Path("data/reports/research_calls.jsonl")
 SESSIONS = Path("data/reports/research_sessions")
+
+
+def log_path_for(market: str) -> Path:
+    """NSE keeps its original path (already scheduled, already has real data) - only
+    crypto/BSE get a market-suffixed file, so nothing about the existing NSE task changes."""
+    return LOG if market == "nse" else Path(f"data/reports/research_calls_{market}.jsonl")
+
+
+def sessions_dir_for(market: str) -> Path:
+    return SESSIONS if market == "nse" else Path(f"data/reports/research_sessions_{market}")
+
+
+def market_for(market: str, settings: Settings) -> Market:
+    """Same dict-dispatch idiom cli.py already uses at every --market call site."""
+    return {"crypto": crypto_market, "bse": bse_market}.get(market, nse_market)(settings)
+
 
 # Cap per rule per session. A rule that fires on 400 stocks would otherwise drown every
 # other rule in the pooled statistics; a seeded random subset of its firing set is an
@@ -73,7 +101,19 @@ MAX_PER_RULE = 15
 # (CLAUDE.md 2026-09-13: 0.128R @0.25%, 0.084R @0.5%, 0.056R @1%). Applied in the report as
 # a flat subtraction to show net alongside gross. It is an APPROXIMATION for reporting only
 # - the real per-trade cost model is risk/costs.py and depends on actual position value.
-DEFAULT_COST_R = 0.128
+# BSE reuses NSE's number verbatim (same EquityCostModel, same STT/stamp/GST/SEBI rules -
+# markets/market.py::bse_market() already reuses EquityCostModel unchanged, see its
+# docstring). Crypto's is a rougher, separately-derived approximation: M13's measured
+# round-trip drag is ~1.47% of position value (1% Section 194S TDS on the sell leg is 68%
+# of that), and at a 3xATR stop with a typical ~3% crypto daily ATR (stop distance ~9% of
+# price), cost-in-R ~= 1.47% / 9% =~ 0.16R. Real drag varies a lot by coin/regime; this is a
+# reporting approximation exactly like the NSE number, not a per-trade cost model.
+COST_R_BY_MARKET: dict[str, float] = {"nse": 0.128, "bse": 0.128, "crypto": 0.16}
+DEFAULT_COST_R = COST_R_BY_MARKET["nse"]  # kept as the historical default for NSE call sites
+
+
+def cost_r_for(market: str) -> float:
+    return COST_R_BY_MARKET.get(market, DEFAULT_COST_R)
 
 
 @dataclass(frozen=True)
@@ -204,21 +244,26 @@ def _eligible_mask(f: pd.DataFrame, min_turnover: float, min_price: float) -> An
 
 
 def scan_universe(
-    db: Path, settings: Settings, *, on: date | None = None, max_codes: int = 0,
-    log: Path = LOG, echo: Callable[[str], None] = lambda s: None,
+    db: Path, settings: Settings, *, market: str = "nse", on: date | None = None,
+    max_codes: int = 0, log: Path | None = None, echo: Callable[[str], None] = lambda s: None,
 ) -> tuple[date | None, int, dict[str, int]]:
     """Log every candidate's calls for one session. Safe to re-run: call ids are
     (rule, code, date), so an existing call is never duplicated or overwritten. Returns
-    (scan_date, new_calls_logged, {rule: fired_count})."""  # fmt: skip
-    min_turnover = float(settings.universe.min_avg_daily_turnover_inr)
-    min_price = float(settings.universe.min_price)
+    (scan_date, new_calls_logged, {rule: fired_count}).
+
+    `market` selects the universe (via market_for()'s turnover/price floor and, for crypto,
+    its stablecoin exclusion) and, when `log` is omitted, the market-specific log path."""
+    mkt = market_for(market, settings)
+    min_turnover = mkt.universe_rules.min_avg_turnover_inr
+    min_price = mkt.universe_rules.min_price
+    log = log if log is not None else log_path_for(market)
     rows = load_log(log)
 
     fired: dict[str, list[tuple[str, str, float, float]]] = {c.name: [] for c in CANDIDATES}
     scan_date: date | None = on
 
     with CandleStore(db) as store:
-        codes = store.codes(Interval.D1)
+        codes = [c for c in store.codes(Interval.D1) if c not in mkt.universe_rules.exclude_codes]
         if max_codes:
             codes = codes[:max_codes]
         echo(f"scanning {len(codes)} codes")
@@ -413,15 +458,20 @@ def rule_stats(rows: dict[str, ResearchCall], cost_r: float = DEFAULT_COST_R) ->
 
 
 def flag_research_findings(
-    rows: dict[str, ResearchCall], cost_r: float = DEFAULT_COST_R, review_path: Path | None = None
+    rows: dict[str, ResearchCall], cost_r: float = DEFAULT_COST_R, review_path: Path | None = None,
+    *, market: str = "nse",
 ) -> list[str]:
     """Rule-based check, no Claude call: has any candidate cleared the SAME evidence bar the
-    live NSE setups are held to (engine/scoring.py::eligibility(), the default policy - not
-    a separate, invented bar)? If so, flag it into review_queue.py for a human to look at.
-    NEVER auto-promoted into config/setups.yaml or the live scan - flagging means "worth a
-    human look", not "now live", the same hard rule every review-queue item in this project
-    already follows. Dedup by title, same pattern as signal_tracker.py::flag_setup_failures -
-    re-running this daily does not re-flag something already sitting in the queue."""
+    live setups on THIS market are held to (engine/scoring.py::eligibility(), the default
+    policy - not a separate, invented bar - engine/scoring.py is market-agnostic, so this is
+    a real apples-to-apples bar for crypto/BSE too, not one borrowed loosely from NSE). If
+    so, flag it into review_queue.py for a human to look at. NEVER auto-promoted into
+    config/setups.yaml or the live scan - flagging means "worth a human look", not "now
+    live", the same hard rule every review-queue item in this project already follows.
+    Dedup by title, same pattern as signal_tracker.py::flag_setup_failures - re-running this
+    daily does not re-flag something already sitting in the queue. `market` tags the review
+    item (e.g. "crypto-research") so it reads unambiguously in the Review tab and so the
+    same rule name clearing the bar on two different markets creates two distinct items."""
     from tradedesk.review_queue import QUEUE, add_item, load_queue
 
     path = review_path or QUEUE
@@ -430,22 +480,22 @@ def flag_research_findings(
     for s in rule_stats(rows, cost_r):
         if s["rule"] == "random_eligible" or not s["eligible"]:
             continue
-        title = f"research candidate '{s['rule']}' cleared the evidence bar"
+        title = f"[{market}] research candidate '{s['rule']}' cleared the evidence bar"
         if title in existing_titles:
             continue
         edge = s["vs_control_edge"]
         add_item(
-            market="nse-research",
+            market=f"{market}-research",
             title=title,
             detail=(
                 f"{s['n']} forward-collected trades, net {s['net_r']:+.4f}R"
                 + (f", vs control edge {edge:+.4f}R" if edge is not None else "")
-                + ". This is real forward evidence, not a backtest. See "
-                "data/reports/research_sessions/ for the full breakdown."
+                + f". This is real forward evidence on {market}, not a backtest. See "
+                f"{sessions_dir_for(market)}/ for the full breakdown."
             ),
             proposal=(
-                f"Review '{s['rule']}' before considering it for config/setups.yaml - it "
-                "has cleared the automatic evidence check, which is necessary but not "
+                f"Review '{s['rule']}' on {market} before considering it for a live setup - "
+                "it has cleared the automatic evidence check, which is necessary but not "
                 "sufficient; look at the actual trades before deciding anything."
             ),
             path=path,
@@ -454,13 +504,15 @@ def flag_research_findings(
     return flagged
 
 
-def build_report(rows: dict[str, ResearchCall], cost_r: float = DEFAULT_COST_R) -> str:
+def build_report(
+    rows: dict[str, ResearchCall], cost_r: float = DEFAULT_COST_R, *, market: str = "nse"
+) -> str:
     resolved = [r for r in rows.values() if r.outcome is not None and r.r_multiple is not None]
     open_calls = [r for r in rows.values() if r.outcome is None]
     stats = rule_stats(rows, cost_r)
 
     lines = [
-        f"# Research report - {datetime.now(IST).strftime('%Y-%m-%d %H:%M IST')}",
+        f"# Research report ({market}) - {datetime.now(IST).strftime('%Y-%m-%d %H:%M IST')}",
         "",
         f"{len(rows)} calls logged, {len(resolved)} resolved, {len(open_calls)} still open.",
         "",
@@ -496,7 +548,7 @@ def build_report(rows: dict[str, ResearchCall], cost_r: float = DEFAULT_COST_R) 
         f"netR subtracts a flat {cost_r:.3f}R measured cost drag (3xATR stop @0.25% risk).",
         "It is a reporting approximation, not the real per-trade cost model.",
         "",
-        "## Evidence-gate status (same bar the live NSE setups are held to)",
+        f"## Evidence-gate status (same bar the live {market} setups are held to)",
     ]
     for s in stats:
         if s["rule"] == "random_eligible":
