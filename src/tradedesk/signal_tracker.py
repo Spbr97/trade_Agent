@@ -58,6 +58,14 @@ class TrackedSignal:
     exit_price: float | None = None
     r_multiple: float | None = None
     resolved_at: str | None = None
+    # "live" | "backfill". Defaults to "backfill" so every row already logged before this
+    # field existed (crypto's one-shot 2018-2026 replay, BSE's 5-large-cap history, and any
+    # live-tracker row logged before 2026-09-13) loads as "backfill" on the round trip
+    # through JSONL - `TrackedSignal(**r)` falls back to this default for any key the saved
+    # row doesn't have. New rows from the live daily tracker set it explicitly via
+    # log_new_signals(source="live"); backfill_watchlists() passes "backfill" explicitly too,
+    # so this default only ever matters for data that predates the field.
+    source: str = "backfill"
 
 
 def load_log(log_path: Path) -> dict[str, TrackedSignal]:
@@ -269,10 +277,16 @@ def save_dashboard(market: str, rows: dict[str, TrackedSignal], dashboard_path: 
     return dashboard_path
 
 
-def log_new_signals(wl: Watchlist, rows: dict[str, TrackedSignal]) -> list[TrackedSignal]:
+def log_new_signals(
+    wl: Watchlist, rows: dict[str, TrackedSignal], *, source: str = "live"
+) -> list[TrackedSignal]:
     """Every detected signal (`wl.entries`), not just `wl.active` - a rejected-for-sizing
     signal still answers "was the pattern right", which is a different question from "was
-    it tradeable". See TrackedSignal.rejected_for and scoreboard()."""
+    it tradeable". See TrackedSignal.rejected_for and scoreboard().
+
+    `source` defaults to "live" (the normal daily tracker's call), so scripts/crypto_signal_
+    tracker.py and scripts/bse_signal_tracker.py need no change; backfill_watchlists() below
+    passes "backfill" explicitly - see TrackedSignal.source for why the distinction exists."""
     new_rows: list[TrackedSignal] = []
     for e in wl.entries:
         sig: Signal = e.signal
@@ -283,7 +297,7 @@ def log_new_signals(wl: Watchlist, rows: dict[str, TrackedSignal]) -> list[Track
             setup=sig.setup.value, grade=e.grade.value, armed_on=sig.armed_on.isoformat(),
             entry=sig.trigger, stop=sig.stop, t1=sig.t1, t2=sig.t2,
             net_rr_t1=e.net_rr_t1, net_rr_t2=e.net_rr_t2, rejected_for=list(e.rejected_for),
-            logged_at=datetime.now(IST).isoformat(),
+            logged_at=datetime.now(IST).isoformat(), source=source,
         )  # fmt: skip
         rows[sig.id] = row
         new_rows.append(row)
@@ -311,7 +325,7 @@ def backfill_watchlists(
     new_rows: list[TrackedSignal] = []
     for day in sessions:
         wl = build_watchlist(md, cfg, settings, day, market=mkt)
-        new_rows.extend(log_new_signals(wl, rows))
+        new_rows.extend(log_new_signals(wl, rows, source="backfill"))
     return new_rows
 
 

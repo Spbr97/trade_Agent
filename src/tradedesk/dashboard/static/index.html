@@ -103,46 +103,113 @@
 <main id="tab-crypto" hidden>
   <section class="perf-controls">
     <div class="group">
-      <label for="crypto-filter-symbol">Coin</label>
-      <select id="crypto-filter-symbol"><option value="">All</option></select>
+      <label>View</label>
+      <div class="seg" id="crypto-view-seg">
+        <button data-view="live" class="active">Live (current agent)</button>
+        <button data-view="past">Past (backfill)</button>
+      </div>
     </div>
-    <div class="group">
-      <label for="crypto-filter-setup">Setup</label>
-      <select id="crypto-filter-setup"><option value="">All</option></select>
-    </div>
-    <div class="group">
-      <label for="crypto-filter-status">Result</label>
-      <select id="crypto-filter-status">
-        <option value="">All</option>
-        <option value="target">Hit (target)</option>
-        <option value="stop">Not hit (stop)</option>
-        <option value="gap_stop">Not hit (gap stop)</option>
-        <option value="timeout">Not hit (timed out)</option>
-        <option value="pending">Pending</option>
-      </select>
-    </div>
-    <div class="group">
-      <label for="crypto-filter-resolved">Show</label>
-      <select id="crypto-filter-resolved">
-        <option value="">All calls</option>
-        <option value="resolved">Resolved only</option>
-      </select>
-    </div>
-    <div class="group">
-      <label for="crypto-filter-rows">Rows</label>
-      <select id="crypto-filter-rows">
-        <option value="25">25</option>
-        <option value="50" selected>50</option>
-        <option value="100">100</option>
-        <option value="all">All</option>
-      </select>
-    </div>
-    <span class="muted" id="crypto-filter-count"></span>
+    <span class="muted">research/paper only, own dataset, not pooled with NSE</span>
   </section>
-  <section>
-    <h2>Crypto calls <span class="muted" style="text-transform:none;">- research/paper only, own dataset, not pooled with NSE</span></h2>
-    <table id="crypto-calls"></table>
-  </section>
+
+  <div id="crypto-view-live">
+    <section>
+      <h2>Current agent - pass/fail <span class="muted" style="text-transform:none;">- only calls logged from 2026-09-13 onward (when Live/Past tagging shipped); everything before that is under Past, including same-day runs before the change</span></h2>
+      <div class="cards" id="crypto-live-scoreboard">
+        <div class="card"><div class="label">Resolved</div><div class="value" id="crypto-live-resolved">-</div></div>
+        <div class="card"><div class="label">Hit rate</div><div class="value" id="crypto-live-hitrate">-</div></div>
+        <div class="card"><div class="label">Avg P/L</div><div class="value" id="crypto-live-avgpl">-</div></div>
+        <div class="card"><div class="label">Still open</div><div class="value" id="crypto-live-open">-</div></div>
+      </div>
+    </section>
+    <section class="perf-controls">
+      <div class="group">
+        <label for="crypto-live-filter-symbol">Coin</label>
+        <select id="crypto-live-filter-symbol"><option value="">All</option></select>
+      </div>
+      <div class="group">
+        <label for="crypto-live-filter-setup">Setup</label>
+        <select id="crypto-live-filter-setup"><option value="">All</option></select>
+      </div>
+      <div class="group">
+        <label for="crypto-live-filter-status">Result</label>
+        <select id="crypto-live-filter-status">
+          <option value="">All</option>
+          <option value="target">Hit (target)</option>
+          <option value="stop">Not hit (stop)</option>
+          <option value="gap_stop">Not hit (gap stop)</option>
+          <option value="timeout">Not hit (timed out)</option>
+          <option value="pending">Pending</option>
+        </select>
+      </div>
+      <div class="group">
+        <label for="crypto-live-filter-resolved">Show</label>
+        <select id="crypto-live-filter-resolved">
+          <option value="">All calls</option>
+          <option value="resolved">Resolved only</option>
+        </select>
+      </div>
+      <div class="group">
+        <label for="crypto-live-filter-rows">Rows</label>
+        <select id="crypto-live-filter-rows">
+          <option value="25">25</option>
+          <option value="50" selected>50</option>
+          <option value="100">100</option>
+          <option value="all">All</option>
+        </select>
+      </div>
+      <span class="muted" id="crypto-live-filter-count"></span>
+    </section>
+    <section>
+      <h2>Live calls</h2>
+      <table id="crypto-live-calls"></table>
+    </section>
+  </div>
+
+  <div id="crypto-view-past" hidden>
+    <section class="perf-controls">
+      <div class="group">
+        <label for="crypto-past-filter-symbol">Coin</label>
+        <select id="crypto-past-filter-symbol"><option value="">All</option></select>
+      </div>
+      <div class="group">
+        <label for="crypto-past-filter-setup">Setup</label>
+        <select id="crypto-past-filter-setup"><option value="">All</option></select>
+      </div>
+      <div class="group">
+        <label for="crypto-past-filter-status">Result</label>
+        <select id="crypto-past-filter-status">
+          <option value="">All</option>
+          <option value="target">Hit (target)</option>
+          <option value="stop">Not hit (stop)</option>
+          <option value="gap_stop">Not hit (gap stop)</option>
+          <option value="timeout">Not hit (timed out)</option>
+          <option value="pending">Pending</option>
+        </select>
+      </div>
+      <div class="group">
+        <label for="crypto-past-filter-resolved">Show</label>
+        <select id="crypto-past-filter-resolved">
+          <option value="">All calls</option>
+          <option value="resolved">Resolved only</option>
+        </select>
+      </div>
+      <div class="group">
+        <label for="crypto-past-filter-rows">Rows</label>
+        <select id="crypto-past-filter-rows">
+          <option value="25">25</option>
+          <option value="50" selected>50</option>
+          <option value="100">100</option>
+          <option value="all">All</option>
+        </select>
+      </div>
+      <span class="muted" id="crypto-past-filter-count"></span>
+    </section>
+    <section>
+      <h2>Past (backfilled) calls <span class="muted" style="text-transform:none;">- the one-shot 2018-2026 historical replay, not the live tracker</span></h2>
+      <table id="crypto-past-calls"></table>
+    </section>
+  </div>
 </main>
 
 <main id="tab-bse" hidden>
@@ -417,7 +484,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     const target = btn.dataset.tab;
     TAB_IDS.forEach(id => { $('tab-' + id).hidden = target !== id; });
     if (target === 'performance') loadPerformance();
-    if (target === 'crypto') loadCalls('crypto');
+    if (target === 'crypto') loadCalls('crypto-live');
     if (target === 'bse') loadCalls('bse');
     if (target === 'research') loadResearch();
     if (target === 'review') loadReview();
@@ -466,13 +533,43 @@ setInterval(loadReview, 60000);
 
 // ---------------------------------------------------------------- Crypto / BSE call-log tabs
 // Same JSONL-log shape (signal_tracker.py) for both markets, so one set of functions
-// parameterized by market drives both tabs - see /api/crypto/calls and /api/bse/calls.
-const callsData = { crypto: [], bse: [] };
+// parameterized by "market" drives all three sub-views - see /api/crypto/calls and
+// /api/bse/calls. Crypto splits into two: 'crypto-live' (source === 'live', i.e. logged by
+// the actually-running tracker from 2026-09-13 onward - this is "the current agent's calls")
+// and 'crypto-past' (everything else: the one-shot 2018-2026 backfill, plus anything logged
+// before the Live/Past split shipped) - both come from the SAME /api/crypto/calls fetch,
+// split client-side by `source`, so there is exactly one source of truth for the tag.
+const callsData = { 'crypto-live': [], 'crypto-past': [], bse: [] };
 async function loadCalls(market) {
-  const r = await fetch(`/api/${market}/calls?limit=2000`);
-  callsData[market] = r.ok ? await r.json() : [];
+  if (market === 'crypto-live' || market === 'crypto-past') {
+    const r = await fetch('/api/crypto/calls?limit=5000');
+    const all = r.ok ? await r.json() : [];
+    callsData['crypto-live'] = all.filter(d => d.source === 'live');
+    callsData['crypto-past'] = all.filter(d => d.source !== 'live');
+  } else {
+    const r = await fetch(`/api/${market}/calls?limit=2000`);
+    callsData[market] = r.ok ? await r.json() : [];
+  }
   populateCallsFilters(market);
   renderCalls(market);
+  if (market === 'crypto-live') renderCryptoLiveScoreboard();
+}
+function renderCryptoLiveScoreboard() {
+  const all = callsData['crypto-live'];
+  const resolved = all.filter(d => d.outcome);
+  const open = all.length - resolved.length;
+  $('crypto-live-resolved').textContent = resolved.length;
+  $('crypto-live-open').textContent = open;
+  if (!resolved.length) {
+    $('crypto-live-hitrate').textContent = '-';
+    $('crypto-live-avgpl').textContent = '-';
+    return;
+  }
+  const wins = resolved.filter(d => d.outcome === 'target').length;
+  const avgPl = resolved.reduce((s, d) => s + (plPct(d) || 0), 0) / resolved.length;
+  $('crypto-live-hitrate').textContent = pct(wins / resolved.length);
+  $('crypto-live-avgpl').textContent = pct(avgPl);
+  $('crypto-live-avgpl').className = 'value ' + (avgPl >= 0 ? 'pos' : 'neg');
 }
 function populateCallsFilters(market) {
   const data = callsData[market];
@@ -533,9 +630,22 @@ function renderCalls(market) {
   }
   $(`${market}-filter-count`).textContent = countText;
 }
-['crypto', 'bse'].forEach(market => {
+['crypto-live', 'crypto-past', 'bse'].forEach(market => {
   ['symbol', 'setup', 'status', 'resolved', 'rows'].forEach(kind => {
     $(`${market}-filter-${kind}`).addEventListener('change', () => renderCalls(market));
+  });
+});
+
+// Crypto Live/Past segmented control - same "one section visible at a time" pattern as
+// BSE's live/history segment below.
+document.querySelectorAll('#crypto-view-seg button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#crypto-view-seg button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const view = btn.dataset.view;
+    $('crypto-view-live').hidden = view !== 'live';
+    $('crypto-view-past').hidden = view !== 'past';
+    loadCalls(view === 'live' ? 'crypto-live' : 'crypto-past');
   });
 });
 

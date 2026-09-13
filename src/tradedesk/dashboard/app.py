@@ -20,7 +20,10 @@ STATIC = Path(__file__).with_name("static")
 
 def _read_call_log(log_path: Path, limit: int) -> list[dict[str, Any]]:
     """Shared reader for the crypto/BSE JSONL call logs (signal_tracker.py's output) -
-    newest-first, capped at `limit`."""
+    newest-first, capped at `limit`. Reads raw JSON rather than TrackedSignal(**r), so a
+    row logged before `source` existed (2026-09-13) has no "source" key at all here - default
+    it to "backfill" the same way TrackedSignal's own dataclass default does, so the
+    dashboard's Live/Past split sees the identical answer whichever path loaded the row."""
     if not log_path.exists():
         return []
     rows = [
@@ -28,6 +31,8 @@ def _read_call_log(log_path: Path, limit: int) -> list[dict[str, Any]]:
         for line in log_path.read_text(encoding="utf-8").splitlines()
         if line.strip()
     ]
+    for r in rows:
+        r.setdefault("source", "backfill")
     rows.sort(key=lambda r: r["logged_at"], reverse=True)
     return rows[:limit]
 
