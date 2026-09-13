@@ -59,6 +59,9 @@
   .eligible-yes { color:var(--ok); font-weight:600; }
   .eligible-no { color:var(--dim); }
   .why-note { color:var(--dim); font-size:12px; }
+  .perf-strip { max-width:1100px; margin:10px auto 0; padding:0 16px; }
+  .perf-strip .cards { grid-template-columns: repeat(auto-fit, minmax(140px,1fr)); }
+  .perf-strip .value { font-size:16px; }
 </style>
 </head>
 <body>
@@ -74,11 +77,20 @@
   <button class="tab-btn" data-tab="crypto">Crypto</button>
   <button class="tab-btn" data-tab="bse">BSE</button>
   <button class="tab-btn" data-tab="research">Research</button>
+  <button class="tab-btn" data-tab="learning">Learning</button>
   <button class="tab-btn" data-tab="lookup">Lookup</button>
   <button class="tab-btn" data-tab="review">Review<span id="review-badge" class="badge" hidden></span></button>
 </nav>
 
 <div id="status-banner" class="banner"></div>
+
+<div class="perf-strip">
+  <div class="cards">
+    <div class="card"><div class="label">NSE (paper book)</div><div class="value" id="perf-nse">-</div></div>
+    <div class="card"><div class="label">Crypto (live agent)</div><div class="value" id="perf-crypto">-</div></div>
+    <div class="card"><div class="label">BSE (live agent)</div><div class="value" id="perf-bse">-</div></div>
+  </div>
+</div>
 
 <main id="tab-today">
   <section class="perf-controls">
@@ -470,10 +482,6 @@
     <h2>Candidate rules <span class="muted" style="text-transform:none;">- forward, out-of-sample only, no backfill. Cannot alert. Compared against `random_eligible`, a matched random pick from the same universe on the same days.</span></h2>
     <table id="research-summary"></table>
   </section>
-  <section id="research-learning-section">
-    <h2>EOD self-learning <span class="muted" style="text-transform:none;">- retrain on this market's real forward evidence only, never the old backtest window (NSE/BSE once daily, crypto twice - 24/7 data). One row per run. Cannot alert - only ever flags Review if it clears the same evidence bar as everything else.</span></h2>
-    <table id="research-learning"></table>
-  </section>
   <section class="perf-controls">
     <div class="group">
       <label for="research-filter-rule">Rule</label>
@@ -504,6 +512,24 @@
   <section>
     <h2>Calls</h2>
     <table id="research-calls"></table>
+  </section>
+</main>
+
+<main id="tab-learning" hidden>
+  <section class="perf-controls">
+    <div class="group">
+      <label for="learning-market-select">Market</label>
+      <select id="learning-market-select">
+        <option value="nse" selected>NSE</option>
+        <option value="crypto">Crypto</option>
+        <option value="bse">BSE</option>
+      </select>
+    </div>
+    <span class="muted">NSE/BSE retrain once daily; crypto twice (24/7 data) - see Research tab for the underlying candidate rules this trains on</span>
+  </section>
+  <section>
+    <h2>EOD self-learning <span class="muted" style="text-transform:none;">- retrain on this market's real forward evidence only, never the old backtest window. One row per run. Cannot alert - only ever flags Review if it clears the same evidence bar as everything else.</span></h2>
+    <table id="learning-table"></table>
   </section>
 </main>
 
@@ -656,7 +682,7 @@ fetch('/api/state').then(r => r.json()).then(s => render('today', s)).then(() =>
 fetch('/api/state/bse').then(r => r.ok ? r.json() : null).then(s => { if (s) { render('bsetoday', s); connect('bsetoday', '/events/bse'); } });
 
 // ---------------------------------------------------------------- tabs
-const TAB_IDS = ['today', 'performance', 'crypto', 'bse', 'research', 'lookup', 'review'];
+const TAB_IDS = ['today', 'performance', 'crypto', 'bse', 'research', 'learning', 'lookup', 'review'];
 document.querySelectorAll('.tab-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -667,12 +693,50 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     if (target === 'crypto') showLiveView('crypto', $('crypto-live-view-select').value);
     if (target === 'bse' && !$('bse-view-history').hidden) showLiveView('bse', $('bse-live-view-select').value);
     if (target === 'research') loadResearch();
+    if (target === 'learning') loadLearning();
     if (target === 'review') loadReview();
   });
 });
 
 // ---------------------------------------------------------------- status banner
 $('status-banner').innerHTML = 'Live NSE alerts are currently <b>off</b> - the three built-in setups (base_breakout / trend_pullback / nr7_breakout) have not cleared the evidence gate (measured worse than random entry timing), so no live buy alert will fire. The <b>Research</b> tab tracks forward, out-of-sample candidate ideas that cannot alert on their own - if one ever clears the same evidence bar, it shows up automatically in <b>Review</b> for you to look at.';
+
+// ---------------------------------------------------------------- agent performance strip
+// Visible on every tab (not nested inside one), so "how is the agent actually doing" is a
+// glance, not a click-through - NSE reads the real paper book (aggregated across all
+// available months, not just the current one, since it can be empty for long stretches);
+// crypto/BSE read their own live-tagged (source==='live'), resolved calls only - never the
+// large historical backfill, matching the Live/Past split's own reasoning throughout.
+async function loadAgentPerformanceStrip() {
+  try {
+    const r = await fetch('/api/performance?period=month&n=60');
+    const data = r.ok ? await r.json() : [];
+    const totalTrades = data.reduce((s, d) => s + d.trades, 0);
+    if (totalTrades > 0) {
+      const wins = data.reduce((s, d) => s + d.trades * d.win_rate, 0);
+      const netPnl = data.reduce((s, d) => s + d.net_pnl, 0);
+      $('perf-nse').innerHTML = `${totalTrades} trades, ${pct(wins / totalTrades)} win<br><span class="${netPnl >= 0 ? 'pos' : 'neg'}" style="font-size:14px;">${money(netPnl)}</span>`;
+    } else {
+      $('perf-nse').innerHTML = '<span class="muted" style="font-size:13px;">no closed paper trades yet</span>';
+    }
+  } catch (e) { $('perf-nse').textContent = 'n/a'; }
+
+  for (const prefix of ['crypto', 'bse']) {
+    try {
+      const r = await fetch(`/api/${prefix}/calls?limit=5000`);
+      const all = r.ok ? await r.json() : [];
+      const resolved = all.filter(d => d.source === 'live' && d.outcome);
+      if (!resolved.length) {
+        $(`perf-${prefix}`).innerHTML = '<span class="muted" style="font-size:13px;">no resolved live calls yet</span>';
+        continue;
+      }
+      const wins = resolved.filter(d => d.outcome === 'target').length;
+      $(`perf-${prefix}`).textContent = `${resolved.length} resolved, ${pct(wins / resolved.length)} hit`;
+    } catch (e) { $(`perf-${prefix}`).textContent = 'n/a'; }
+  }
+}
+loadAgentPerformanceStrip();
+setInterval(loadAgentPerformanceStrip, 60000);
 
 // ---------------------------------------------------------------- Review tab
 function reviewCard(item) {
@@ -871,17 +935,24 @@ async function loadResearch() {
   renderResearchSummary(summary);
   populateResearchFilters();
   renderResearchCalls();
-  // EOD self-learning now runs for all three markets (crypto added 2026-09-14, twice a day).
-  const r = await fetch(`/api/eod-learning?market=${market}`);
-  renderResearchLearning(r.ok ? await r.json() : []);
 }
 $('research-market-select').addEventListener('change', loadResearch);
-function renderResearchLearning(history) {
+
+// ---------------------------------------------------------------- Learning tab
+// Its own top-level tab (moved out of Research 2026-09-14 so it's easier to check without
+// digging into another tab first) - reads the same /api/eod-learning endpoint.
+async function loadLearning() {
+  const market = $('learning-market-select').value;
+  const r = await fetch(`/api/eod-learning?market=${market}`);
+  renderLearningTable(r.ok ? await r.json() : []);
+}
+$('learning-market-select').addEventListener('change', loadLearning);
+function renderLearningTable(history) {
   if (!history.length) {
-    rows($('research-learning'), ['Date','Status'], [`<tr><td colspan="2" class="empty-note">no EOD learning runs yet</td></tr>`]);
+    rows($('learning-table'), ['Date','Status'], [`<tr><td colspan="2" class="empty-note">no EOD learning runs yet</td></tr>`]);
     return;
   }
-  rows($('research-learning'), ['Date','#Resolved','#Dev OOS Brier','#Test ROC-AUC','#Test Gross R','#Test Net R','Explored feature','Adopted?'],
+  rows($('learning-table'), ['Date','#Resolved','#Dev OOS Brier','#Test ROC-AUC','#Test Gross R','#Test Net R','Explored feature','Adopted?'],
     history.map(h => {
       if (h.status) {
         return `<tr><td>${h.date}</td><td class="num">${h.n_resolved}</td><td colspan="6" class="muted">${h.status}</td></tr>`;
