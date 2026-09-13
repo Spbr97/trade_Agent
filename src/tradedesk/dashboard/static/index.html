@@ -424,6 +424,16 @@ function plPct(d) {
   if (d.exit_price == null || !d.entry) return null;
   return (d.exit_price - d.entry) / d.entry;
 }
+function daysHeld(d) {
+  // Entry/exit and days-to-hold all come straight from the call log
+  // (signal_tracker.py already writes entry/armed_on/resolved_at) - this was purely a
+  // rendering gap, not a missing-data one.
+  if (!d.armed_on) return null;
+  const start = new Date(d.armed_on + 'T00:00:00');
+  const end = d.resolved_at ? new Date(d.resolved_at) : new Date();
+  const days = Math.round((end - start) / 86400000);
+  return { days, pending: !d.resolved_at };
+}
 function renderCalls(market) {
   const symF = $(`${market}-filter-symbol`).value;
   const setupF = $(`${market}-filter-setup`).value;
@@ -442,11 +452,13 @@ function renderCalls(market) {
   const resolved = matched.filter(d => d.outcome);
   const byId = (o) => o === 'target' ? 'closed' : (o ? 'stopped' : '');
   const resultLabel = (o) => o === 'target' ? 'hit' : (o ? 'not hit' : 'pending');
-  rows($(`${market}-calls`), ['Sym','Setup','Grade','Armed','Tradeable','Result','#R','#% P/L'],
+  rows($(`${market}-calls`), ['Sym','Setup','Grade','Armed','#Entry','#Exit','#Days','Tradeable','Result','#R','#% P/L'],
     data.map(d => {
       const p = plPct(d);
       const plClass = p == null ? '' : (p >= 0 ? 'pos' : 'neg');
-      return `<tr><td>${d.symbol}</td><td>${d.setup}</td><td class="${d.grade}">${d.grade}</td><td>${d.armed_on}</td><td>${d.rejected_for.length ? 'no' : 'yes'}</td><td class="${byId(d.outcome)}">${resultLabel(d.outcome)}${d.outcome && d.outcome !== 'target' ? ` (${d.outcome.replace('_',' ')})` : ''}</td><td class="num">${d.r_multiple!=null?fmt(d.r_multiple,2):'-'}</td><td class="num ${plClass}">${p!=null?pct(p):'-'}</td></tr>`;
+      const dh = daysHeld(d);
+      const daysText = dh == null ? '-' : (dh.pending ? `${dh.days}+` : `${dh.days}`);
+      return `<tr><td>${d.symbol}</td><td>${d.setup}</td><td class="${d.grade}">${d.grade}</td><td>${d.armed_on}</td><td class="num">${fmt(d.entry)}</td><td class="num">${d.exit_price!=null?fmt(d.exit_price):'-'}</td><td class="num">${daysText}</td><td>${d.rejected_for.length ? 'no' : 'yes'}</td><td class="${byId(d.outcome)}">${resultLabel(d.outcome)}${d.outcome && d.outcome !== 'target' ? ` (${d.outcome.replace('_',' ')})` : ''}</td><td class="num">${d.r_multiple!=null?fmt(d.r_multiple,2):'-'}</td><td class="num ${plClass}">${p!=null?pct(p):'-'}</td></tr>`;
     }));
   let countText = `${data.length} of ${matched.length} matched (${all.length} total)`;
   if (resolved.length) {
