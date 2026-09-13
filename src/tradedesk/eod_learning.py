@@ -1,6 +1,8 @@
-"""EOD self-learning step for NSE and BSE (2026-09-14, explicit user request: "build the
-self learning that reduces [error] over time... even if it means exploring other indicator
-or chart analysis").
+"""EOD self-learning step for NSE, BSE and crypto (2026-09-14, explicit user request: "build
+the self learning that reduces [error] over time... even if it means exploring other
+indicator or chart analysis" - crypto added the same day, per a second explicit request:
+"have the learning part for crypto also, as that is one market where it mostly depends on
+the graph and charts").
 
 What this honestly is, and is not
 ----------------------------------
@@ -185,9 +187,16 @@ def _build_dataset(db: Path, resolved: list[ResearchCall]) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def _fit_and_score(df: pd.DataFrame, features: list[str], seed: int) -> dict[str, Any] | None:
+def _fit_and_score(
+    df: pd.DataFrame, features: list[str], seed: int, cost_r: float
+) -> dict[str, Any] | None:
     """Purged walk-forward on all but the most recent FINAL_TEST_FRAC of sessions, scored
-    once on that reserved tail - the same discipline as every other model in this project."""
+    once on that reserved tail - the same discipline as every other model in this project.
+
+    `cost_r` (`research_tracker.cost_r_for(market)`) is subtracted from the locked tail's
+    gross R to report a real `test_net_r` - crypto's cost drag (~0.16R) is meaningfully
+    larger than NSE/BSE's (~0.128R), so reporting gross and calling it "net" would have
+    understated crypto's cost burden specifically once that market was added here."""
     from sklearn.base import clone
 
     from tradedesk.prediction.train import evaluate, make_baseline, purged_walk_forward
@@ -223,12 +232,14 @@ def _fit_and_score(df: pd.DataFrame, features: list[str], seed: int) -> dict[str
         test["label_profit"].to_numpy(int), p_test, test["gross_r"].to_numpy(float),
         threshold=0.5,
     )  # fmt: skip
-    net_r = float(test["gross_r"].mean())
-    se = float(test["gross_r"].std() / np.sqrt(len(test))) if len(test) > 1 else 0.0
+    net_series = test["gross_r"] - cost_r
+    gross_r = float(test["gross_r"].mean())
+    net_r = float(net_series.mean())
+    se = float(net_series.std() / np.sqrt(len(test))) if len(test) > 1 else 0.0
     return {
         "dev_oos_brier": dev_brier, "dev_oos_n": int(scored.sum()),
         "test_roc_auc": m_test.roc_auc, "test_brier": m_test.brier,
-        "test_n": len(test), "test_net_r": net_r,
+        "test_n": len(test), "test_gross_r": gross_r, "test_net_r": net_r,
         "test_net_r_t": net_r / se if se > 0 else None,
     }
 
@@ -237,8 +248,15 @@ def run_eod_learning(
     market: str, db: Path, *, log: Path | None = None, echo: Any = lambda s: None,
 ) -> dict[str, Any]:
     """The once-a-day entry point, called from scripts/research_tracker.py's `run` for
-    market in ("nse", "bse") only, per the explicit request this was built for."""
+    market in ("nse", "bse", "crypto") - crypto added 2026-09-14 (explicit user request:
+    "have the learning part for crypto also, as that is one market where it mostly depends
+    on the graph and charts"). Crypto's stablecoin pairs never reach this function at all -
+    they were already excluded from research_tracker.py's eligible universe upstream (see
+    that module's docstring), so every resolved call here already passed that filter."""
+    from tradedesk.research_tracker import cost_r_for
+
     log = log or log_path_for(market)
+    cost_r = cost_r_for(market)
     rows = load_log(log)
     resolved = [
         r for r in rows.values()
@@ -257,7 +275,7 @@ def run_eod_learning(
     df = _build_dataset(db, resolved)
     state = LearningState.load(_state_path(market))
 
-    base_result = _fit_and_score(df, state.base_features, seed=20260101)
+    base_result = _fit_and_score(df, state.base_features, seed=20260101, cost_r=cost_r)
     if base_result is None:
         record["status"] = "recomputed features insufficient after dropna - skipped this run"
         echo(record["status"])
@@ -267,7 +285,9 @@ def run_eod_learning(
 
     explore = state.next_to_explore()
     if explore is not None:
-        trial_result = _fit_and_score(df, [*state.base_features, explore], seed=20260101)
+        trial_result = _fit_and_score(
+            df, [*state.base_features, explore], seed=20260101, cost_r=cost_r
+        )
         adopted = False
         trial_brier: float | None = None
         if trial_result is not None:

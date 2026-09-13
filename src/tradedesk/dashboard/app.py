@@ -166,12 +166,16 @@ def create_app(
         return JSONResponse(rule_stats(rows, cost_r_for(market)))
 
     @app.get("/api/eod-learning")
-    async def api_eod_learning(market: Literal["nse", "bse"] = "nse") -> JSONResponse:
-        """History of the once-daily EOD self-learning step (tradedesk.eod_learning,
-        2026-09-14) for NSE/BSE - one row per day it has run: how much forward evidence
+    async def api_eod_learning(
+        market: Literal["nse", "crypto", "bse"] = "nse"
+    ) -> JSONResponse:
+        """History of the EOD self-learning step (tradedesk.eod_learning, 2026-09-14; crypto
+        added the same day) for one market - one row per run: how much forward evidence
         exists, the walk-forward OOS Brier/ROC-AUC, locked-tail net R, and which feature (if
-        any) was explored that day and whether it was adopted. Crypto has no EOD learning
-        step (the request that built this was scoped to NSE/BSE); newest first."""
+        any) was explored that run and whether it was adopted. NSE/BSE run it once daily
+        (bundled into their nightly research_tracker run); crypto runs it twice a day (once
+        bundled, once via its own schedule), since crypto data is 24/7 rather than one
+        session. Newest first."""
         from tradedesk.eod_learning import load_history
 
         return JSONResponse(list(reversed(load_history(market))))

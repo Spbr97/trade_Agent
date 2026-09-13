@@ -9,8 +9,10 @@ market's log is its own dataset, never pooled (same discipline as everywhere els
 project). NSE keeps its original (non-suffixed) log path since it predates this option and
 is already scheduled; crypto/BSE get their own market-suffixed files automatically.
 
-Commands: `run` (nightly: resolve, then scan, then flag, then EOD-learn [nse/bse only], then
-report), `report`, `scan`, `resolve`.
+Commands: `run` (nightly: resolve, then scan, then flag, then EOD-learn, then report),
+`report`, `scan`, `resolve`, `eod-learn` (the EOD-learn step standalone - crypto runs it
+twice a day, once bundled inside `run` and once more via its own schedule, since that
+market's data is 24/7 rather than one session a day).
 """
 
 from __future__ import annotations
@@ -106,6 +108,23 @@ def report(
         typer.echo(f"\nsaved -> {p}")
 
 
+@app.command(name="eod-learn")
+def eod_learn(
+    market: str = MARKET_OPTION,
+    db: Path | None = typer.Option(None, "--db"),
+    log: Path | None = typer.Option(None, "--log"),
+) -> None:
+    """The EOD self-learning step standalone - see tradedesk.eod_learning's module
+    docstring. Bundled into `run` for every market already, so this is only needed to run
+    it AGAIN outside that cadence (crypto: a second pass later in the day, since crypto data
+    is 24/7 rather than one session)."""
+    from tradedesk.eod_learning import run_eod_learning
+
+    db = db or db_for(market)
+    log = log or log_path_for(market)
+    run_eod_learning(market, db, log=log, echo=typer.echo)
+
+
 @app.command()
 def run(
     market: str = MARKET_OPTION,
@@ -115,8 +134,7 @@ def run(
     log: Path | None = typer.Option(None, "--log"),
 ) -> None:
     """The nightly job: grade what's ripe, log tonight's calls, flag anything that has
-    cleared the evidence bar, run the EOD self-learning step (NSE/BSE only), write the
-    report."""
+    cleared the evidence bar, run the EOD self-learning step, write the report."""
     db = db or db_for(market)
     log = log or log_path_for(market)
     resolve(market=market, db=db, log=log)
@@ -124,10 +142,7 @@ def run(
     flagged = flag_research_findings(load_log(log), cost_r_for(market), market=market)
     if flagged:
         typer.echo(f"\nflagged for review: {flagged}")
-    if market in ("nse", "bse"):
-        from tradedesk.eod_learning import run_eod_learning
-
-        run_eod_learning(market, db, log=log, echo=typer.echo)
+    eod_learn(market=market, db=db, log=log)
     report(market=market, log=log, cost_r=cost_r_for(market), sessions=sessions_dir_for(market), save=True)  # noqa: E501
 
 
