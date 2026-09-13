@@ -209,6 +209,10 @@ def daily_features(df: pd.DataFrame) -> pd.DataFrame:
     out["roc20"] = roc(c, 20)
     out["atr14"] = atr(out, 14)
     out["atr_pct"] = out["atr14"] / c * 100
+    # Where this stock's current volatility sits against its OWN trailing year, so a 3%
+    # ATR reads differently for a habitually quiet name than for a jumpy one. Trailing
+    # window only (rolling includes the current bar and nothing after it).
+    out["atr_pct_rank"] = out["atr_pct"].rolling(250, min_periods=60).rank(pct=True) * 100
     out["bb_width"] = bollinger_width(c, 20)
     out["nr7"] = nr7(out)
     out["inside_day"] = inside_day(out)

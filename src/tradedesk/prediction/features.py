@@ -17,23 +17,43 @@ import pandas as pd
 from tradedesk.engine.scoring import room_in_r
 from tradedesk.engine.signals import SetupKind, Signal
 
-FEATURE_VERSION = "v3"  # bump whenever FEATURE_NAMES changes, so a saved model's artifact
+FEATURE_VERSION = "v4"  # bump whenever FEATURE_NAMES changes, so a saved model's artifact
 # records exactly which feature set it was trained against (v1 was the original 31; v2
 # added nifty_return_1d/5d on 2026-09-12; v3 on 2026-09-13 replaced sector_percentile - a
 # dead stub that always defaulted to 50.0, since nothing anywhere ever populated it - with
 # real sector_return_1d/5d, computed from config/sector_membership.yaml + loaded sector
 # index candles; predict.py refuses to score a bundle whose feature_version doesn't match,
-# rather than silently misaligning columns)
+# rather than silently misaligning columns; v4 on 2026-09-13 added 13 features that
+# daily_features had been computing all along but nothing ever fed the model - overhead
+# supply (52w high/range position, 20d high), momentum (roc5/20, macd, di_spread, rsi2),
+# volatility state (bb_width, atr_pct_rank, range_contraction) and vol_dryup)
 
 FEATURE_NAMES: list[str] = [
+    "dist_ema10_atr",
     "dist_ema20_atr",
     "dist_ema50_atr",
     "dist_ema200_atr",
     "ema20_slope",
     "ema50_slope",
     "adx14",
+    "di_spread",
     "rsi14",
+    "rsi2",
+    "macd_hist_atr",
+    "roc5",
+    "roc20",
     "rs_percentile",
+    # Overhead supply / position in the range. A breakout with clear air above behaves
+    # very differently from one running into a year-old ceiling, and none of the v3
+    # features could see that at all - these were computed in daily_features all along
+    # and simply never exposed to the model.
+    "dist_52w_high_atr",
+    "pct_in_52w_range",
+    "dist_high20_atr",
+    "bb_width",
+    "atr_pct_rank",
+    "range_contraction",
+    "vol_dryup",
     "sector_return_1d",
     "sector_return_5d",
     "atr_pct",
@@ -94,15 +114,31 @@ def signal_features(
     base = g.get("base") or {}
     room = room_in_r(sig)
     armed = pd.Timestamp(feats.index[-1])
+    high52w = _f(last.get("high52w"), close)
+    low52w = _f(last.get("low52w"), close)
+    span52w = high52w - low52w
     out = {
+        "dist_ema10_atr": (close - _f(last.get("ema10"))) / atr,
         "dist_ema20_atr": (close - _f(last.get("ema20"))) / atr,
         "dist_ema50_atr": (close - _f(last.get("ema50"))) / atr,
         "dist_ema200_atr": (close - _f(last.get("ema200"))) / atr,
         "ema20_slope": _f(last.get("ema20_slope")) * 100,
         "ema50_slope": _f(last.get("ema50_slope")) * 100,
         "adx14": _f(last.get("adx14")),
+        "di_spread": _f(last.get("plus_di")) - _f(last.get("minus_di")),
         "rsi14": _f(last.get("rsi14"), 50.0),
+        "rsi2": _f(last.get("rsi2"), 50.0),
+        "macd_hist_atr": _f(last.get("macd_hist")) / atr,
+        "roc5": _f(last.get("roc5")),
+        "roc20": _f(last.get("roc20")),
         "rs_percentile": _f(sig.rs_percentile, 50.0),
+        "dist_52w_high_atr": (close - high52w) / atr,
+        "pct_in_52w_range": 50.0 if span52w <= 0 else (close - low52w) / span52w * 100,
+        "dist_high20_atr": (close - _f(last.get("high20"), close)) / atr,
+        "bb_width": _f(last.get("bb_width")),
+        "atr_pct_rank": _f(last.get("atr_pct_rank"), 50.0),
+        "range_contraction": _f(last.get("range_contraction"), 1.0),
+        "vol_dryup": _f(last.get("vol_dryup"), 1.0),
         "sector_return_1d": _f(sector_return_1d),
         "sector_return_5d": _f(sector_return_5d),
         "atr_pct": _f(last.get("atr_pct")),
