@@ -24,7 +24,9 @@ to keep collecting evidence, not because it's expected to work.
 | M4 indicators | Passing against an independent hand-derived reference (TradingView's CSV export is paywalled). |
 | M5–M11 | Built and unit-tested: setups, scan, backtester, live monitor, alerts, journal, paper book, Claude advisor, prediction layer. |
 | M13 crypto + BSE | Live full-universe monitoring on all three markets. |
-| M11 prediction layer | Shadow-only (never places or sizes a trade). Purged walk-forward validation, a locked final-test set, per-model hyperparameter tuning, per-setup breakdown, sector-return features, and a closed calibration-drift loop (`tradedesk ml check-drift`) as of 2026-09-13. Honest current finding: OOS ROC-AUC ~0.55, no threshold shows a real edge yet (`has_edge=False`) — it's a rigorous pipeline, not (yet) a profitable one. |
+| M11 prediction layer | Shadow-only (never places or sizes a trade). Purged walk-forward validation, a locked final-test set, per-model hyperparameter tuning, per-setup breakdown, sector-return features, and a closed calibration-drift loop (`tradedesk ml check-drift`) as of 2026-09-13. Honest current finding: OOS ROC-AUC ~0.55, no threshold shows a real edge yet (`has_edge=False`) — it's a rigorous pipeline, not (yet) a profitable one. A follow-up mean-reversion feature search found a real gross edge (+0.067R, statistically significant) that does not survive real costs at policy-compliant sizing; a model trained on it scored a coin-flip OOS AUC (0.4996) — reported honestly as a negative result, not shipped. |
+| Setup eligibility gate | **Every setup currently shows NO TRADE.** As of 2026-09-13 no signal alerts until its setup has *proven* itself — ≥500 resolved trades, ≥100 out-of-sample, ≥80% win rate, and (the strongest check) beats a matched random-entry timing baseline by a real margin. None of the three live NSE setups clear it yet; measured against random timing they are actually *worse* than picking an entry at random. This is deliberate, not a bug — see "Signal eligibility" below. |
+| Intraday research (unreleased) | A from-scratch intraday/scalping engine (session VWAP, multi-timeframe alignment, a 10-state regime taxonomy, and a null-timing validation gate) was built and proven against 2 years of real 1–60 minute data for 5 liquid NSE names. The one setup tried (VWAP Reclaim) failed the same random-timing test above (p=0.44) and is built, tested, and wired into nothing live. Infrastructure only — no intraday alerting exists. |
 
 Details: [docs/signoff-m2-m3.md](docs/signoff-m2-m3.md), [docs/signoff-crypto-phase4.md](docs/signoff-crypto-phase4.md).
 
@@ -78,6 +80,19 @@ Start-ScheduledTask -TaskName tradedesk-after-close       # NSE
 Start-ScheduledTask -TaskName tradedesk-bse-tracker        # BSE
 Start-ScheduledTask -TaskName tradedesk-crypto-tracker     # crypto
 ```
+
+## Signal eligibility
+
+A signal only alerts once its setup has evidence, not just a decent-looking score. The
+threshold (`config/setups.yaml`'s `eligibility:` block) is: ≥500 resolved trades, ≥100 held
+out of sample, ≥80% win rate, positive expectancy, and — the check that actually matters —
+its real expectancy must beat a *matched random-entry timing* baseline by a real margin. That
+last one is the one nothing else catches: a setup can post an ordinary-looking win rate while
+being genuinely worse than picking an entry at random on the same stock and day, which is
+exactly what happened to all three live NSE setups when measured. Until a setup clears every
+bar, `tradedesk scan` reports `NO TRADE` with the specific unmet reasons — that is the correct,
+intended output, not a broken scan. Lowering any threshold is a visible, commented config edit,
+never silent.
 
 ## Notes that bite
 
