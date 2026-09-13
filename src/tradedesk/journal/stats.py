@@ -9,10 +9,22 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Any, Literal
 
-from tradedesk.engine.scoring import TrackRecord
+from tradedesk.engine.scoring import (
+    BENCH_WINDOW,
+    DEFAULT_POLICY,
+    EligibilityPolicy,
+    TrackRecord,
+    eligibility,
+)
 from tradedesk.journal.db import Journal
 
-BENCH_WINDOW = 30
+__all__ = [
+    "BENCH_WINDOW",
+    "LiveVsPaper",
+    "live_vs_paper",
+    "track_record",
+    "track_records",
+]
 
 
 def _expectancy(rows: list[Any]) -> tuple[float, float]:
@@ -23,17 +35,53 @@ def _expectancy(rows: list[Any]) -> tuple[float, float]:
     return sum(rs) / len(rs), wins / len(rs)
 
 
-def track_record(journal: Journal, setup: str, *, window: int = BENCH_WINDOW) -> TrackRecord:
+def track_record(
+    journal: Journal,
+    setup: str,
+    *,
+    window: int = BENCH_WINDOW,
+    policy: EligibilityPolicy = DEFAULT_POLICY,
+    oos_trades: int = 0,
+    random_baseline_r: float | None = None,
+) -> TrackRecord:
     """Rolling stats over the last `window` paper trades of a setup. Benched when the
-    rolling expectancy of a full window is negative (PLAN.md 6.8 auto-bench)."""
+    rolling expectancy of a full window is negative (PLAN.md 6.8 auto-bench).
+
+    `benched` stays exactly what it was - the "was good, went bad" circuit breaker. It is
+    NOT the eligibility gate: it can only fire once `window` trades exist, so on its own it
+    let a setup with an empty paper book alert freely. `eligible` is the gate, and it is
+    False until the evidence in `policy` is actually there.
+
+    `oos_trades`/`random_baseline_r` are passed in rather than derived here: the paper book
+    has no notion of which trades were out-of-sample for a given model, and the random
+    baseline comes from the backtest harness, not the journal."""
     rows = journal.trades(source="paper", setup=setup, last=window)
     exp, win = _expectancy(rows)
     benched = len(rows) >= window and exp < 0
-    return TrackRecord(trades=len(rows), expectancy_r=exp, win_rate=win, benched=benched)
+    ok, reasons = eligibility(
+        trades=len(rows),
+        oos_trades=oos_trades,
+        win_rate=win,
+        expectancy_r=exp,
+        random_baseline_r=random_baseline_r,
+        policy=policy,
+    )
+    return TrackRecord(
+        trades=len(rows),
+        expectancy_r=exp,
+        win_rate=win,
+        benched=benched,
+        oos_trades=oos_trades,
+        random_baseline_r=random_baseline_r,
+        eligible=ok,
+        ineligibility_reasons=reasons,
+    )
 
 
-def track_records(journal: Journal, setups: list[str]) -> dict[str, TrackRecord]:
-    return {s: track_record(journal, s) for s in setups}
+def track_records(
+    journal: Journal, setups: list[str], *, policy: EligibilityPolicy = DEFAULT_POLICY
+) -> dict[str, TrackRecord]:
+    return {s: track_record(journal, s, policy=policy) for s in setups}
 
 
 @dataclass

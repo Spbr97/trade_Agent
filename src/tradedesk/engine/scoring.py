@@ -22,14 +22,107 @@ class Grade(StrEnum):
     C = "C"
 
 
+BENCH_WINDOW = 30
+"""Resolved paper trades needed before the track-record component means anything. Lives here
+rather than in journal/stats.py because engine/ must not import from journal/ - stats.py
+already imports TrackRecord from this module, so it re-exports this for its own use."""
+
+
+@dataclass(frozen=True)
+class EligibilityPolicy:
+    """The evidence a setup must show before it may alert at all (SDD sections 18 and 23).
+
+    Defaults are the SDD's recommended initial configuration. They are deliberately strict:
+    on the numbers measured 2026-09-13 no setup in this project clears them, and the correct
+    output is then NO TRADE rather than a lowered bar - SDD section 25, "reduce or stop
+    signals rather than lowering the standards just to produce trades". Loosening any of
+    these is a visible edit to config/setups.yaml, never a silent drift.
+
+    `must_beat_random_by_r` is not in the SDD and is the stronger test: a win rate alone
+    cannot distinguish a real edge from one that merely tracks a rising market. The live
+    setups were measured 0.21-0.26R WORSE than random entry timing on the same stocks and
+    window while still posting a plausible-looking win rate, so beating a matched random
+    baseline is the criterion that actually catches that failure."""
+
+    min_score: int = 85
+    min_trades: int = 500
+    min_oos_trades: int = 100
+    min_win_rate: float = 0.80
+    min_expectancy_r: float = 0.0
+    must_beat_random_by_r: float = 0.10
+
+
+DEFAULT_POLICY = EligibilityPolicy()
+
+
+def eligibility(
+    *,
+    trades: int,
+    oos_trades: int,
+    win_rate: float,
+    expectancy_r: float,
+    random_baseline_r: float | None,
+    policy: EligibilityPolicy = DEFAULT_POLICY,
+) -> tuple[bool, tuple[str, ...]]:
+    """Does this setup have enough PROVEN evidence to be allowed to alert?
+
+    Fails closed on purpose: every unknown is a reason, and a setup nothing has measured is
+    ineligible rather than implicitly fine (SDD sections 18 and 23 - the default output of
+    the whole system is NO TRADE). Returns (eligible, reasons) so a caller can render
+    exactly why something is not being traded.
+
+    Pure policy, no data source: the journal supplies paper-book numbers and the backtest
+    harness supplies the random baseline, but the RULE lives here beside the policy it
+    applies, so every caller gates identically."""
+    reasons: list[str] = []
+    if trades < policy.min_trades:
+        reasons.append(f"only {trades} resolved trades, need {policy.min_trades}")
+    if oos_trades < policy.min_oos_trades:
+        reasons.append(f"only {oos_trades} out-of-sample trades, need {policy.min_oos_trades}")
+    if win_rate < policy.min_win_rate:
+        reasons.append(f"win rate {win_rate:.1%} < required {policy.min_win_rate:.1%}")
+    if expectancy_r < policy.min_expectancy_r:
+        reasons.append(
+            f"expectancy {expectancy_r:+.3f}R < required {policy.min_expectancy_r:+.3f}R"
+        )
+    if random_baseline_r is None:
+        reasons.append("never measured against a random-timing baseline")
+    elif expectancy_r - random_baseline_r < policy.must_beat_random_by_r:
+        reasons.append(
+            f"beats random by only {expectancy_r - random_baseline_r:+.3f}R, "
+            f"need {policy.must_beat_random_by_r:+.3f}R"
+        )
+    return (not reasons), tuple(reasons)
+
+
 @dataclass(frozen=True)
 class TrackRecord:
-    """Rolling paper-book stats for a setup (M9 fills this; backtest results seed it)."""
+    """Rolling paper-book stats for a setup (M9 fills this; backtest results seed it).
+
+    `eligible` defaults to FALSE: a setup with no evidence must not be tradeable. Before
+    2026-09-13 the only gate was `benched`, which required >= 30 resolved paper trades
+    before it could ever fire - so with an empty paper book every setup was alertable on
+    zero evidence, the same fail-open shape as the VIX-missing-reads-calm and
+    `enabled: false`-never-honored bugs already recorded in CLAUDE.md."""
 
     trades: int = 0
     expectancy_r: float = 0.0
     win_rate: float = 0.0
     benched: bool = False
+    oos_trades: int = 0
+    random_baseline_r: float | None = None
+    eligible: bool = False
+    ineligibility_reasons: tuple[str, ...] = ()
+
+
+def no_evidence(policy: EligibilityPolicy = DEFAULT_POLICY) -> TrackRecord:
+    """The track record for a setup nothing has ever measured: ineligible WITH REASONS
+    rather than a bare default, so a signal that cannot be traded says why."""
+    ok, reasons = eligibility(
+        trades=0, oos_trades=0, win_rate=0.0, expectancy_r=0.0,
+        random_baseline_r=None, policy=policy,
+    )  # fmt: skip
+    return TrackRecord(eligible=ok, ineligibility_reasons=reasons)
 
 
 @dataclass
@@ -52,10 +145,37 @@ class Score:
     components: dict[str, float] = field(default_factory=dict)
     notes: list[str] = field(default_factory=list)
     benched: bool = False
+    eligible: bool = False
+    ineligibility_reasons: tuple[str, ...] = ()
+    min_score: int = DEFAULT_POLICY.min_score
 
     @property
     def alertable(self) -> bool:
-        return not self.benched and self.grade in (Grade.A, Grade.B)
+        """NO TRADE is the default answer (SDD section 1). A signal only alerts when the
+        setup has PROVEN itself eligible, is not benched, and clears the score floor - the
+        grade alone is no longer sufficient, because a high score computed from no track
+        record is not evidence of anything."""
+        return (
+            self.eligible
+            and not self.benched
+            and self.grade in (Grade.A, Grade.B)
+            and self.total >= self.min_score
+        )
+
+    @property
+    def no_trade_reasons(self) -> tuple[str, ...]:
+        """Why this is NO TRADE, for the trade card (SDD section 17: a NO-TRADE output with
+        its reasons is a successful outcome, not a failure)."""
+        if self.alertable:
+            return ()
+        out = list(self.ineligibility_reasons)
+        if self.benched:
+            out.append("setup benched (negative rolling paper expectancy)")
+        if self.grade is Grade.C:
+            out.append(f"grade C (score {self.total})")
+        elif self.total < self.min_score:
+            out.append(f"score {self.total} < required {self.min_score}")
+        return tuple(out)
 
 
 WEIGHTS: dict[str, float] = {
@@ -74,7 +194,7 @@ def _clamp(x: float, lo: float = 0.0, hi: float = 1.0) -> float:
     return max(lo, min(hi, x))
 
 
-def score_signal(x: ScoreInputs) -> Score:
+def score_signal(x: ScoreInputs, policy: EligibilityPolicy = DEFAULT_POLICY) -> Score:
     c: dict[str, float] = {}
     notes: list[str] = []
 
@@ -94,9 +214,13 @@ def score_signal(x: ScoreInputs) -> Score:
         if x.net_rr_t2 < 2.0:
             notes.append(f"net R:R {x.net_rr_t2:.2f} < 2")
     c["regime"] = {"risk_on": 1.0, "neutral": 0.5, "risk_off": 0.0}.get(x.regime or "", 0.5)
-    # Track record: neutral until 30 trades; then scaled on expectancy in [-0.5R, +0.5R].
-    if x.track.trades < 30:
-        c["track"] = 0.5
+    # Track record: ZERO until there are enough resolved trades to mean anything, then
+    # scaled on expectancy in [-0.5R, +0.5R]. This used to award a free neutral 0.5 below
+    # 30 trades, which let a setup with no evidence at all score as if it were average -
+    # the scoring half of the same fail-open TrackRecord.eligible closes.
+    if x.track.trades < BENCH_WINDOW:
+        c["track"] = 0.0
+        notes.append(f"no track record yet ({x.track.trades} resolved trades)")
     else:
         c["track"] = _clamp(0.5 + x.track.expectancy_r)
         notes.append(f"last {x.track.trades} paper trades: {x.track.expectancy_r:+.2f}R")
@@ -111,6 +235,9 @@ def score_signal(x: ScoreInputs) -> Score:
         components={k: round(v, 3) for k, v in c.items()},
         notes=notes,
         benched=x.track.benched,
+        eligible=x.track.eligible,
+        ineligibility_reasons=x.track.ineligibility_reasons,
+        min_score=policy.min_score,
     )
 
 

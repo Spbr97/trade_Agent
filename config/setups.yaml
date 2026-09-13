@@ -7,6 +7,14 @@
 # edge yet on 2023-2026 backtest data - base_breakout AUC 0.59, trend_pullback/nr7_breakout
 # ~0.54 (near coin-flip), pooled expectancy -0.557R. This is a deliberate "keep live while we
 # investigate whether the setups can be tightened" choice, not a claim these are profitable.
+#
+# 2026-09-13, eligibility gate added (SDD sections 18/23): `enabled` is UNCHANGED and still
+# true for all three - they keep scanning, scoring and logging exactly as before. What
+# changed is that nothing ALERTS until its setup clears the `eligibility:` bar below. None of
+# the three does today, and on the measurements they should not: a matched random-timing
+# baseline beats all three by 0.21-0.26R on the same stocks and window, so they are not
+# merely edgeless, they are anti-predictive. Expect NO TRADE with explicit reasons rather
+# than silence - that is the designed outcome (SDD section 17), not a broken scan.
 setups:
   base_breakout:
     enabled: true
@@ -34,3 +42,24 @@ entry:
   chased_atr_multiple: 1.0
   late_trigger_after: "15:00"
   setup_valid_sessions: 3
+
+# Evidence a setup must show before ANY of its signals may alert (SDD sections 18 and 23).
+# Defaults are the SDD's recommended initial configuration. Fails closed: a setup nothing has
+# measured is ineligible, and every unmet criterion is reported as a NO-TRADE reason.
+#
+# Lowering a value here is a deliberate, reviewable decision - the whole point of the gate is
+# that standards are never dropped quietly to manufacture signals (SDD section 25: "reduce or
+# stop signals rather than lowering the standards just to produce trades"). If you do lower
+# one, say why in a comment next to it.
+#
+# `must_beat_random_by_r` is NOT in the SDD and is the strongest of these: a setup can post a
+# healthy win rate and positive expectancy purely by being long in a rising market. Requiring
+# it to beat a matched random-entry baseline is what catches that, and it is the criterion the
+# three live setups fail hardest (measured 0.21-0.26R WORSE than random).
+eligibility:
+  min_score: 85            # SDD section 9: only A/A+ eligible for live consideration
+  min_trades: 500          # SDD section 18 minimum evidence
+  min_oos_trades: 100      # SDD section 18: out-of-sample, not just in-sample
+  min_win_rate: 0.80       # SDD section 23 target configuration
+  min_expectancy_r: 0.0    # must at least not lose money, after costs
+  must_beat_random_by_r: 0.10

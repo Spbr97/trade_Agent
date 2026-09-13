@@ -231,9 +231,23 @@ class EntryRules(Strict):
     setup_valid_sessions: int = Field(3, ge=1)
 
 
+class EligibilityRules(Strict):
+    """Evidence a setup must show before it may alert (SDD sections 18 and 23). Defaults
+    match engine/scoring.py::EligibilityPolicy. Lowering any value here is a deliberate,
+    reviewable edit - the standard is never dropped silently to produce signals."""
+
+    min_score: int = 85
+    min_trades: int = 500
+    min_oos_trades: int = 100
+    min_win_rate: float = 0.80
+    min_expectancy_r: float = 0.0
+    must_beat_random_by_r: float = 0.10
+
+
 class SetupsConfig(Strict):
     setups: dict[str, SetupConfig] = Field(default_factory=dict)
     entry: EntryRules = EntryRules()
+    eligibility: EligibilityRules = EligibilityRules()
 
 
 # ----------------------------------------------------------------------- schedule.yaml

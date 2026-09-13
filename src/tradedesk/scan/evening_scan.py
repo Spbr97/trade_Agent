@@ -34,10 +34,12 @@ from tradedesk.engine.engine import scan_day
 from tradedesk.engine.filters import apply_filters
 from tradedesk.engine.regime import RegimeSnapshot
 from tradedesk.engine.scoring import (
+    EligibilityPolicy,
     Grade,
     Score,
     ScoreInputs,
     TrackRecord,
+    no_evidence,
     pattern_quality,
     room_in_r,
     score_signal,
@@ -182,6 +184,18 @@ def _round_trip_cost(sig: Signal, qty: float, market: Market) -> float:
     return float(buy.total + sell.total)
 
 
+def _eligibility_policy(settings: Settings) -> EligibilityPolicy:
+    e = settings.setups.eligibility
+    return EligibilityPolicy(
+        min_score=e.min_score,
+        min_trades=e.min_trades,
+        min_oos_trades=e.min_oos_trades,
+        min_win_rate=e.min_win_rate,
+        min_expectancy_r=e.min_expectancy_r,
+        must_beat_random_by_r=e.must_beat_random_by_r,
+    )
+
+
 def build_watchlist(
     md: MarketData,
     cfg: BacktestConfig,
@@ -198,6 +212,7 @@ def build_watchlist(
     to build a crypto watchlist (M13 Phase 4). `cfg` should come from the matching
     scan_config(..., market=market) call so cfg.costs/universe_rules agree with it."""
     market = market or nse_market(settings)
+    policy = _eligibility_policy(settings)
     regime = regime_on(md, on, cfg)
     held = {p.scrip_code for p in open_positions}
     snapshot = build_snapshot(md, on, cfg, regime=regime, exclude=held)
@@ -213,7 +228,7 @@ def build_watchlist(
     for sig in signals:
         feats = snapshot.features[sig.scrip_code]
         last = feats.iloc[-1]
-        track = (track_records or {}).get(sig.setup.value, TrackRecord())
+        track = (track_records or {}).get(sig.setup.value) or no_evidence(policy)
         size = position_size(
             SizeInputs(
                 equity=capital,
@@ -249,7 +264,7 @@ def build_watchlist(
             atr_pct_band=market.atr_pct_band,
             surveillance=surveillance,
         )
-        score: Score = score_signal(
+        score: Score = score_signal(  # policy passed below so the score floor is config-driven
             ScoreInputs(
                 signal=sig,
                 trend_strength=trend_strength(last),
@@ -260,15 +275,20 @@ def build_watchlist(
                 net_rr_t2=flt.net_rr_t2,
                 regime=regime_name,
                 track=track,
-            )
+            ),
+            policy,
         )
         rejected = list(flt.reasons)
         if not size.viable:
             rejected.append("size 0: " + (", ".join(size.caps) or "risk budget below one qty step"))
         if regime_name == "neutral" and score.grade is not Grade.A:
             rejected.append("neutral regime: A-grade only")
-        if score.benched:
-            rejected.append("setup benched (negative rolling paper expectancy)")
+        # NO TRADE is the default answer (SDD section 1). `score.no_trade_reasons` already
+        # carries the evidence-gate failures, the bench flag and the score floor, so the
+        # entry records exactly why it is not alertable instead of just going quiet - a
+        # NO-TRADE output with its reasons is a successful outcome, not a failure
+        # (SDD section 17).
+        rejected.extend(score.no_trade_reasons)
         entries.append(
             WatchlistEntry(
                 signal=sig,

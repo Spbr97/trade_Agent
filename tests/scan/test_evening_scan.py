@@ -14,7 +14,16 @@ from tradedesk.config import load_config
 from tradedesk.config.models import RiskConfig, Settings, UniverseConfig
 from tradedesk.engine.filters import apply_filters
 from tradedesk.engine.lifecycle import SignalState
-from tradedesk.engine.scoring import Grade, ScoreInputs, TrackRecord, score_signal
+from tradedesk.engine.scoring import (
+    EligibilityPolicy,
+    Grade,
+    Score,
+    ScoreInputs,
+    TrackRecord,
+    eligibility,
+    no_evidence,
+    score_signal,
+)
 from tradedesk.engine.signals import SetupKind, Signal
 from tradedesk.markets import EquityCostModel
 from tradedesk.scan import (
@@ -56,7 +65,13 @@ def test_score_grades_and_components() -> None:
             regime="risk_on",
         )  # fmt: skip
     )
-    assert strong.grade is Grade.A and strong.total >= 80 and strong.alertable
+    # A perfect-looking signal is still NOT alertable on its own: the setup behind it has no
+    # proven track record, and NO TRADE is the default answer (SDD sections 1 and 23). Before
+    # the 2026-09-13 eligibility gate this asserted `strong.alertable` directly, which is
+    # exactly the fail-open that let all three live setups alert on an empty paper book.
+    assert strong.grade is Grade.A and strong.total >= 80
+    assert not strong.alertable
+    assert any("no track record" in n for n in strong.notes)
     assert set(strong.components) == {
         "trend",
         "rs",
@@ -96,6 +111,101 @@ def test_score_grades_and_components() -> None:
     )
     assert benched.grade is Grade.A and benched.benched and not benched.alertable
     assert benched.components["track"] < 0.5
+
+
+# ------------------------------------------------------- eligibility gate (SDD 18/23)
+
+
+def _proven(**over: object) -> TrackRecord:
+    """A setup that clears every default requirement, so each test below can knock out
+    exactly one criterion and prove that criterion is what does the rejecting."""
+    base: dict[str, object] = dict(
+        trades=600, oos_trades=150, win_rate=0.85, expectancy_r=0.40,
+        random_baseline_r=0.10, benched=False,
+    )  # fmt: skip
+    base.update(over)
+    ok, reasons = eligibility(
+        trades=int(base["trades"]), oos_trades=int(base["oos_trades"]),
+        win_rate=float(base["win_rate"]), expectancy_r=float(base["expectancy_r"]),
+        random_baseline_r=base["random_baseline_r"],  # type: ignore[arg-type]
+    )  # fmt: skip
+    return TrackRecord(
+        trades=int(base["trades"]), expectancy_r=float(base["expectancy_r"]),
+        win_rate=float(base["win_rate"]), benched=bool(base["benched"]),
+        oos_trades=int(base["oos_trades"]),
+        random_baseline_r=base["random_baseline_r"],  # type: ignore[arg-type]
+        eligible=ok, ineligibility_reasons=reasons,
+    )  # fmt: skip
+
+
+def _score_with(track: TrackRecord) -> Score:
+    return score_signal(
+        ScoreInputs(
+            signal=sig(), trend_strength=1.0, rs_percentile=95, sector_percentile=90,
+            pattern_quality=0.9, room_r=4.0, net_rr_t2=3.5, regime="risk_on", track=track,
+        )  # fmt: skip
+    )
+
+
+def test_a_setup_with_no_evidence_is_ineligible_with_reasons() -> None:
+    """The fail-open this gate closes: before 2026-09-13 a setup with an empty paper book
+    was never benched (bench needs 30 resolved trades first), so it alerted freely."""
+    track = no_evidence()
+    assert not track.eligible
+    assert track.ineligibility_reasons  # must SAY why, not fail silently
+    score = _score_with(track)
+    assert not score.alertable
+    assert any("resolved trades" in r for r in score.no_trade_reasons)
+    assert any("random-timing baseline" in r for r in score.no_trade_reasons)
+
+
+def test_a_fully_proven_setup_is_eligible_and_alertable() -> None:
+    score = _score_with(_proven())
+    assert score.alertable and score.no_trade_reasons == ()
+
+
+@pytest.mark.parametrize(
+    ("override", "expect"),
+    [
+        ({"trades": 100}, "resolved trades"),
+        ({"oos_trades": 10}, "out-of-sample"),
+        ({"win_rate": 0.55}, "win rate"),
+        ({"expectancy_r": -0.10}, "expectancy"),
+        ({"random_baseline_r": None}, "random-timing baseline"),
+    ],
+)
+def test_each_criterion_alone_makes_a_setup_ineligible(override: dict, expect: str) -> None:
+    score = _score_with(_proven(**override))
+    assert not score.alertable
+    assert any(expect in r for r in score.no_trade_reasons), score.no_trade_reasons
+
+
+def test_beating_the_market_is_not_enough_it_must_beat_RANDOM() -> None:
+    """The criterion that catches this project's actual failure. A setup can post a healthy
+    +0.30R expectancy and a good win rate while still being WORSE than picking a random day
+    on the same stock - which is exactly what all three live setups were measured to be
+    (0.21-0.26R worse than random, 2026-09-13). A win-rate threshold cannot see that."""
+    flattering = _proven(expectancy_r=0.30, win_rate=0.85, random_baseline_r=0.35)
+    assert not flattering.eligible
+    assert any("beats random by only" in r for r in flattering.ineligibility_reasons)
+    assert not _score_with(flattering).alertable
+
+
+def test_score_floor_is_enforced_separately_from_the_grade() -> None:
+    """Grade A starts at 80 but the SDD's floor is 85 - a proven setup scoring 82 is still
+    NO TRADE, so the floor cannot be satisfied by the grade boundary alone."""
+    track = _proven()
+    high = _score_with(track)
+    assert high.alertable
+    low = score_signal(
+        ScoreInputs(
+            signal=sig(), trend_strength=0.75, rs_percentile=80, sector_percentile=70,
+            pattern_quality=0.7, room_r=2.5, net_rr_t2=2.6, regime="risk_on", track=track,
+        ),  # fmt: skip
+        EligibilityPolicy(min_score=99),
+    )
+    assert not low.alertable
+    assert any("< required 99" in r for r in low.no_trade_reasons)
 
 
 # ----------------------------------------------------------------- filters
