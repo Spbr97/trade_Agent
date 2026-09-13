@@ -123,18 +123,15 @@ def run(
                     typer.echo(f"  ERROR {r.scrip_code}: {r.error}")
 
     asyncio.run(_with_client(go))
-    verify(codes=targets, intervals=",".join(ivs), db=db)
+    _verify_impl(targets, ",".join(ivs), db, max_gap_sessions=3, min_session_fill=0.60)
 
 
-@app.command()
-def verify(
-    codes: list[str] = typer.Argument(None),
-    intervals: str = typer.Option(",".join(INTERVALS), "--intervals"),
-    db: Path = typer.Option(DB, "--db"),
-    max_gap_sessions: int = typer.Option(3, "--max-gap-sessions"),
-    min_session_fill: float = typer.Option(
-        0.60, "--min-session-fill", help="fraction of a full session's bars before it counts"
-    ),
+def _verify_impl(
+    codes: list[str] | None,
+    intervals: str,
+    db: Path,
+    max_gap_sessions: int,
+    min_session_fill: float,
 ) -> None:
     """Prove what is actually in the store, per code per interval.
 
@@ -145,7 +142,23 @@ def verify(
 
     (3) is the one that matters most for intraday and the one nothing else would catch: a
     session present with 8 of 375 one-minute bars still shows up as "data exists" to every
-    caller, and silently breaks session VWAP, session high/low and MTF alignment."""
+    caller, and silently breaks session VWAP, session high/low and MTF alignment.
+
+    Caveat confirmed on the first real run (2026-09-13, 5 codes x 5 intervals): every code
+    reported exactly 2 "thin" sessions, always the SAME two calendar dates -
+    2024-11-01 (Muhurat trading, NSE's one-hour Diwali session outside normal hours) and
+    2025-10-21 (a genuinely shortened trading day). Both are real, correctly-fetched data,
+    not coverage gaps - `min_session_fill` has no notion of special sessions, so a thin
+    count clustered on one or two dates across every code is that, not a real problem.
+    Investigate before trusting `coverage OK` if `thin` ever comes back scattered across
+    many different dates instead.
+
+    Plain function, not a `@app.command()`, so it takes REAL values - `verify()` below is
+    the CLI wrapper with `typer.Option()` defaults, which only resolve when Typer itself
+    invokes the command. Calling the decorated function directly (as `run()` needs to,
+    right after a fetch) would pass `OptionInfo` objects through instead of `3`/`0.60` and
+    crash on the first arithmetic - exactly what happened the first time this ran, caught
+    by actually running it against real data rather than assumed to work."""
     from tradedesk.broker.indstocks.models import Interval
 
     ivs = [s.strip() for s in intervals.split(",") if s.strip()]
@@ -198,6 +211,20 @@ def verify(
             typer.secho(f"  {p}", fg=typer.colors.RED)
         raise typer.Exit(code=1)
     typer.secho("coverage OK", fg=typer.colors.GREEN)
+
+
+@app.command()
+def verify(
+    codes: list[str] = typer.Argument(None),
+    intervals: str = typer.Option(",".join(INTERVALS), "--intervals"),
+    db: Path = typer.Option(DB, "--db"),
+    max_gap_sessions: int = typer.Option(3, "--max-gap-sessions"),
+    min_session_fill: float = typer.Option(
+        0.60, "--min-session-fill", help="fraction of a full session's bars before it counts"
+    ),
+) -> None:
+    """CLI entry point - see `_verify_impl` for what this actually checks."""
+    _verify_impl(codes, intervals, db, max_gap_sessions, min_session_fill)
 
 
 if __name__ == "__main__":
