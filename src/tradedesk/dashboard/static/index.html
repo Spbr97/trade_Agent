@@ -69,6 +69,7 @@
   <h1>tradedesk</h1>
   <span class="light">regime <b id="regime">-</b></span>
   <span class="light muted" id="updated"></span>
+  <span class="light" id="agent-reliability" style="margin-left:auto;" title="Wilson lower-bound confidence pooled across every real, live resolved call (NSE paper book + crypto/BSE live-tagged calls) - never backfill or research candidates. See the Report tab's Backfill P&amp;L for backfill's own numbers.">agent reliability <b id="agent-reliability-value">-</b></span>
 </header>
 
 <nav class="tabs">
@@ -115,13 +116,6 @@
 <main id="tab-crypto" hidden>
   <section class="perf-controls">
     <div class="group">
-      <label for="crypto-data-select">Data</label>
-      <select id="crypto-data-select">
-        <option value="live" selected>Live (current agent)</option>
-        <option value="past">Past (backfill)</option>
-      </select>
-    </div>
-    <div class="group" id="crypto-live-view-group">
       <label for="crypto-live-view-select">View</label>
       <select id="crypto-live-view-select">
         <option value="ongoing" selected>Ongoing</option>
@@ -131,8 +125,7 @@
     <span class="muted">research/paper only, own dataset, not pooled with NSE</span>
   </section>
 
-  <div id="crypto-view-live">
-    <div id="crypto-live-ongoing">
+  <div id="crypto-live-ongoing">
       <section class="perf-controls">
         <div class="group">
           <label for="crypto-ongoing-filter-symbol">Coin</label>
@@ -225,52 +218,31 @@
         <table id="crypto-passfail-calls"></table>
       </section>
     </div>
-  </div>
 
-  <div id="crypto-view-past" hidden>
-    <section class="perf-controls">
-      <div class="group">
-        <label for="crypto-past-filter-symbol">Coin</label>
-        <select id="crypto-past-filter-symbol"><option value="">All</option></select>
-      </div>
-      <div class="group">
-        <label for="crypto-past-filter-setup">Setup</label>
-        <select id="crypto-past-filter-setup"><option value="">All</option></select>
-      </div>
-      <div class="group">
-        <label for="crypto-past-filter-status">Result</label>
-        <select id="crypto-past-filter-status">
-          <option value="">All</option>
-          <option value="target">Hit (target)</option>
-          <option value="stop">Not hit (stop)</option>
-          <option value="gap_stop">Not hit (gap stop)</option>
-          <option value="timeout">Not hit (timed out)</option>
-          <option value="pending">Pending</option>
+  <section>
+    <h2>Backfill P&amp;L <span class="muted" style="text-transform:none;">- the one-shot 2018-2026 historical replay, summarised over a timeframe rather than browsable row by row</span>
+      <span style="margin-left:auto; display:flex; align-items:center; gap:6px;">
+        <label for="crypto-backfill-days" class="muted" style="text-transform:none; font-size:12px;">over</label>
+        <select id="crypto-backfill-days">
+          <option value="30">30d</option>
+          <option value="90">90d</option>
+          <option value="365">1y</option>
+          <option value="" selected>All time</option>
         </select>
-      </div>
-      <div class="group">
-        <label for="crypto-past-filter-resolved">Show</label>
-        <select id="crypto-past-filter-resolved">
-          <option value="">All calls</option>
-          <option value="resolved">Resolved only</option>
-        </select>
-      </div>
-      <div class="group">
-        <label for="crypto-past-filter-rows">Rows</label>
-        <select id="crypto-past-filter-rows">
-          <option value="25">25</option>
-          <option value="50" selected>50</option>
-          <option value="100">100</option>
-          <option value="all">All</option>
-        </select>
-      </div>
-      <span class="muted" id="crypto-past-filter-count"></span>
-    </section>
-    <section>
-      <h2>Past (backfilled) calls <span class="muted" style="text-transform:none;">- the one-shot 2018-2026 historical replay, not the live tracker</span></h2>
-      <table id="crypto-past-calls"></table>
-    </section>
-  </div>
+      </span>
+    </h2>
+    <div class="cards">
+      <div class="card"><div class="label">Resolved</div><div class="value" id="crypto-backfill-n">-</div></div>
+      <div class="card"><div class="label">Win rate</div><div class="value" id="crypto-backfill-winrate">-</div></div>
+      <div class="card"><div class="label">Avg R</div><div class="value" id="crypto-backfill-avgr">-</div></div>
+      <div class="card"><div class="label">P&amp;L %</div><div class="value" id="crypto-backfill-pnl">-</div></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Coin confidence <span class="muted" style="text-transform:none;">- Wilson lower-bound confidence, not raw win rate: a coin with 1 resolved call and a win reads LOW, not 100%, until there's enough evidence to trust it</span></h2>
+    <table id="crypto-symbol-confidence"></table>
+  </section>
 </main>
 
 <main id="tab-bse" hidden>
@@ -307,13 +279,6 @@
   <div id="bse-view-history" hidden>
     <section class="perf-controls">
       <div class="group">
-        <label for="bse-data-select">Data</label>
-        <select id="bse-data-select">
-          <option value="live" selected>Live (current agent)</option>
-          <option value="past">Past (backfill)</option>
-        </select>
-      </div>
-      <div class="group" id="bse-live-view-group">
         <label for="bse-live-view-select">View</label>
         <select id="bse-live-view-select">
           <option value="ongoing" selected>Ongoing</option>
@@ -323,7 +288,6 @@
       <span class="muted">5-stock tracker watchlist, own dataset, not pooled with NSE/crypto</span>
     </section>
 
-    <div id="bse-hist-view-live">
       <div id="bse-live-ongoing">
         <section class="perf-controls">
           <div class="group">
@@ -417,52 +381,31 @@
           <table id="bse-passfail-calls"></table>
         </section>
       </div>
-    </div>
 
-    <div id="bse-hist-past" hidden>
-      <section class="perf-controls">
-        <div class="group">
-          <label for="bse-past-filter-symbol">Stock</label>
-          <select id="bse-past-filter-symbol"><option value="">All</option></select>
-        </div>
-        <div class="group">
-          <label for="bse-past-filter-setup">Setup</label>
-          <select id="bse-past-filter-setup"><option value="">All</option></select>
-        </div>
-        <div class="group">
-          <label for="bse-past-filter-status">Result</label>
-          <select id="bse-past-filter-status">
-            <option value="">All</option>
-            <option value="target">Hit (target)</option>
-            <option value="stop">Not hit (stop)</option>
-            <option value="gap_stop">Not hit (gap stop)</option>
-            <option value="timeout">Not hit (timed out)</option>
-            <option value="pending">Pending</option>
+    <section>
+      <h2>Backfill P&amp;L <span class="muted" style="text-transform:none;">- historical replay, summarised over a timeframe rather than browsable row by row</span>
+        <span style="margin-left:auto; display:flex; align-items:center; gap:6px;">
+          <label for="bse-backfill-days" class="muted" style="text-transform:none; font-size:12px;">over</label>
+          <select id="bse-backfill-days">
+            <option value="30">30d</option>
+            <option value="90">90d</option>
+            <option value="365">1y</option>
+            <option value="" selected>All time</option>
           </select>
-        </div>
-        <div class="group">
-          <label for="bse-past-filter-resolved">Show</label>
-          <select id="bse-past-filter-resolved">
-            <option value="">All calls</option>
-            <option value="resolved">Resolved only</option>
-          </select>
-        </div>
-        <div class="group">
-          <label for="bse-past-filter-rows">Rows</label>
-          <select id="bse-past-filter-rows">
-            <option value="25">25</option>
-            <option value="50" selected>50</option>
-            <option value="100">100</option>
-            <option value="all">All</option>
-          </select>
-        </div>
-        <span class="muted" id="bse-past-filter-count"></span>
-      </section>
-      <section>
-        <h2>Past (backfilled) calls <span class="muted" style="text-transform:none;">- historical replay, not the live tracker</span></h2>
-        <table id="bse-past-calls"></table>
-      </section>
-    </div>
+        </span>
+      </h2>
+      <div class="cards">
+        <div class="card"><div class="label">Resolved</div><div class="value" id="bse-backfill-n">-</div></div>
+        <div class="card"><div class="label">Win rate</div><div class="value" id="bse-backfill-winrate">-</div></div>
+        <div class="card"><div class="label">Avg R</div><div class="value" id="bse-backfill-avgr">-</div></div>
+        <div class="card"><div class="label">P&amp;L %</div><div class="value" id="bse-backfill-pnl">-</div></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Stock confidence <span class="muted" style="text-transform:none;">- Wilson lower-bound confidence, not raw win rate</span></h2>
+      <table id="bse-symbol-confidence"></table>
+    </section>
   </div>
 </main>
 
@@ -704,8 +647,8 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     TAB_IDS.forEach(id => { $('tab-' + id).hidden = target !== id; });
     updatePerfStrip(target);
     if (target === 'performance') loadPerformance();
-    if (target === 'crypto') showLiveView('crypto', $('crypto-live-view-select').value);
-    if (target === 'bse' && !$('bse-view-history').hidden) showLiveView('bse', $('bse-live-view-select').value);
+    if (target === 'crypto') { showLiveView('crypto', $('crypto-live-view-select').value); loadBackfillPnl('crypto'); loadSymbolConfidence('crypto'); }
+    if (target === 'bse') { if (!$('bse-view-history').hidden) showLiveView('bse', $('bse-live-view-select').value); loadBackfillPnl('bse'); loadSymbolConfidence('bse'); }
     if (target === 'research') loadResearch();
     if (target === 'learning') loadLearning();
     if (target === 'review') loadReview();
@@ -753,6 +696,37 @@ async function loadAgentPerformanceStrip() {
 loadAgentPerformanceStrip();
 setInterval(loadAgentPerformanceStrip, 60000);
 
+// ---------------------------------------------------------------- top-right agent reliability
+// One number, top-right, always visible: Wilson lower-bound confidence pooled across every
+// real, live resolved call across NSE+crypto+BSE (never backfill or research candidates -
+// see reliability.py/reliability_sources.py). A daily-logged history lets it show a trend
+// (vs the previous logged day) so it's actually monitorable for "is this rising", not just
+// a snapshot.
+async function loadAgentReliability() {
+  try {
+    const [curR, histR] = await Promise.all([
+      fetch('/api/reliability/overall'), fetch('/api/reliability/history'),
+    ]);
+    const cur = curR.ok ? await curR.json() : null;
+    const hist = histR.ok ? await histR.json() : [];
+    if (!cur || cur.n === 0) {
+      $('agent-reliability-value').textContent = 'n/a (0 live calls yet)';
+      return;
+    }
+    let trend = '';
+    if (hist.length >= 2) {
+      const prev = hist[hist.length - 2].confidence;
+      if (prev != null) {
+        const delta = cur.confidence - prev;
+        trend = delta > 0.001 ? ' ↑' : (delta < -0.001 ? ' ↓' : ' →');
+      }
+    }
+    $('agent-reliability-value').textContent = `${pct(cur.confidence)} (n=${cur.n})${trend}`;
+  } catch (e) { $('agent-reliability-value').textContent = 'n/a'; }
+}
+loadAgentReliability();
+setInterval(loadAgentReliability, 60000);
+
 // ---------------------------------------------------------------- Review tab
 function reviewCard(item) {
   const buttons = item.status === 'pending'
@@ -793,18 +767,16 @@ setInterval(loadReview, 60000);
 // ---------------------------------------------------------------- Crypto / BSE call-log tabs
 // Same JSONL-log shape (signal_tracker.py) for both markets, so one set of functions
 // parameterized by "market" drives every sub-view - see /api/crypto/calls and
-// /api/bse/calls. Crypto splits into THREE, all from the SAME /api/crypto/calls fetch split
+// /api/bse/calls. Each market splits into TWO, both from the SAME calls fetch split
 // client-side (one source of truth for the tag, no separate endpoint to drift):
 //   'crypto-ongoing'  - source === 'live' AND not yet resolved (the agent's open calls)
 //   'crypto-passfail' - source === 'live' AND resolved (the agent's actual track record)
-//   'crypto-past'     - source !== 'live' (the one-shot 2018-2026 backfill, and anything
-//                        logged before the Live/Past split shipped 2026-09-13)
-// BSE gets the identical three-way split (bse-ongoing/bse-passfail/bse-past) over
-// /api/bse/calls, for the same reason and via the same generic renderCalls() - BSE's JSONL
-// log shares signal_tracker.py's TrackedSignal shape (including `source`) with crypto.
+// The full backfill (source !== 'live') is no longer browsable row-by-row here (removed
+// 2026-09-14, replaced by the Backfill P&L timeframe stat + per-symbol confidence table
+// below, both served by /api/reliability/*) - BSE gets the identical split.
 const callsData = {
-  'crypto-ongoing': [], 'crypto-passfail': [], 'crypto-past': [],
-  'bse-ongoing': [], 'bse-passfail': [], 'bse-past': [],
+  'crypto-ongoing': [], 'crypto-passfail': [],
+  'bse-ongoing': [], 'bse-passfail': [],
 };
 const LIVE_SPLIT_API = { crypto: '/api/crypto/calls?limit=5000', bse: '/api/bse/calls?limit=5000' };
 async function loadCalls(market) {
@@ -816,7 +788,6 @@ async function loadCalls(market) {
     const live = all.filter(d => d.source === 'live');
     callsData[`${prefix}-ongoing`] = live.filter(d => !d.outcome);
     callsData[`${prefix}-passfail`] = live.filter(d => d.outcome);
-    callsData[`${prefix}-past`] = all.filter(d => d.source !== 'live');
   } else {
     const r = await fetch(`/api/${market}/calls?limit=2000`);
     callsData[market] = r.ok ? await r.json() : [];
@@ -901,39 +872,51 @@ function renderCalls(market) {
   $(`${market}-filter-count`).textContent = countText;
 }
 [
-  'crypto-ongoing', 'crypto-passfail', 'crypto-past',
-  'bse-ongoing', 'bse-passfail', 'bse-past',
+  'crypto-ongoing', 'crypto-passfail',
+  'bse-ongoing', 'bse-passfail',
 ].forEach(market => {
   ['symbol', 'setup', 'status', 'resolved', 'rows'].forEach(kind => {
     $(`${market}-filter-${kind}`).addEventListener('change', () => renderCalls(market));
   });
 });
 
-// Data (Live/Past) and, within Live, View (Ongoing/Pass-Fail) dropdowns - shared wiring for
-// crypto and BSE, whose element ids only differ by prefix (crypto-*/bse-*). "Past" reads as
-// a deliberate, separate choice rather than a peer toggle, and "ongoing" (open) vs
-// "pass/fail" (resolved, i.e. the agent's actual performance) are visibly different
-// questions, not one mixed table.
+// View (Ongoing/Pass-Fail) dropdown - shared wiring for crypto and BSE, whose element ids
+// only differ by prefix (crypto-*/bse-*). "Ongoing" (open) vs "pass/fail" (resolved, i.e.
+// the agent's actual performance) are visibly different questions, not one mixed table.
 function showLiveView(prefix, view) {
   $(`${prefix}-live-ongoing`).hidden = view !== 'ongoing';
   $(`${prefix}-live-passfail`).hidden = view !== 'passfail';
   loadCalls(view === 'ongoing' ? `${prefix}-ongoing` : `${prefix}-passfail`);
 }
-function wireLiveSplitDropdowns(prefix, viewLiveId, viewPastId) {
-  const dataSel = $(`${prefix}-data-select`);
-  const viewSel = $(`${prefix}-live-view-select`);
-  dataSel.addEventListener('change', () => {
-    const v = dataSel.value;
-    $(viewLiveId).hidden = v !== 'live';
-    $(viewPastId).hidden = v !== 'past';
-    $(`${prefix}-live-view-group`).hidden = v !== 'live';
-    if (v === 'live') showLiveView(prefix, viewSel.value);
-    else loadCalls(`${prefix}-past`);
-  });
-  viewSel.addEventListener('change', () => showLiveView(prefix, viewSel.value));
+['crypto', 'bse'].forEach(prefix => {
+  $(`${prefix}-live-view-select`).addEventListener('change', () => showLiveView(prefix, $(`${prefix}-live-view-select`).value));
+});
+
+// ---------------------------------------------------------------- Backfill P&L + symbol confidence
+// Replaces the removed row-by-row "Past (backfill)" table (2026-09-14): a compact P&L
+// summary over a selectable timeframe (/api/reliability/backfill-pnl) plus a per-symbol
+// Wilson-lower-bound confidence table (/api/reliability/symbols) for both crypto and BSE.
+async function loadBackfillPnl(prefix) {
+  const days = $(`${prefix}-backfill-days`).value;
+  const qs = days ? `?market=${prefix}&days=${days}` : `?market=${prefix}`;
+  const r = await fetch(`/api/reliability/backfill-pnl${qs}`);
+  const d = r.ok ? await r.json() : { n: 0 };
+  $(`${prefix}-backfill-n`).textContent = d.n;
+  $(`${prefix}-backfill-winrate`).textContent = d.win_rate != null ? pct(d.win_rate) : '-';
+  $(`${prefix}-backfill-avgr`).textContent = d.avg_r != null ? fmt(d.avg_r, 2) : '-';
+  const pnlEl = $(`${prefix}-backfill-pnl`);
+  pnlEl.textContent = d.n ? `${d.pnl_pct >= 0 ? '+' : ''}${d.pnl_pct.toFixed(2)}%` : '-';
+  pnlEl.className = 'value ' + (d.n && d.pnl_pct >= 0 ? 'pos' : (d.n ? 'neg' : ''));
 }
-wireLiveSplitDropdowns('crypto', 'crypto-view-live', 'crypto-view-past');
-wireLiveSplitDropdowns('bse', 'bse-hist-view-live', 'bse-hist-past');
+async function loadSymbolConfidence(prefix) {
+  const r = await fetch(`/api/reliability/symbols?market=${prefix}`);
+  const data = r.ok ? await r.json() : [];
+  rows($(`${prefix}-symbol-confidence`), [prefix === 'crypto' ? 'Coin' : 'Stock', '#N', '#Wins', '#Win rate', '#Confidence'],
+    data.map(s => `<tr><td>${s.symbol}</td><td class="num">${s.n}</td><td class="num">${s.wins}</td><td class="num">${pct(s.win_rate)}</td><td class="num">${pct(s.confidence)}</td></tr>`));
+}
+['crypto', 'bse'].forEach(prefix => {
+  $(`${prefix}-backfill-days`).addEventListener('change', () => loadBackfillPnl(prefix));
+});
 
 // ---------------------------------------------------------------- Research tab
 // tradedesk.research_tracker's forward, out-of-sample candidate log - separate from

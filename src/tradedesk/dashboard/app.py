@@ -180,6 +180,58 @@ def create_app(
 
         return JSONResponse(list(reversed(load_history(market))))
 
+    @app.get("/api/reliability/overall")
+    async def api_reliability_overall() -> JSONResponse:
+        """The one top-right "agent reliability" number - Wilson lower bound pooled across
+        every REAL, LIVE resolved call across all three markets - plus the per-market
+        breakdown behind it. See reliability.py/reliability_sources.py for why this excludes
+        backfill and research candidates."""
+        from tradedesk.reliability_sources import overall_reliability_now
+
+        return JSONResponse(overall_reliability_now())
+
+    @app.get("/api/reliability/history")
+    async def api_reliability_history() -> JSONResponse:
+        """Daily-logged trend for the top-right number, so it can be watched for whether it
+        is actually rising as more real evidence accumulates - not just asserted."""
+        from tradedesk import reliability
+
+        return JSONResponse(reliability.load_reliability_history(reliability.HISTORY_PATH))
+
+    @app.get("/api/reliability/symbols")
+    async def api_reliability_symbols(
+        market: Literal["nse", "crypto", "bse"] = "nse",
+        source: Literal["live", "backfill", "all"] = "all",
+    ) -> JSONResponse:
+        """Per-symbol/coin confidence (Wilson lower bound), sorted most-trustworthy first."""
+        from dataclasses import asdict
+
+        from tradedesk.analysis import BSE_LOG, CRYPTO_LOG
+        from tradedesk.reliability_sources import (
+            crypto_bse_symbol_confidence,
+            nse_symbol_confidence,
+        )
+
+        src = None if source == "all" else source
+        if market == "nse":
+            rows = nse_symbol_confidence()
+        else:
+            rows = crypto_bse_symbol_confidence(CRYPTO_LOG if market == "crypto" else BSE_LOG, source=src)  # noqa: E501
+        return JSONResponse([asdict(r) for r in rows])
+
+    @app.get("/api/reliability/backfill-pnl")
+    async def api_reliability_backfill_pnl(
+        market: Literal["crypto", "bse"] = "crypto",
+        days: int | None = None,
+    ) -> JSONResponse:
+        """Compact P&L summary over a timeframe for the removed "Past (backfill)" browsing
+        table - days=None is all-time."""
+        from tradedesk.analysis import BSE_LOG, CRYPTO_LOG
+        from tradedesk.reliability_sources import crypto_bse_backfill_pnl
+
+        log = CRYPTO_LOG if market == "crypto" else BSE_LOG
+        return JSONResponse(crypto_bse_backfill_pnl(log, days=days))
+
     @app.get("/api/review")
     async def api_review_list() -> JSONResponse:
         """Pending/decided review-queue items (review_queue.py) - proposals from `tradedesk

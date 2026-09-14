@@ -144,6 +144,14 @@ def run(
         typer.echo(f"\nflagged for review: {flagged}")
     eod_learn(market=market, db=db, log=log)
     report(market=market, log=log, cost_r=cost_r_for(market), sessions=sessions_dir_for(market), save=True)  # noqa: E501
+    if market == "nse":
+        # Once a day, always this market's run (nse fires exactly once/day at 16:30 IST) -
+        # avoids duplicate rows from crypto's twice-daily / BSE's differently-timed runs.
+        # log_daily_reliability_snapshot() is idempotent within a day regardless, so this
+        # is a belt-and-suspenders choice of hook, not the only thing making it safe.
+        from tradedesk.reliability_sources import log_daily_reliability_snapshot
+
+        log_daily_reliability_snapshot()
 
 
 if __name__ == "__main__":
