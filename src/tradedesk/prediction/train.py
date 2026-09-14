@@ -168,7 +168,7 @@ def _sessions_to_results(md: MarketData, code: str, on: date) -> int | None:
     notice. Capping at that regulatory minimum (returning None - the same "nothing known"
     encoding signal_features() already uses beyond this) is the conservative, defensible
     choice: it will occasionally under-report a date some companies do pre-announce further
-    out, but it cannot claim knowledge it can't defend. scripts/mr_model.py's
+    out, but it cannot claim knowledge it can't defend. eod_learning.py's
     `_near_term_results()` applies the identical reasoning independently for the RSI(2)
     proof-plan dataset (a 4-CALENDAR-day cap there, to cover 2 working days across a
     weekend, since that script works in calendar days rather than session positions).

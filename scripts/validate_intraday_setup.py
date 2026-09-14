@@ -44,7 +44,7 @@ def _cli() -> None:
     `script.py [ARGS]` works, but `script.py run [ARGS]` then treats "run" itself as an
     ARG) - this empty callback forces normal subcommand mode instead, so `run` behaves as
     a real subcommand name rather than a trap for anyone reading the other scripts here
-    (barrier_sweep.py, entry_search.py) and expecting the same `script.py <verb> ...`
+    (entry_search.py) and expecting the same `script.py <verb> ...`
     pattern to work identically."""
 
 

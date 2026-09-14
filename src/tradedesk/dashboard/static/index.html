@@ -952,19 +952,28 @@ function renderLearningTable(history) {
     rows($('learning-table'), ['Date','Status'], [`<tr><td colspan="2" class="empty-note">no EOD learning runs yet</td></tr>`]);
     return;
   }
-  rows($('learning-table'), ['Date','#Resolved','#Dev OOS Brier','#Test ROC-AUC','#Test Gross R','#Test Net R','Explored feature','Adopted?'],
+  // `summary` is the plain-English record of what this run actually decided (adopted X,
+  // dropped Y, switched learner, paused at the feature cap) - the single most useful column
+  // for monitoring, so it gets the width. Brier is the error being driven down; watch it
+  // trend across rows rather than judging any one row.
+  rows($('learning-table'), ['Date','Phase','Model','#N','#Brier','#ROC-AUC','#Net R','#Feats','What it learned'],
     history.map(h => {
-      if (h.status) {
-        return `<tr><td>${h.date}</td><td class="num">${h.n_resolved}</td><td colspan="6" class="muted">${h.status}</td></tr>`;
+      const summary = h.summary || h.status || '-';
+      if (h.dev_oos_brier == null) {
+        return `<tr><td>${h.date}</td><td>${h.phase || 'waiting'}</td><td class="muted">-</td>
+          <td class="num">${h.n_resolved}</td><td colspan="4" class="muted">-</td>
+          <td class="muted">${summary}</td></tr>`;
       }
-      const adoptedCell = h.explored_feature == null ? '-'
-        : `<span class="${h.explored_adopted ? 'eligible-yes' : 'eligible-no'}">${h.explored_adopted ? 'YES' : 'no'}</span>`;
-      return `<tr><td>${h.date}</td><td class="num">${h.n_resolved}</td>
-        <td class="num">${h.dev_oos_brier != null ? fmt(h.dev_oos_brier, 4) : '-'}</td>
+      const phaseClass = h.phase === 'explore' ? 'triggered' : (h.phase === 'revalidate' ? 'planned' : '');
+      const nFeat = (h.features_used || []).length;
+      return `<tr><td>${h.date}</td><td class="${phaseClass}">${h.phase || '-'}</td>
+        <td>${h.model_kind || 'logistic'}</td>
+        <td class="num">${h.n_resolved}</td>
+        <td class="num">${fmt(h.dev_oos_brier, 4)}</td>
         <td class="num">${h.test_roc_auc != null ? fmt(h.test_roc_auc, 3) : '-'}</td>
-        <td class="num">${h.test_gross_r != null ? fmt(h.test_gross_r, 4) : '-'}</td>
         <td class="num">${h.test_net_r != null ? fmt(h.test_net_r, 4) : '-'}</td>
-        <td>${h.explored_feature || '-'}</td><td>${adoptedCell}</td></tr>`;
+        <td class="num">${nFeat || '-'}</td>
+        <td>${summary}</td></tr>`;
     }));
 }
 function renderResearchSummary(summary) {

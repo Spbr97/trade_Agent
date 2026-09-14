@@ -1,6 +1,6 @@
 """Search for an entry rule that actually beats random timing.
 
-Context (measured 2026-09-13, see scripts/barrier_sweep.py): the three live setups are
+Context (measured 2026-09-13, see CLAUDE.md's findings block): the three live setups are
 WORSE than picking a random day on the same stock - by ~0.24R at a 2R target. Gross
 expectancy is pinned near -0.20R across all 36 exit policies tested, so exits are not the
 problem and no ML filter on top can fix a signal source that is anti-predictive. The

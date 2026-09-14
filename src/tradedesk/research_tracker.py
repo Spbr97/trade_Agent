@@ -24,8 +24,8 @@ one:
    same geometry - it just skips the trigger. Since the whole project's repeated finding is
    "the setups lose to random," a null measured live and forward alongside the candidates is
    the only comparison that can't be argued with later. It also settles a real open question
-   flagged by scripts/cross_sectional_rsi2.py: the RSI(2) edge may live in the ELIGIBILITY
-   FILTER (liquid, priced right, above its own ema50) rather than the RSI(2) trigger. If
+   flagged by the cross-sectional ranking test (CLAUDE.md): the RSI(2) edge may live in the
+   ELIGIBILITY FILTER (liquid, priced right, above its own ema50) rather than the trigger. If
    `random_eligible` scores like the candidates, that's the answer.
 
 3. **Entry is the NEXT session's open, never the arming close.** The rule fires on a close
@@ -93,7 +93,7 @@ def market_for(market: str, settings: Settings) -> Market:
 
 # Cap per rule per session. A rule that fires on 400 stocks would otherwise drown every
 # other rule in the pooled statistics; a seeded random subset of its firing set is an
-# unbiased sample of it (deliberately NOT "the most extreme N" - cross_sectional_rsi2.py
+# unbiased sample of it (deliberately NOT "the most extreme N" - the cross-sectional test
 # measured that ranking by signal strength adds nothing).
 MAX_PER_RULE = 15
 
@@ -524,7 +524,7 @@ def build_report(
         "the 2R target. At a 3xATR stop, touching 2R is a 6-ATR move inside 10 sessions and",
         "happens ~3% of the time, so these rules live or die on their timeout exits; the",
         "target hit rate is a near-constant ~0 and says nothing useful. (Same reason",
-        "scripts/mr_model.py had to train on `label_profit` instead of the 2R label.)",
+        "the RSI(2) model had to train on `label_profit` instead of the 2R label.)",
         "",
         f"{'rule':<28} {'n':>5} {'green%':>7} {'grossR':>8} {'netR':>8} {'t':>6} {'vs ctrl':>8} {'t':>6}",  # noqa: E501
         "-" * 88,

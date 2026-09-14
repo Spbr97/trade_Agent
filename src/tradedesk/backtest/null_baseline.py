@@ -1,6 +1,6 @@
 """The gate any intraday setup must clear before it may alert (SDD sections 18/23, step 6
 of the 2026-09-13 intraday plan; generalises the ad hoc null tests in
-scripts/barrier_sweep.py and scripts/entry_search.py into reusable, importable machinery).
+this project's ad hoc null tests into reusable, importable machinery).
 
 This session's central finding was that a setup can post an ordinary-looking win rate and
 positive expectancy while being WORSE than picking a random entry on the same stock and
@@ -70,7 +70,7 @@ def _bar_barrier(
 ) -> float:
     """Gross R from `start` to at most `end` (inclusive, a session boundary - intraday
     setups never hold overnight). Same gap-aware, stop-wins-ties rule as
-    prediction/labeling.py::triple_barrier and scripts/barrier_sweep.py, at bar
+    prediction/labeling.py::triple_barrier, at bar
     granularity instead of session granularity."""
     risk = entry - stop
     n = min(end - start, len(c) - start - 1) + 1
