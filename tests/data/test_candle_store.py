@@ -207,3 +207,95 @@ def test_search_codes_ranks_an_exact_match_first(store: CandleStore) -> None:
     assert results[1] == ("NSE_24524", "SBINEQWETF")
     # a non-exact substring query still returns both, shortest/alphabetical among ties
     assert {r[0] for r in store.search_codes(Interval.D1, query="SBI")} == {"NSE_3045", "NSE_24524"}  # noqa: E501
+
+
+# ------------------------------------------------------------- open-with-retry (2026-09-14)
+
+
+def test_connect_retries_through_a_real_cross_process_lock(tmp_path: Path) -> None:
+    """Found for real: the crypto research tracker's scheduled run collided with
+    crypto-tracker's `data load` (every 30 min) and crashed outright with duckdb.IOException
+    instead of waiting the few seconds the other process needed. Proven with a GENUINE
+    cross-process lock (a subprocess holding the file open) rather than mocked, since
+    same-process double-connects do not reproduce duckdb's real file lock at all - confirmed
+    by hand before writing this test."""
+    import subprocess
+    import sys
+    import time
+
+    from tradedesk.data import candle_store as cs_module
+
+    db = tmp_path / "locked.duckdb"
+    holder_script = tmp_path / "_holder.py"
+    holder_script.write_text(
+        "import sys, time, duckdb\n"
+        "con = duckdb.connect(sys.argv[1])\n"
+        "con.execute('CREATE TABLE IF NOT EXISTS t (x INT)')\n"
+        "print('locked', flush=True)\n"
+        "time.sleep(0.6)\n"
+        "con.close()\n",
+        encoding="utf-8",
+    )
+    proc = subprocess.Popen(
+        [sys.executable, str(holder_script), str(db)],
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+    )  # fmt: skip
+    try:
+        assert proc.stdout is not None
+        line = proc.stdout.readline()
+        assert line.strip() == "locked", f"holder did not confirm its lock: {line!r}"
+
+        # Small, fast backoff so the test doesn't wait through the real 1/2/4/8/16s schedule.
+        old_backoff = cs_module._CONNECT_BACKOFF_S
+        cs_module._CONNECT_BACKOFF_S = 0.05
+        try:
+            t0 = time.time()
+            with CandleStore(db) as store:
+                store.con.execute("SELECT 1")
+            elapsed = time.time() - t0
+        finally:
+            cs_module._CONNECT_BACKOFF_S = old_backoff
+        # Must have actually waited out the lock, not raced past it undetected.
+        assert elapsed > 0.1, f"opened suspiciously fast ({elapsed:.3f}s) - was the lock real?"
+    finally:
+        proc.wait(timeout=5)
+
+
+def test_connect_raises_the_real_error_once_retries_are_exhausted(tmp_path: Path) -> None:
+    """A lock that never releases must fail loudly, not hang forever."""
+    import subprocess
+    import sys
+
+    import duckdb
+
+    from tradedesk.data import candle_store as cs_module
+
+    db = tmp_path / "stuck.duckdb"
+    holder_script = tmp_path / "_holder_long.py"
+    holder_script.write_text(
+        "import sys, time, duckdb\n"
+        "con = duckdb.connect(sys.argv[1])\n"
+        "con.execute('CREATE TABLE IF NOT EXISTS t (x INT)')\n"
+        "print('locked', flush=True)\n"
+        "time.sleep(30)\n",
+        encoding="utf-8",
+    )
+    proc = subprocess.Popen(
+        [sys.executable, str(holder_script), str(db)],
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+    )  # fmt: skip
+    try:
+        assert proc.stdout is not None
+        assert proc.stdout.readline().strip() == "locked"
+
+        old_retries, old_backoff = cs_module._CONNECT_RETRIES, cs_module._CONNECT_BACKOFF_S
+        cs_module._CONNECT_RETRIES, cs_module._CONNECT_BACKOFF_S = 2, 0.02
+        try:
+            with pytest.raises(duckdb.IOException):
+                CandleStore(db)
+        finally:
+            cs_module._CONNECT_RETRIES = old_retries
+            cs_module._CONNECT_BACKOFF_S = old_backoff
+    finally:
+        proc.kill()
+        proc.wait(timeout=5)

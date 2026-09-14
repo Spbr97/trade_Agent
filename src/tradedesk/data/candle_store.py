@@ -10,6 +10,7 @@ never written back, so a feed that does serve unadjusted prices can opt in witho
 
 from __future__ import annotations
 
+import time
 from collections.abc import Iterable, Sequence
 from datetime import date, datetime, timedelta
 from fractions import Fraction
@@ -61,6 +62,31 @@ def _epoch(dt: datetime) -> int:
     return int(dt.timestamp())
 
 
+# DuckDB is single-writer/single-reader per file: a second process opening the same .duckdb
+# while one already holds it raises duckdb.IOException, not a special "locked, try again"
+# signal. Found for real 2026-09-14: the crypto research tracker's scheduled run collided
+# with crypto-tracker's own `data load` (now every 30 minutes) and crashed outright rather
+# than waiting the few seconds the other process needed to finish. In-memory stores never
+# hit this (each is its own process-local DB), so retry only applies to real files.
+_CONNECT_RETRIES = 5
+_CONNECT_BACKOFF_S = 1.0  # doubles each attempt: 1, 2, 4, 8, 16s - ~31s worst case
+
+
+def _connect_with_retry(path: str) -> duckdb.DuckDBPyConnection:
+    if path == ":memory:":
+        return duckdb.connect(path)
+    delay = _CONNECT_BACKOFF_S
+    for attempt in range(_CONNECT_RETRIES + 1):
+        try:
+            return duckdb.connect(path)
+        except duckdb.IOException:
+            if attempt == _CONNECT_RETRIES:
+                raise
+            time.sleep(delay)
+            delay *= 2
+    raise AssertionError("unreachable")  # the loop always returns or raises
+
+
 class CandleStore:
     def __init__(
         self, path: Path | str = ":memory:", *, apply_corporate_actions: bool = False
@@ -83,7 +109,7 @@ class CandleStore:
         self.apply_corporate_actions = apply_corporate_actions
         if self.path != ":memory:":
             Path(self.path).parent.mkdir(parents=True, exist_ok=True)
-        self.con = duckdb.connect(self.path)
+        self.con = _connect_with_retry(self.path)
         for stmt in _SCHEMA.strip().split(";"):
             if stmt.strip():
                 self.con.execute(stmt)

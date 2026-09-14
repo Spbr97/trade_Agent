@@ -13,6 +13,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from tradedesk.eod_learning import (
     ALL_FEATURE_NAMES,
@@ -23,6 +24,7 @@ from tradedesk.eod_learning import (
     _advance,
     _fit_and_score,
     _max_features_for,
+    _row_features,
     exploration_pool,
 )
 
@@ -189,3 +191,34 @@ def test_adoption_and_removal_use_the_same_margin() -> None:
 
     src = inspect.getsource(eod_learning._advance)
     assert src.count("BRIER_IMPROVEMENT_MARGIN") >= 2
+
+
+def test_candle_parts_exactly_partition_the_days_range() -> None:
+    """body_pct + upper_wick_pct + lower_wick_pct must sum to 1.0 - they are not three
+    independent reads, they are one bar's range cut into three non-overlapping pieces.
+    A bug in any one of the three boundaries would show up here even if each looked
+    individually plausible."""
+    idx = pd.date_range("2025-01-01", periods=3, freq="D")
+    f = pd.DataFrame(
+        {
+            "open": [100.0, 100.0, 100.0],
+            "high": [100.0, 108.0, 106.0],
+            "low": [100.0, 95.0, 94.0],
+            "close": [100.0, 103.0, 97.0],  # bar 1: bullish body off-center; bar 2: bearish
+            "atr14": [2.0, 2.0, 2.0],
+        },
+        index=idx,
+    )
+    feats = _row_features(f, 1, [], [], date(2025, 1, 2))
+    assert feats is not None
+    total = feats["body_pct"] + feats["upper_wick_pct"] + feats["lower_wick_pct"]
+    assert total == pytest.approx(1.0), f"parts do not sum to the whole range: {feats}"
+    assert feats["bullish_candle"] == 1.0
+    assert feats["body_atr"] == pytest.approx((103.0 - 100.0) / 2.0)  # signed, positive here
+
+    feats2 = _row_features(f, 2, [], [], date(2025, 1, 3))
+    assert feats2 is not None
+    total2 = feats2["body_pct"] + feats2["upper_wick_pct"] + feats2["lower_wick_pct"]
+    assert total2 == pytest.approx(1.0)
+    assert feats2["bullish_candle"] == 0.0  # close (97) < open (100)
+    assert feats2["body_atr"] < 0  # signed negative on a down bar

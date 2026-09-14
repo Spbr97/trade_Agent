@@ -68,9 +68,20 @@ FEATURE_FAMILIES: dict[str, list[str]] = {
     "trend": ["dist_ema10_atr", "dist_ema200_atr", "ema20_slope", "ema50_slope"],
     "momentum": ["roc5", "roc20", "macd_hist_atr"],
     "volatility": ["bb_width", "atr_pct_rank", "range_contraction"],
-    # Candlestick / multi-day shape. Most of these exist nowhere else in this project - they
-    # are the "different way of reading the chart" surface.
-    "chart_shape": ["close_range_pos", "gap_pct", "up_streak", "inside_day", "outside_day"],
+    # Multi-day shape (gap at the open, consecutive-close streak, inside/outside relative
+    # to yesterday's range). Most of these exist nowhere else in this project.
+    "chart_shape": ["gap_pct", "up_streak", "inside_day", "outside_day"],
+    # One bar DECOMPOSED into its structural parts rather than read as one blunt summary -
+    # 2026-09-14, explicit request to add "smaller call parts to read graphs to learn from".
+    # `close_range_pos` (kept here, not a chart_shape catch-all) says where the close landed;
+    # these break the SAME bar down further: how much of the range was real conviction (the
+    # body) versus rejection (the wicks), and on which side. A long lower wick and a long
+    # upper wick are opposite tells even on a day with an identical close_range_pos, and
+    # nothing before this fed that distinction to a model.
+    "candle_parts": [
+        "close_range_pos", "body_pct", "upper_wick_pct", "lower_wick_pct",
+        "body_atr", "bullish_candle",
+    ],  # fmt: skip
     "position": ["pct_in_52w_range", "dist_52w_high_atr", "dist_high20_atr"],
     "volume": ["vol_ratio50", "vol_dryup", "updown_vol20"],
     # Real data already in the store that no model here has ever been given. Leakage-safe by
@@ -295,6 +306,11 @@ def _row_features(
         "atr_pct_rank": g("atr_pct_rank", 50.0),
         "range_contraction": g("range_contraction", 1.0),
         "close_range_pos": (close - low) / rng if rng > 0 else 0.5,
+        "body_pct": abs(close - opn) / rng if rng > 0 else 0.0,
+        "upper_wick_pct": (high - max(opn, close)) / rng if rng > 0 else 0.0,
+        "lower_wick_pct": (min(opn, close) - low) / rng if rng > 0 else 0.0,
+        "body_atr": (close - opn) / atr,  # signed - carries direction, not just size
+        "bullish_candle": 1.0 if close > opn else 0.0,
         "gap_pct": (opn - prev_close) / prev_close * 100 if prev_close > 0 else 0.0,
         "up_streak": float(streak),
         "inside_day": 1.0 if (high <= prev_high and low >= prev_low) else 0.0,
