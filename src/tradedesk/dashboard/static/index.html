@@ -84,11 +84,11 @@
 
 <div id="status-banner" class="banner"></div>
 
-<div class="perf-strip">
+<div class="perf-strip" id="perf-strip">
   <div class="cards">
-    <div class="card"><div class="label">NSE (paper book)</div><div class="value" id="perf-nse">-</div></div>
-    <div class="card"><div class="label">Crypto (live agent)</div><div class="value" id="perf-crypto">-</div></div>
-    <div class="card"><div class="label">BSE (live agent)</div><div class="value" id="perf-bse">-</div></div>
+    <div class="card" id="perf-card-nse"><div class="label">NSE (paper book)</div><div class="value" id="perf-nse">-</div></div>
+    <div class="card" id="perf-card-crypto" hidden><div class="label">Crypto (live agent)</div><div class="value" id="perf-crypto">-</div></div>
+    <div class="card" id="perf-card-bse" hidden><div class="label">BSE (live agent)</div><div class="value" id="perf-bse">-</div></div>
   </div>
 </div>
 
@@ -683,12 +683,26 @@ fetch('/api/state/bse').then(r => r.ok ? r.json() : null).then(s => { if (s) { r
 
 // ---------------------------------------------------------------- tabs
 const TAB_IDS = ['today', 'performance', 'crypto', 'bse', 'research', 'learning', 'lookup', 'review'];
+// Which perf-strip card(s), if any, belong to the tab being switched to - NSE's card for the
+// Calls/Report tabs (the only two showing NSE data), one card each for Crypto/BSE, and no
+// strip at all on tabs that aren't about any single market's performance (Research/Learning/
+// Lookup/Review). Per explicit feedback: each market gets its OWN card where it's relevant,
+// not all three shown everywhere regardless of what you're looking at.
+const PERF_CARDS_BY_TAB = {
+  today: ['nse'], performance: ['nse'], crypto: ['crypto'], bse: ['bse'],
+};
+function updatePerfStrip(target) {
+  const show = PERF_CARDS_BY_TAB[target] || [];
+  $('perf-strip').hidden = show.length === 0;
+  ['nse', 'crypto', 'bse'].forEach(m => { $(`perf-card-${m}`).hidden = !show.includes(m); });
+}
 document.querySelectorAll('.tab-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     const target = btn.dataset.tab;
     TAB_IDS.forEach(id => { $('tab-' + id).hidden = target !== id; });
+    updatePerfStrip(target);
     if (target === 'performance') loadPerformance();
     if (target === 'crypto') showLiveView('crypto', $('crypto-live-view-select').value);
     if (target === 'bse' && !$('bse-view-history').hidden) showLiveView('bse', $('bse-live-view-select').value);
@@ -697,6 +711,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     if (target === 'review') loadReview();
   });
 });
+updatePerfStrip('today');  // the default active tab on page load
 
 // ---------------------------------------------------------------- status banner
 $('status-banner').innerHTML = 'Live NSE alerts are currently <b>off</b> - the three built-in setups (base_breakout / trend_pullback / nr7_breakout) have not cleared the evidence gate (measured worse than random entry timing), so no live buy alert will fire. The <b>Research</b> tab tracks forward, out-of-sample candidate ideas that cannot alert on their own - if one ever clears the same evidence bar, it shows up automatically in <b>Review</b> for you to look at.';
