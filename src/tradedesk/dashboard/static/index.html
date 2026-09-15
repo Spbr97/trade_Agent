@@ -69,7 +69,11 @@
   <h1>tradedesk</h1>
   <span class="light">regime <b id="regime">-</b></span>
   <span class="light muted" id="updated"></span>
-  <span class="light" id="agent-reliability" style="margin-left:auto;" title="Wilson lower-bound confidence pooled across every real, live resolved call (NSE paper book + crypto/BSE live-tagged calls) - never backfill or research candidates. See the Report tab's Backfill P&amp;L for backfill's own numbers.">agent reliability <b id="agent-reliability-value">-</b></span>
+  <span class="light" id="agent-reliability" style="margin-left:auto; gap:10px;" title="Wilson lower-bound confidence per market, from every real, live resolved call (NSE paper book / crypto / BSE live-tagged calls) - never backfill or research candidates. See the Report tab's Backfill P&amp;L for backfill's own numbers.">
+    <span>nse <b id="agent-reliability-nse">-</b></span>
+    <span>crypto <b id="agent-reliability-crypto">-</b></span>
+    <span>bse <b id="agent-reliability-bse">-</b></span>
+  </span>
 </header>
 
 <nav class="tabs">
@@ -106,6 +110,14 @@
     <div class="group">
       <label for="today-filter-status">Status</label>
       <select id="today-filter-status"><option value="">All</option></select>
+    </div>
+    <div class="group">
+      <label for="today-filter-tradeable">Tradeable</label>
+      <select id="today-filter-tradeable">
+        <option value="">All</option>
+        <option value="yes">Yes</option>
+        <option value="no">No (rejected)</option>
+      </select>
     </div>
     <span class="muted" id="today-filter-count"></span>
   </section>
@@ -240,7 +252,7 @@
   </section>
 
   <section>
-    <h2>Coin confidence <span class="muted" style="text-transform:none;">- Wilson lower-bound confidence, not raw win rate: a coin with 1 resolved call and a win reads LOW, not 100%, until there's enough evidence to trust it</span></h2>
+    <h2>Coin confidence <span class="muted" style="text-transform:none;">- live agent calls only, not backfill. Wilson lower-bound confidence, not raw win rate: a coin with 1 resolved call and a win reads LOW, not 100%, until there's enough evidence to trust it</span></h2>
     <table id="crypto-symbol-confidence"></table>
   </section>
 </main>
@@ -269,6 +281,14 @@
       <div class="group">
         <label for="bsetoday-filter-status">Status</label>
         <select id="bsetoday-filter-status"><option value="">All</option></select>
+      </div>
+      <div class="group">
+        <label for="bsetoday-filter-tradeable">Tradeable</label>
+        <select id="bsetoday-filter-tradeable">
+          <option value="">All</option>
+          <option value="yes">Yes</option>
+          <option value="no">No (rejected)</option>
+        </select>
       </div>
       <span class="muted" id="bsetoday-filter-count"></span>
     </section>
@@ -403,7 +423,7 @@
     </section>
 
     <section>
-      <h2>Stock confidence <span class="muted" style="text-transform:none;">- Wilson lower-bound confidence, not raw win rate</span></h2>
+      <h2>Stock confidence <span class="muted" style="text-transform:none;">- live agent calls only, not backfill. Wilson lower-bound confidence, not raw win rate</span></h2>
       <table id="bse-symbol-confidence"></table>
     </section>
   </div>
@@ -571,10 +591,14 @@ function render(prefix, s) {
     $('regime').textContent = s.regime ? `${s.regime.regime} x${s.regime.size_multiplier}` : '-';
     $('updated').textContent = s.updated_at ? 'updated ' + s.updated_at.slice(11,19) : '';
   }
-  // merge the agent's plan (watchlist) with what actually happened to it (signals lifecycle)
+  // merge the agent's plan (watchlist) with what actually happened to it (signals lifecycle).
+  // Shows EVERY evaluated entry, not just the ones that cleared every check (2026-09-15 fix -
+  // filtering to on_watchlist-only left this table looking completely empty, indistinguishable
+  // from broken, on any day the regime/eligibility gate blocks everything; a "Tradeable"
+  // column now makes the real "no trade, and here's why" verdict visible instead of silent).
   const byId = {};
   (s.signals||[]).forEach(t => { byId[t.symbol] = t; });
-  todayCalled[prefix] = (s.watchlist||[]).filter(e => !e.rejected_for.length).map(e => {
+  todayCalled[prefix] = (s.watchlist||[]).map(e => {
     const sig = byId[e.symbol];
     return { ...e, state: sig ? sig.state : 'planned', note: sig ? sig.last : '' };
   });
@@ -599,17 +623,25 @@ function renderTodayCalls(prefix) {
   const setupF = $(`${prefix}-filter-setup`).value;
   const gradeF = $(`${prefix}-filter-grade`).value;
   const statusF = $(`${prefix}-filter-status`).value;
+  const tradeableF = $(`${prefix}-filter-tradeable`).value;
   const all = todayCalled[prefix];
-  const data = all.filter(e =>
-    (!setupF || e.setup === setupF) && (!gradeF || e.grade === gradeF) && (!statusF || e.state === statusF)
-  );
+  const data = all.filter(e => {
+    const tradeable = e.rejected_for.length ? 'no' : 'yes';
+    return (!setupF || e.setup === setupF) && (!gradeF || e.grade === gradeF)
+      && (!statusF || e.state === statusF) && (!tradeableF || tradeable === tradeableF);
+  });
   const callsTable = prefix === 'today' ? 'calls' : `${prefix}-calls`;
-  rows($(callsTable), ['Sym','Setup','Grade','Trigger','#Stop','#T1','#T2','Status','Note'],
-    data.map(e => `<tr><td>${e.symbol}</td><td>${e.setup}</td><td class="${e.grade}">${e.grade} ${e.score}</td><td class="num">${fmt(e.trigger)}</td><td class="num">${fmt(e.stop)}</td><td class="num">${fmt(e.t1)}</td><td class="num">${fmt(e.t2)}</td><td class="${e.state}">${e.state}</td><td>${e.note}${e.chart?` <a href="/chart?path=${encodeURIComponent(e.chart)}" target="_blank">chart</a>`:''}</td></tr>`));
+  rows($(callsTable), ['Sym','Setup','Grade','Trigger','#Stop','#T1','#T2','Tradeable','Status','Note'],
+    data.map(e => {
+      const tradeable = e.rejected_for.length ? 'no' : 'yes';
+      const reasons = e.rejected_for.join('; ');
+      const noteText = e.note || (e.rejected_for.length ? (e.rejected_for.length > 1 ? `${e.rejected_for[0]} (+${e.rejected_for.length - 1} more)` : e.rejected_for[0]) : '');
+      return `<tr><td>${e.symbol}</td><td>${e.setup}</td><td class="${e.grade}">${e.grade} ${e.score}</td><td class="num">${fmt(e.trigger)}</td><td class="num">${fmt(e.stop)}</td><td class="num">${fmt(e.t1)}</td><td class="num">${fmt(e.t2)}</td><td>${tradeable}</td><td class="${e.state}">${e.state}</td><td title="${reasons.replace(/"/g,'&quot;')}">${noteText}${e.chart?` <a href="/chart?path=${encodeURIComponent(e.chart)}" target="_blank">chart</a>`:''}</td></tr>`;
+    }));
   $(`${prefix}-filter-count`).textContent = `${data.length} of ${all.length} shown`;
 }
 ['today', 'bsetoday'].forEach(prefix => {
-  ['setup', 'grade', 'status'].forEach(kind => {
+  ['setup', 'grade', 'status', 'tradeable'].forEach(kind => {
     $(`${prefix}-filter-${kind}`).addEventListener('change', () => renderTodayCalls(prefix));
   });
 });
@@ -697,32 +729,37 @@ loadAgentPerformanceStrip();
 setInterval(loadAgentPerformanceStrip, 60000);
 
 // ---------------------------------------------------------------- top-right agent reliability
-// One number, top-right, always visible: Wilson lower-bound confidence pooled across every
-// real, live resolved call across NSE+crypto+BSE (never backfill or research candidates -
-// see reliability.py/reliability_sources.py). A daily-logged history lets it show a trend
-// (vs the previous logged day) so it's actually monitorable for "is this rising", not just
-// a snapshot.
+// Three numbers, top-right, always visible - one per market (per explicit request: markets
+// never get pooled anywhere else in this project, and a single blended number hid which
+// market the one real data point even came from). Wilson lower-bound confidence from every
+// real, live resolved call per market (never backfill or research candidates - see
+// reliability.py/reliability_sources.py). A daily-logged history (which already carries the
+// same by_market breakdown) lets each show its own trend vs the previous logged day.
 async function loadAgentReliability() {
+  for (const m of ['nse', 'crypto', 'bse']) $(`agent-reliability-${m}`).textContent = '-';
   try {
     const [curR, histR] = await Promise.all([
       fetch('/api/reliability/overall'), fetch('/api/reliability/history'),
     ]);
     const cur = curR.ok ? await curR.json() : null;
     const hist = histR.ok ? await histR.json() : [];
-    if (!cur || cur.n === 0) {
-      $('agent-reliability-value').textContent = 'n/a (0 live calls yet)';
-      return;
-    }
-    let trend = '';
-    if (hist.length >= 2) {
-      const prev = hist[hist.length - 2].confidence;
-      if (prev != null) {
-        const delta = cur.confidence - prev;
+    if (!cur) return;
+    const prevByMarket = hist.length >= 2 ? hist[hist.length - 2].by_market : null;
+    for (const m of ['nse', 'crypto', 'bse']) {
+      const mc = cur.by_market[m];
+      const el = $(`agent-reliability-${m}`);
+      if (!mc || mc.n === 0) { el.textContent = 'n/a (0)'; continue; }
+      let trend = '';
+      const prevConf = prevByMarket && prevByMarket[m] ? prevByMarket[m].confidence : null;
+      if (prevConf != null) {
+        const delta = mc.confidence - prevConf;
         trend = delta > 0.001 ? ' ↑' : (delta < -0.001 ? ' ↓' : ' →');
       }
+      el.textContent = `${pct(mc.confidence)} (n=${mc.n})${trend}`;
     }
-    $('agent-reliability-value').textContent = `${pct(cur.confidence)} (n=${cur.n})${trend}`;
-  } catch (e) { $('agent-reliability-value').textContent = 'n/a'; }
+  } catch (e) {
+    for (const m of ['nse', 'crypto', 'bse']) $(`agent-reliability-${m}`).textContent = 'n/a';
+  }
 }
 loadAgentReliability();
 setInterval(loadAgentReliability, 60000);
@@ -909,7 +946,10 @@ async function loadBackfillPnl(prefix) {
   pnlEl.className = 'value ' + (d.n && d.pnl_pct >= 0 ? 'pos' : (d.n ? 'neg' : ''));
 }
 async function loadSymbolConfidence(prefix) {
-  const r = await fetch(`/api/reliability/symbols?market=${prefix}`);
+  // Live agent calls only - the whole point of a per-symbol "how much should I trust this"
+  // read is knowing what THIS agent has actually done, not diluting it with the historical
+  // backfill (real market history, but not something "the agent" called).
+  const r = await fetch(`/api/reliability/symbols?market=${prefix}&source=live`);
   const data = r.ok ? await r.json() : [];
   rows($(`${prefix}-symbol-confidence`), [prefix === 'crypto' ? 'Coin' : 'Stock', '#N', '#Wins', '#Win rate', '#Confidence'],
     data.map(s => `<tr><td>${s.symbol}</td><td class="num">${s.n}</td><td class="num">${s.wins}</td><td class="num">${pct(s.win_rate)}</td><td class="num">${pct(s.confidence)}</td></tr>`));

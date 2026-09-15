@@ -21,14 +21,20 @@ from tradedesk.risk.costs import LegCost, net_reward_risk, round_trip_cost
 if TYPE_CHECKING:
     from tradedesk.alerts import AlertRouter
     from tradedesk.broker.indstocks import IndstocksClient
+    from tradedesk.config import Settings
     from tradedesk.data.candle_store import CandleStore
     from tradedesk.prediction import ModelBundle
+    from tradedesk.scan.evening_scan import Watchlist
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)
 config_app = typer.Typer(no_args_is_help=True)
 app.add_typer(config_app, name="config", help="Inspect the YAML files under config/.")
 auth_app = typer.Typer(no_args_is_help=True)
 app.add_typer(auth_app, name="auth", help="INDstocks credentials (stored in the OS keychain).")
+groww_auth_app = typer.Typer(no_args_is_help=True)
+auth_app.add_typer(
+    groww_auth_app, name="groww", help="Groww credentials (MCX plan), stored in the OS keychain."
+)
 instruments_app = typer.Typer(no_args_is_help=True)
 app.add_typer(instruments_app, name="instruments", help="Instrument master files.")
 data_app = typer.Typer(no_args_is_help=True)
@@ -320,6 +326,100 @@ def auth_check() -> None:
     asyncio.run(_with_client(go))
 
 
+@groww_auth_app.command("setup")
+def groww_auth_setup(
+    from_stdin: bool = typer.Option(
+        False, "--stdin", help="Read two lines from stdin (API key, TOTP secret) instead of prompting."  # noqa: E501
+    ),
+) -> None:
+    """Store the Groww API key and TOTP secret in the OS keychain (never typed into chat/logs).
+
+    From Groww's dashboard "Generate API key" -> "Generate TOTP token" panel: the "TOTP Token"
+    field shown there is the API key, and the base32 string under the QR code is the TOTP
+    secret (see docs/groww-api.md). Hidden input is used when the terminal supports it; under
+    Git Bash/mintty values are echoed - clear the screen afterwards, or use --stdin.
+    """
+    import sys
+
+    from tradedesk.broker.groww.auth import KEY_API_KEY, KEY_TOTP_SECRET, KeyringStore
+
+    if from_stdin:
+        lines = [ln.rstrip("\r\n") for ln in sys.stdin.read().splitlines()]
+        lines = [ln for ln in lines if ln.strip()]
+        if len(lines) != 2:
+            raise typer.BadParameter("--stdin expects exactly 2 non-empty lines")
+        api_key, totp_secret = lines
+    else:
+        hidden = _stdin_is_windows_console()
+        typer.echo("From Groww's dashboard: Generate API key -> Generate TOTP token")
+        if not hidden:
+            typer.echo(
+                "NOTE: this terminal cannot hide input; values will be visible as you type. "
+                "Clear the screen afterwards, or use `tradedesk auth groww setup --stdin < file`."
+            )
+        api_key = _read_secret("API key (the 'TOTP Token' field)", hidden=hidden)
+        totp_secret = _read_secret("TOTP secret (base32 string under the QR code)", hidden=hidden)
+
+    api_key = api_key.strip()
+    if not api_key:
+        raise typer.BadParameter("API key must not be empty")
+    totp_secret = _normalise_totp_secret(totp_secret)
+
+    store = KeyringStore()
+    store.set(KEY_API_KEY, api_key)
+    store.set(KEY_TOTP_SECRET, totp_secret)
+    typer.echo("stored in keychain service 'tradedesk-groww'. Now run: tradedesk auth groww check")
+
+
+@groww_auth_app.command("status")
+def groww_auth_status() -> None:
+    """Show which Groww credentials are stored (never the values)."""
+    from tradedesk.broker.groww.auth import KEY_API_KEY, KEY_TOTP_SECRET, KeyringStore
+
+    store = KeyringStore()
+    for k in (KEY_API_KEY, KEY_TOTP_SECRET):
+        v = store.get(k)
+        typer.echo(f"  {k:<12} {'set (' + str(len(v)) + ' chars)' if v else 'MISSING'}")
+
+
+@groww_auth_app.command("clear")
+def groww_auth_clear() -> None:
+    """Remove the stored Groww credentials from the keychain."""
+    from tradedesk.broker.groww.auth import (
+        KEY_API_KEY,
+        KEY_TOKEN,
+        KEY_TOKEN_ISSUED_AT,
+        KEY_TOTP_SECRET,
+        KeyringStore,
+    )
+
+    store = KeyringStore()
+    for k in (KEY_API_KEY, KEY_TOTP_SECRET, KEY_TOKEN, KEY_TOKEN_ISSUED_AT):
+        store.delete(k)
+    typer.echo("cleared")
+
+
+@groww_auth_app.command("check")
+def groww_auth_check() -> None:
+    """Generate a Groww access token and report success - the Phase 0 live-verification step.
+
+    Deliberately does NOT call any other endpoint yet (candles/instruments): this only proves
+    the API-key+TOTP auth flow itself works, since that flow is still marked PROVISIONAL in
+    docs/groww-api.md pending exactly this kind of real call.
+    """
+    import httpx
+
+    from tradedesk.broker.groww.auth import BASE_URL, TokenProvider
+
+    async def go() -> None:
+        async with httpx.AsyncClient(base_url=BASE_URL, timeout=30.0) as http:
+            provider = TokenProvider(http=http)
+            token = await provider.get_token()
+            typer.echo(f"token OK ({token[:6]}...{token[-4:]}, {len(token)} chars)")
+
+    asyncio.run(go())
+
+
 @instruments_app.command("refresh")
 def instruments_refresh(
     out: Path = typer.Option(Path("data/instruments"), "--out"),
@@ -489,6 +589,56 @@ def _sector_config(store: CandleStore, root: Path) -> tuple[dict[str, str], dict
             if code is not None:
                 sector_of[code] = sector_name
     return sector_of, sector_codes
+
+
+def _live_rebuild_watchlist(settings: Settings, market: str, root: Path, journal: Path) -> Watchlist:  # noqa: E501
+    """Rebuild "today"'s watchlist fresh from currently-stored data and the currently-saved
+    config/setups.yaml - the core of what `tradedesk scan` does, minus charts/Claude reads/ML
+    scoring (not needed just to re-check eligibility, and too slow/costly to redo on every
+    poll of `live --poll-idle-seconds`). Kept deliberately separate from the `scan` command
+    rather than sharing code with it, so a live polling loop can never accidentally regress
+    the tested `scan` CLI path.
+
+    Re-checks the SAME eligibility computation `scan` and `live` already use
+    (`journal/stats.py::track_record` -> `engine/scoring.py::eligibility`) against whatever
+    is on disk right now - it cannot lower the bar, invent a signal, or bypass a human's
+    config/setups.yaml edit; it only notices one sooner than the next scheduled `scan` run
+    would."""
+    from tradedesk.backtest.runner import prepare_market as prep_market
+    from tradedesk.broker.indstocks.models import IST, Interval
+    from tradedesk.journal import Journal
+    from tradedesk.journal.stats import track_records
+    from tradedesk.markets import bse_market, crypto_market, nse_market
+    from tradedesk.scan import OpenPositionInfo, build_watchlist, scan_config
+
+    mkt = {"crypto": crypto_market, "bse": bse_market}.get(market, nse_market)(settings)
+    db = _resolve_db(DB_OPTION.default, market)
+    day = datetime.now(IST).date()
+    with _store(db) as store:
+        if market == "crypto":
+            ref = f"{mkt.code_prefix}{mkt.benchmark_name}"
+            vix = None
+        elif market == "bse":
+            ref = _reference_code(store, root, mkt.benchmark_name, exch="BSE")
+            vix = None
+        else:
+            ref = _reference_code(store, root)
+            vix = store.index_code(settings.universe.volatility_index)
+        cfg = scan_config(settings, day, None, market=mkt, fallback_to_all_if_none_enabled=False)
+        cfg.vix_code = vix
+        if market == "nse":
+            cfg.sector_of, cfg.sector_codes = _sector_config(store, root)
+        codes = [c for c in store.codes(Interval.D1) if c not in (ref, vix)]
+        md = prep_market(store, codes, ref, cfg)
+        with Journal(journal) as jn:
+            held = [
+                OpenPositionInfo(p.signal.scrip_code, p.entry_price, p.stop, p.qty_open)
+                for p in jn.open_positions(source="live")
+            ]
+            records = track_records(jn, [k.value for k in cfg.setups])
+        return build_watchlist(
+            md, cfg, settings, day, open_positions=held, track_records=records, market=mkt
+        )
 
 
 @data_app.command("sync-instruments")
@@ -1378,6 +1528,12 @@ def live(
     journal: Path | None = typer.Option(
         None, "--journal", help="Default: data/journal.sqlite, or data/<market>_journal.sqlite"
     ),
+    poll_idle_seconds: int = typer.Option(
+        300, "--poll-idle-seconds",
+        help="If nothing is alertable at startup, re-check every N seconds (against current "
+        "data/config) instead of exiting, until --until or something clears the eligibility "
+        "gate. 0 disables polling (old behaviour: exit immediately).",
+    ),
     market: str = MARKET_OPTION,
     root: Path = ROOT_OPTION,
 ) -> None:
@@ -1392,9 +1548,14 @@ def live(
     from tradedesk.dashboard import DashboardState, create_app, serve
     from tradedesk.journal import Journal
     from tradedesk.live.models import Alert, SessionRules
-    from tradedesk.live.session import apply_decision, run_session, signals_from_watchlist
+    from tradedesk.live.session import (
+        apply_decision,
+        run_session,
+        signals_from_watchlist,
+        wait_for_eligible_signals,
+    )
     from tradedesk.live.trigger_monitor import TriggerMonitor
-    from tradedesk.scan import load_watchlist
+    from tradedesk.scan import load_watchlist, save_watchlist
 
     settings = load_config(root)
     if journal is None:
@@ -1415,6 +1576,37 @@ def live(
         watchlist = candidates[-1]
     wl = load_watchlist(watchlist)
     signals = signals_from_watchlist(wl, alertable_only=not all_entries)
+    if not signals and not all_entries and poll_idle_seconds > 0:
+        until_time = datetime.strptime(until, "%H:%M").time()
+        now_ist = datetime.now(IST)
+        if now_ist.time() < until_time:
+            typer.echo(
+                f"{watchlist}: nothing alertable yet; re-checking every {poll_idle_seconds}s "
+                f"against current data/config until {until} IST (a setup earning alert-rights "
+                "mid-session - via a human-approved review item and a config/setups.yaml edit "
+                "- will be picked up without a restart; nothing here lowers the eligibility bar)"
+            )
+
+            def _rebuild() -> Watchlist:
+                return _live_rebuild_watchlist(settings, market, root, journal)
+
+            def _report(w: Watchlist) -> None:
+                # Persist every poll, not just the one that finally clears the bar - the
+                # dashboard reloads on this file's mtime (see `dashboard --refresh-seconds`),
+                # so without this the Calls tab would keep showing the stale 09:10 snapshot
+                # for the entire idle-wait instead of each re-check's real numbers/reasons.
+                save_watchlist(w, watchlist.parent)
+                n = len(signals_from_watchlist(w, alertable_only=True))
+                typer.echo(f"  [{datetime.now(IST):%H:%M:%S}] still nothing alertable (checked {len(w.active)} active entries)" if n == 0 else f"  [{datetime.now(IST):%H:%M:%S}] {n} entries now alertable")  # noqa: E501
+
+            found = asyncio.run(
+                wait_for_eligible_signals(
+                    _rebuild, until=until_time, poll_seconds=poll_idle_seconds, on_poll=_report
+                )
+            )
+            if found is not None:
+                wl = found  # already persisted by _report()'s on_poll callback above
+                signals = signals_from_watchlist(wl, alertable_only=not all_entries)
     if not signals:
         typer.echo(f"{watchlist}: nothing alertable on the watchlist; exiting")
         raise typer.Exit(code=0)

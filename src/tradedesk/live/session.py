@@ -28,6 +28,49 @@ def signals_from_watchlist(wl: Watchlist, *, alertable_only: bool = True) -> lis
     return [TrackedSignal(signal=e.signal) for e in entries]
 
 
+async def wait_for_eligible_signals(
+    rebuild: Callable[[], Watchlist],
+    *,
+    until: time,
+    poll_seconds: int,
+    now: Callable[[], datetime] = lambda: datetime.now(IST),
+    sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
+    on_poll: Callable[[Watchlist], None] | None = None,
+) -> Watchlist | None:
+    """Poll `rebuild()` (a fresh watchlist rebuild against current stored data and current
+    config/setups.yaml) every `poll_seconds` until it yields at least one alertable entry, or
+    `until` (IST wall-clock time) is reached.
+
+    Why this exists: eligibility (journal/stats.py::track_record, research_tracker's
+    findings) only changes via the once-daily after-close/research-tracker jobs, and even
+    then a newly-eligible setup only reaches config/setups.yaml through a human approving a
+    review_queue.py item and editing the config by hand - never automatic (CLAUDE.md's hard
+    rule that model/Claude output can never create or enable a live signal on its own).
+    `tradedesk live` used to just exit the instant nothing was alertable at its 09:10
+    startup, so a same-day approval had no way to go live without someone noticing and
+    manually restarting the session. This closes that gap without weakening the approval
+    gate itself - it only re-checks eligibility against whatever config and data already
+    say, using the exact same `signals_from_watchlist` check as everywhere else; it never
+    lowers a bar, invents a signal, or bypasses `config/setups.yaml`.
+
+    Returns the first watchlist with something alertable, or None if `until` arrives first.
+    `on_poll`, if given, is called with every rebuilt watchlist (including empty ones) so a
+    caller can log/report each check.
+    """
+    while True:
+        wl = rebuild()
+        if on_poll is not None:
+            on_poll(wl)
+        if signals_from_watchlist(wl, alertable_only=True):
+            return wl
+        current = now()
+        if current.time() >= until:
+            return None
+        until_dt = datetime.combine(current.date(), until, tzinfo=current.tzinfo)
+        remaining = (until_dt - current).total_seconds()
+        await sleep(min(poll_seconds, max(remaining, 1.0)))
+
+
 def ws_code(scrip_code: str) -> str:
     exch, token = scrip_code.split("_", 1)
     return f"{exch}:{token}"
