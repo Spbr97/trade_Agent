@@ -87,6 +87,12 @@ class WatchlistEntry(BaseModel):
     avg_turnover: float | None
     rejected_for: list[str] = Field(default_factory=list)
     chart_path: str | None = None  # set by `tradedesk scan --charts`; attached to alerts
+    # Set by prediction/predict.py::apply_probability (shadow or enabled) - the model's
+    # p(T1 before stop), scored for every entry with computable features INCLUDING rejected
+    # ones (2026-09-15) since it's purely informational there, never affecting alertability.
+    # None until scored (ml disabled/shadow off entirely, no bundle for this setup, or a
+    # stale model_version was skipped - see predict.py::is_current).
+    probability: float | None = None
 
     @property
     def on_watchlist(self) -> bool:

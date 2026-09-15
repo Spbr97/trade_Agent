@@ -761,3 +761,20 @@ def test_build_dataset_from_the_synthetic_backtest_and_score_watchlist(
     assert probs3 == {}  # nothing scored
     assert scored3.entries[0] == e  # entry passed through completely untouched
     assert not (tmp_path / "shadow3.jsonl").exists()  # nothing logged either
+
+    # 2026-09-15: a REJECTED entry (eligibility gate blocked it, on_watchlist=False) must
+    # still get a probability - purely informational, so a human comparing calls can see
+    # what the model says even about ones the system won't alert on. Grade/qty/alertable
+    # must stay byte-identical either way (shadow only adds a note; enabled mode can only
+    # LOWER a grade/size, and this entry's alertable is already False).
+    rejected = e.model_copy(update={"rejected_for": ["regime risk_off"], "alertable": False})
+    wl_rejected = wl.model_copy(update={"entries": [rejected]})
+    scored4, probs4 = score_watchlist(
+        rep.bundle, wl_rejected, md, SHADOW, shadow_log=tmp_path / "shadow4.jsonl"
+    )
+    assert set(probs4) == {win.symbol} and 0.0 <= probs4[win.symbol] <= 1.0
+    assert any("model p" in n for n in scored4.entries[0].score_notes)
+    assert scored4.entries[0].grade is rejected.grade and scored4.entries[0].qty == rejected.qty
+    assert not scored4.entries[0].alertable
+    scored5, _ = score_watchlist(rep.bundle, wl_rejected, md, ON, shadow_log=tmp_path / "shadow5.jsonl")  # noqa: E501
+    assert not scored5.entries[0].alertable  # enabled mode still can't raise a rejected entry

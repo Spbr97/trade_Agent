@@ -63,6 +63,7 @@ class DashboardState:
                 "net_rr_t2": e.net_rr_t2,
                 "rejected_for": e.rejected_for,
                 "chart": e.chart_path,
+                "probability": e.probability,
             }
             for e in wl.entries
         ]

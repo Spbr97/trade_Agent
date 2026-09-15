@@ -80,7 +80,7 @@ def apply_probability(e: WatchlistEntry, p: float, cfg: MlConfig) -> WatchlistEn
     """Return a copy of the entry with the model's effect applied. Never raises a grade,
     never increases qty; in shadow mode only the note is added."""
     note = f"model p(T1 before stop) = {p:.2f}"
-    update: dict[str, Any] = {"score_notes": [*e.score_notes, note]}
+    update: dict[str, Any] = {"score_notes": [*e.score_notes, note], "probability": p}
     if not cfg.enabled or cfg.shadow:
         return e.model_copy(update=update)
     grade = e.grade
@@ -180,9 +180,18 @@ def score_watchlist(
     *,
     shadow_log: Path | None = None,
 ) -> tuple[Watchlist, dict[str, float]]:
-    """Score every active entry with the model. Shadow (default): note + log only.
-    Enabled: `apply_probability` (which can only lower). Returns the new watchlist and
-    the probabilities by symbol.
+    """Score every entry with computable features - including rejected ones (2026-09-15;
+    was `on_watchlist` entries only until then). Shadow (default): note + log only. Enabled:
+    `apply_probability` (which can only lower). Returns the new watchlist and the
+    probabilities by symbol.
+
+    Why rejected entries are scored too: a rejected entry can never become alertable from
+    this (shadow mode only ever adds a note; enabled mode can only lower a grade/size, and a
+    rejected entry is already excluded from alerting by `rejected_for`, untouched here) - so
+    scoring it is purely informational, for a human comparing "if I were to consider this
+    one anyway, what does the model say" across every call on the sheet, not just the ones
+    that already cleared every other gate. `pos is None` (no feature data for that code on
+    this date) is still skipped - nothing to score without.
 
     `bundle` accepts either a single pooled `ModelBundle` (existing behaviour, unchanged)
     or a `dict[setup_value, ModelBundle]` from `latest_bundles_by_setup()` (2026-09-13):
@@ -197,7 +206,7 @@ def score_watchlist(
     for e in wl.entries:
         code = e.signal.scrip_code
         pos = md.pos_by_date.get(code, {}).get(wl.on)
-        if not e.on_watchlist or pos is None:
+        if pos is None:
             entries.append(e)
             continue
         b = bundle.get(e.signal.setup.value) if isinstance(bundle, dict) else bundle

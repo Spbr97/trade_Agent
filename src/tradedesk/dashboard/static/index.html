@@ -38,6 +38,7 @@
   .stopped { color:var(--bad); }
   .target_hit, .closed { color:var(--ok); }
   .skip { color:var(--dim); font-style:italic; }
+  .top-score td { background:rgba(77,158,255,0.12); }
   .empty-note { color:var(--dim); font-style:italic; padding:8px 0; }
 
   /* ---- report tab ---- */
@@ -621,6 +622,24 @@ function rows(table, header, body) {
 // mirrors it 1:1 with a 'bsetoday' prefix - same live "plan vs what actually happened"
 // view, since BSE now runs the same full-universe live session NSE does.
 const todayCalled = { today: [], bsetoday: [] };
+// Per-symbol Wilson-lower-bound confidence (2026-09-15, "which call should I consider
+// taking myself" request) - fetched once per market and cached, not refetched on every SSE
+// push, since it changes at most once a day. Merged into each row alongside the model's own
+// p(T1 before stop) (e.probability, from prediction/predict.py, scored for every entry
+// including rejected ones so it's visible on every row, not just alertable ones) - shown as
+// two SEPARATE numbers rather than blended into one score, since they measure different
+// things (this symbol's own track record vs. today's specific setup) and neither is
+// currently strong enough to be presented as a single verdict.
+const symbolConfidenceCache = { today: {}, bsetoday: {} };
+async function loadCallsSymbolConfidence(prefix) {
+  const market = prefix === 'today' ? 'nse' : 'bse';
+  try {
+    const r = await fetch(`/api/reliability/symbols?market=${market}`);
+    const data = r.ok ? await r.json() : [];
+    symbolConfidenceCache[prefix] = Object.fromEntries(data.map(x => [x.symbol, x]));
+  } catch (e) { symbolConfidenceCache[prefix] = {}; }
+  renderTodayCalls(prefix);
+}
 function render(prefix, s) {
   if (prefix === 'today') {
     $('regime').textContent = s.regime ? `${s.regime.regime} x${s.regime.size_multiplier}` : '-';
@@ -665,13 +684,23 @@ function renderTodayCalls(prefix) {
     return (!setupF || e.setup === setupF) && (!gradeF || e.grade === gradeF)
       && (!statusF || e.state === statusF) && (!tradeableF || tradeable === tradeableF);
   });
+  // Highest score first, so "which one would I consider" is the top row without hunting -
+  // the score is a heuristic composite, not a win probability (see the Confidence/Model
+  // columns for the two numbers that actually measure something closer to that).
+  data.sort((a, b) => b.score - a.score);
+  const maxScore = data.length ? data[0].score : null;
+  const conf = symbolConfidenceCache[prefix] || {};
   const callsTable = prefix === 'today' ? 'calls' : `${prefix}-calls`;
-  rows($(callsTable), ['Sym','Setup','Grade','Trigger','#Stop','#T1','#T2','Tradeable','Status','Note'],
+  rows($(callsTable), ['Sym','Setup','Grade','Trigger','#Stop','#T1','#T2','Tradeable','#Confidence','#Model p','Status','Note'],
     data.map(e => {
       const tradeable = e.rejected_for.length ? 'no' : 'yes';
       const reasons = e.rejected_for.join('; ');
       const noteText = e.note || (e.rejected_for.length ? (e.rejected_for.length > 1 ? `${e.rejected_for[0]} (+${e.rejected_for.length - 1} more)` : e.rejected_for[0]) : '');
-      return `<tr><td>${e.symbol}</td><td>${e.setup}</td><td class="${e.grade}">${e.grade} ${e.score}</td><td class="num">${fmt(e.trigger)}</td><td class="num">${fmt(e.stop)}</td><td class="num">${fmt(e.t1)}</td><td class="num">${fmt(e.t2)}</td><td>${tradeable}</td><td class="${e.state}">${e.state}</td><td title="${reasons.replace(/"/g,'&quot;')}">${noteText}${e.chart?` <a href="/chart?path=${encodeURIComponent(e.chart)}" target="_blank">chart</a>`:''}</td></tr>`;
+      const c = conf[e.symbol];
+      const confText = c && c.n > 0 ? `${pct(c.confidence)} (n=${c.n})` : '-';
+      const probText = e.probability != null ? pct(e.probability) : '-';
+      const topRow = e.score === maxScore ? ' class="top-score"' : '';
+      return `<tr${topRow}><td>${e.symbol}</td><td>${e.setup}</td><td class="${e.grade}">${e.grade} ${e.score}</td><td class="num">${fmt(e.trigger)}</td><td class="num">${fmt(e.stop)}</td><td class="num">${fmt(e.t1)}</td><td class="num">${fmt(e.t2)}</td><td>${tradeable}</td><td class="num" title="Wilson lower-bound confidence from this symbol's own live track record, not this call's">${confText}</td><td class="num" title="Model's p(T1 before stop) - shadow/informational, last measured accuracy near coin-flip">${probText}</td><td class="${e.state}">${e.state}</td><td title="${reasons.replace(/"/g,'&quot;')}">${noteText}${e.chart?` <a href="/chart?path=${encodeURIComponent(e.chart)}" target="_blank">chart</a>`:''}</td></tr>`;
     }));
   $(`${prefix}-filter-count`).textContent = `${data.length} of ${all.length} shown`;
 }
@@ -721,6 +750,7 @@ function updatePerfStrip() {
 function showCallsMarket(market) {
   $('tab-today-inner').hidden = market !== 'nse';
   $('tab-bse').hidden = market !== 'bse';
+  loadCallsSymbolConfidence(market === 'nse' ? 'today' : 'bsetoday');
   if (market === 'bse') {
     if (!$('bse-view-history').hidden) showLiveView('bse', $('bse-live-view-select').value);
     loadBackfillPnl('bse');
