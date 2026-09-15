@@ -20,6 +20,11 @@
 
   main { display:grid; grid-template-columns: 1fr; gap:12px; padding:12px 16px; max-width:1100px; margin:0 auto; }
   main[hidden] { display:none; }
+  /* A merged tab (Calls=NSE+BSE, Report+Research, Learning+Review) is one <main>, with each
+     market/view as a .subtab div inside it - same grid/gap as main, no extra padding/margin
+     since the parent <main> already provides that. */
+  .subtab { display:grid; grid-template-columns: 1fr; gap:12px; }
+  .subtab[hidden] { display:none; }
   section { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:10px 12px; min-height:60px; }
   section h2 { font-size:13px; text-transform:uppercase; letter-spacing:.06em; color:var(--dim); margin:0 0 8px; display:flex; align-items:center; justify-content:space-between; gap:8px; }
   table { width:100%; border-collapse:collapse; }
@@ -77,14 +82,10 @@
 </header>
 
 <nav class="tabs">
-  <button class="tab-btn active" data-tab="today">Calls</button>
-  <button class="tab-btn" data-tab="performance">Report</button>
+  <button class="tab-btn active" data-tab="calls">Calls</button>
   <button class="tab-btn" data-tab="crypto">Crypto</button>
-  <button class="tab-btn" data-tab="bse">BSE</button>
-  <button class="tab-btn" data-tab="research">Research</button>
-  <button class="tab-btn" data-tab="learning">Learning</button>
-  <button class="tab-btn" data-tab="lookup">Lookup</button>
-  <button class="tab-btn" data-tab="review">Review<span id="review-badge" class="badge" hidden></span></button>
+  <button class="tab-btn" data-tab="reportresearch">Report</button>
+  <button class="tab-btn" data-tab="learningreview">Learning<span id="review-badge" class="badge" hidden></span></button>
 </nav>
 
 <div id="status-banner" class="banner"></div>
@@ -97,32 +98,234 @@
   </div>
 </div>
 
-<main id="tab-today">
+<main id="tab-calls">
   <section class="perf-controls">
     <div class="group">
-      <label for="today-filter-setup">Setup</label>
-      <select id="today-filter-setup"><option value="">All</option></select>
+      <label>Market</label>
+      <div class="seg" id="lookup-market">
+        <button data-market="nse" class="active">NSE</button>
+        <button data-market="bse">BSE</button>
+        <button data-market="crypto">Crypto</button>
+      </div>
     </div>
-    <div class="group">
-      <label for="today-filter-grade">Grade</label>
-      <select id="today-filter-grade"><option value="">All</option></select>
+    <div class="group" style="flex:1; min-width:200px;">
+      <label for="lookup-code">Symbol</label>
+      <input list="lookup-options" id="lookup-code" placeholder="type to search e.g. SBIN or BTC" style="width:100%; background:#0c0e12; color:var(--fg); border:1px solid var(--line); border-radius:5px; padding:4px 8px; font:inherit;">
+      <datalist id="lookup-options"></datalist>
     </div>
+    <button class="seg" id="lookup-go" style="background:var(--accent); color:#08111f; border:none; padding:6px 16px; font:inherit; font-weight:600; cursor:pointer; border-radius:6px;">Analyze</button>
+  </section>
+  <section id="lookup-result"><div class="empty-note">pick a symbol and hit Analyze</div></section>
+
+  <section class="perf-controls">
     <div class="group">
-      <label for="today-filter-status">Status</label>
-      <select id="today-filter-status"><option value="">All</option></select>
-    </div>
-    <div class="group">
-      <label for="today-filter-tradeable">Tradeable</label>
-      <select id="today-filter-tradeable">
-        <option value="">All</option>
-        <option value="yes">Yes</option>
-        <option value="no">No (rejected)</option>
+      <label for="calls-market-select">Show</label>
+      <select id="calls-market-select">
+        <option value="nse" selected>NSE</option>
+        <option value="bse">BSE</option>
       </select>
     </div>
-    <span class="muted" id="today-filter-count"></span>
   </section>
-  <section><h2>Today's calls (NSE)</h2><table id="calls"></table></section>
-  <section><h2>Open positions</h2><table id="positions"></table></section>
+
+  <div id="tab-today-inner" class="subtab">
+    <section class="perf-controls">
+      <div class="group">
+        <label for="today-filter-setup">Setup</label>
+        <select id="today-filter-setup"><option value="">All</option></select>
+      </div>
+      <div class="group">
+        <label for="today-filter-grade">Grade</label>
+        <select id="today-filter-grade"><option value="">All</option></select>
+      </div>
+      <div class="group">
+        <label for="today-filter-status">Status</label>
+        <select id="today-filter-status"><option value="">All</option></select>
+      </div>
+      <div class="group">
+        <label for="today-filter-tradeable">Tradeable</label>
+        <select id="today-filter-tradeable">
+          <option value="">All</option>
+          <option value="yes">Yes</option>
+          <option value="no">No (rejected)</option>
+        </select>
+      </div>
+      <span class="muted" id="today-filter-count"></span>
+    </section>
+    <section><h2>Today's calls (NSE)</h2><table id="calls"></table></section>
+    <section><h2>Open positions</h2><table id="positions"></table></section>
+  </div>
+
+  <div id="tab-bse" class="subtab" hidden>
+    <section class="perf-controls">
+      <div class="group">
+        <label>View</label>
+        <div class="seg" id="bse-view-seg">
+          <button data-view="live" class="active">Today's calls</button>
+          <button data-view="history">Call history</button>
+        </div>
+      </div>
+    </section>
+
+    <div id="bse-view-live">
+      <section class="perf-controls">
+        <div class="group">
+          <label for="bsetoday-filter-setup">Setup</label>
+          <select id="bsetoday-filter-setup"><option value="">All</option></select>
+        </div>
+        <div class="group">
+          <label for="bsetoday-filter-grade">Grade</label>
+          <select id="bsetoday-filter-grade"><option value="">All</option></select>
+        </div>
+        <div class="group">
+          <label for="bsetoday-filter-status">Status</label>
+          <select id="bsetoday-filter-status"><option value="">All</option></select>
+        </div>
+        <div class="group">
+          <label for="bsetoday-filter-tradeable">Tradeable</label>
+          <select id="bsetoday-filter-tradeable">
+            <option value="">All</option>
+            <option value="yes">Yes</option>
+            <option value="no">No (rejected)</option>
+          </select>
+        </div>
+        <span class="muted" id="bsetoday-filter-count"></span>
+      </section>
+      <section><h2>Today's calls (BSE) <span class="muted" style="text-transform:none;">- full-universe live session, same as NSE's Calls tab; triggers are journaled but there's no BSE paper book to grade them yet</span></h2><table id="bsetoday-calls"></table></section>
+      <section><h2>Open positions (BSE)</h2><table id="bsetoday-positions"></table></section>
+    </div>
+
+    <div id="bse-view-history" hidden>
+      <section class="perf-controls">
+        <div class="group">
+          <label for="bse-live-view-select">View</label>
+          <select id="bse-live-view-select">
+            <option value="ongoing" selected>Ongoing</option>
+            <option value="passfail">Pass/Fail</option>
+          </select>
+        </div>
+        <span class="muted">5-stock tracker watchlist, own dataset, not pooled with NSE/crypto</span>
+      </section>
+
+        <div id="bse-live-ongoing">
+          <section class="perf-controls">
+            <div class="group">
+              <label for="bse-ongoing-filter-symbol">Stock</label>
+              <select id="bse-ongoing-filter-symbol"><option value="">All</option></select>
+            </div>
+            <div class="group">
+              <label for="bse-ongoing-filter-setup">Setup</label>
+              <select id="bse-ongoing-filter-setup"><option value="">All</option></select>
+            </div>
+            <div class="group">
+              <label for="bse-ongoing-filter-status">Result</label>
+              <select id="bse-ongoing-filter-status">
+                <option value="">All</option>
+                <option value="pending">Pending</option>
+              </select>
+            </div>
+            <div class="group">
+              <label for="bse-ongoing-filter-resolved">Show</label>
+              <select id="bse-ongoing-filter-resolved">
+                <option value="">All calls</option>
+                <option value="resolved">Resolved only</option>
+              </select>
+            </div>
+            <div class="group">
+              <label for="bse-ongoing-filter-rows">Rows</label>
+              <select id="bse-ongoing-filter-rows">
+                <option value="25">25</option>
+                <option value="50" selected>50</option>
+                <option value="100">100</option>
+                <option value="all">All</option>
+              </select>
+            </div>
+            <span class="muted" id="bse-ongoing-filter-count"></span>
+          </section>
+          <section>
+            <h2>Ongoing <span class="muted" style="text-transform:none;">- calls the current agent has made that haven't resolved yet</span></h2>
+            <table id="bse-ongoing-calls"></table>
+          </section>
+        </div>
+
+        <div id="bse-live-passfail" hidden>
+          <section>
+            <h2>Pass/Fail <span class="muted" style="text-transform:none;">- current agent's performance since Live/Past tagging shipped 2026-09-13</span></h2>
+            <div class="cards" id="bse-live-scoreboard">
+              <div class="card"><div class="label">Resolved</div><div class="value" id="bse-live-resolved">-</div></div>
+              <div class="card"><div class="label">Hit rate</div><div class="value" id="bse-live-hitrate">-</div></div>
+              <div class="card"><div class="label">Avg P/L</div><div class="value" id="bse-live-avgpl">-</div></div>
+              <div class="card"><div class="label">Still open</div><div class="value" id="bse-live-open">-</div></div>
+            </div>
+          </section>
+          <section class="perf-controls">
+            <div class="group">
+              <label for="bse-passfail-filter-symbol">Stock</label>
+              <select id="bse-passfail-filter-symbol"><option value="">All</option></select>
+            </div>
+            <div class="group">
+              <label for="bse-passfail-filter-setup">Setup</label>
+              <select id="bse-passfail-filter-setup"><option value="">All</option></select>
+            </div>
+            <div class="group">
+              <label for="bse-passfail-filter-status">Result</label>
+              <select id="bse-passfail-filter-status">
+                <option value="">All</option>
+                <option value="target">Hit (target)</option>
+                <option value="stop">Not hit (stop)</option>
+                <option value="gap_stop">Not hit (gap stop)</option>
+                <option value="timeout">Not hit (timed out)</option>
+              </select>
+            </div>
+            <div class="group">
+              <label for="bse-passfail-filter-resolved">Show</label>
+              <select id="bse-passfail-filter-resolved">
+                <option value="">All calls</option>
+                <option value="resolved">Resolved only</option>
+              </select>
+            </div>
+            <div class="group">
+              <label for="bse-passfail-filter-rows">Rows</label>
+              <select id="bse-passfail-filter-rows">
+                <option value="25">25</option>
+                <option value="50" selected>50</option>
+                <option value="100">100</option>
+                <option value="all">All</option>
+              </select>
+            </div>
+            <span class="muted" id="bse-passfail-filter-count"></span>
+          </section>
+          <section>
+            <h2>Resolved calls</h2>
+            <table id="bse-passfail-calls"></table>
+          </section>
+        </div>
+
+      <section>
+        <h2>Backfill P&amp;L <span class="muted" style="text-transform:none;">- historical replay, summarised over a timeframe rather than browsable row by row</span>
+          <span style="margin-left:auto; display:flex; align-items:center; gap:6px;">
+            <label for="bse-backfill-days" class="muted" style="text-transform:none; font-size:12px;">over</label>
+            <select id="bse-backfill-days">
+              <option value="30">30d</option>
+              <option value="90">90d</option>
+              <option value="365">1y</option>
+              <option value="" selected>All time</option>
+            </select>
+          </span>
+        </h2>
+        <div class="cards">
+          <div class="card"><div class="label">Resolved</div><div class="value" id="bse-backfill-n">-</div></div>
+          <div class="card"><div class="label">Win rate</div><div class="value" id="bse-backfill-winrate">-</div></div>
+          <div class="card"><div class="label">Avg R</div><div class="value" id="bse-backfill-avgr">-</div></div>
+          <div class="card"><div class="label">P&amp;L %</div><div class="value" id="bse-backfill-pnl">-</div></div>
+        </div>
+      </section>
+
+      <section>
+        <h2>Stock confidence <span class="muted" style="text-transform:none;">- live agent calls only, not backfill. Wilson lower-bound confidence, not raw win rate</span></h2>
+        <table id="bse-symbol-confidence"></table>
+      </section>
+    </div>
+  </div>
 </main>
 
 <main id="tab-crypto" hidden>
@@ -257,179 +460,63 @@
   </section>
 </main>
 
-<main id="tab-bse" hidden>
+<main id="tab-reportresearch" hidden>
   <section class="perf-controls">
     <div class="group">
-      <label>View</label>
-      <div class="seg" id="bse-view-seg">
-        <button data-view="live" class="active">Today's calls</button>
-        <button data-view="history">Call history</button>
-      </div>
+      <label for="reportresearch-view-select">View</label>
+      <select id="reportresearch-view-select">
+        <option value="report" selected>Report</option>
+        <option value="research">Research</option>
+      </select>
     </div>
   </section>
 
-  <div id="bse-view-live">
-    <section class="perf-controls">
-      <div class="group">
-        <label for="bsetoday-filter-setup">Setup</label>
-        <select id="bsetoday-filter-setup"><option value="">All</option></select>
+<div id="tab-performance" class="subtab">
+  <div class="perf-controls">
+    <div class="group">
+      <label for="eod-date">End of day</label>
+      <input type="date" id="eod-date">
+    </div>
+    <div class="group">
+      <label>Rollup</label>
+      <div class="seg" id="period-seg">
+        <button data-period="week" class="active">Weekly</button>
+        <button data-period="month">Monthly</button>
       </div>
-      <div class="group">
-        <label for="bsetoday-filter-grade">Grade</label>
-        <select id="bsetoday-filter-grade"><option value="">All</option></select>
-      </div>
-      <div class="group">
-        <label for="bsetoday-filter-status">Status</label>
-        <select id="bsetoday-filter-status"><option value="">All</option></select>
-      </div>
-      <div class="group">
-        <label for="bsetoday-filter-tradeable">Tradeable</label>
-        <select id="bsetoday-filter-tradeable">
-          <option value="">All</option>
-          <option value="yes">Yes</option>
-          <option value="no">No (rejected)</option>
-        </select>
-      </div>
-      <span class="muted" id="bsetoday-filter-count"></span>
-    </section>
-    <section><h2>Today's calls (BSE) <span class="muted" style="text-transform:none;">- full-universe live session, same as NSE's Calls tab; triggers are journaled but there's no BSE paper book to grade them yet</span></h2><table id="bsetoday-calls"></table></section>
-    <section><h2>Open positions (BSE)</h2><table id="bsetoday-positions"></table></section>
+    </div>
+    <div class="group">
+      <label for="rollup-n">Periods</label>
+      <select id="rollup-n">
+        <option value="8">8</option>
+        <option value="16" selected>16</option>
+        <option value="26">26</option>
+        <option value="52">52</option>
+      </select>
+    </div>
+    <span class="muted" id="perf-note">paper book - simulates every call, NSE only</span>
   </div>
 
-  <div id="bse-view-history" hidden>
-    <section class="perf-controls">
-      <div class="group">
-        <label for="bse-live-view-select">View</label>
-        <select id="bse-live-view-select">
-          <option value="ongoing" selected>Ongoing</option>
-          <option value="passfail">Pass/Fail</option>
-        </select>
-      </div>
-      <span class="muted">5-stock tracker watchlist, own dataset, not pooled with NSE/crypto</span>
-    </section>
-
-      <div id="bse-live-ongoing">
-        <section class="perf-controls">
-          <div class="group">
-            <label for="bse-ongoing-filter-symbol">Stock</label>
-            <select id="bse-ongoing-filter-symbol"><option value="">All</option></select>
-          </div>
-          <div class="group">
-            <label for="bse-ongoing-filter-setup">Setup</label>
-            <select id="bse-ongoing-filter-setup"><option value="">All</option></select>
-          </div>
-          <div class="group">
-            <label for="bse-ongoing-filter-status">Result</label>
-            <select id="bse-ongoing-filter-status">
-              <option value="">All</option>
-              <option value="pending">Pending</option>
-            </select>
-          </div>
-          <div class="group">
-            <label for="bse-ongoing-filter-resolved">Show</label>
-            <select id="bse-ongoing-filter-resolved">
-              <option value="">All calls</option>
-              <option value="resolved">Resolved only</option>
-            </select>
-          </div>
-          <div class="group">
-            <label for="bse-ongoing-filter-rows">Rows</label>
-            <select id="bse-ongoing-filter-rows">
-              <option value="25">25</option>
-              <option value="50" selected>50</option>
-              <option value="100">100</option>
-              <option value="all">All</option>
-            </select>
-          </div>
-          <span class="muted" id="bse-ongoing-filter-count"></span>
-        </section>
-        <section>
-          <h2>Ongoing <span class="muted" style="text-transform:none;">- calls the current agent has made that haven't resolved yet</span></h2>
-          <table id="bse-ongoing-calls"></table>
-        </section>
-      </div>
-
-      <div id="bse-live-passfail" hidden>
-        <section>
-          <h2>Pass/Fail <span class="muted" style="text-transform:none;">- current agent's performance since Live/Past tagging shipped 2026-09-13</span></h2>
-          <div class="cards" id="bse-live-scoreboard">
-            <div class="card"><div class="label">Resolved</div><div class="value" id="bse-live-resolved">-</div></div>
-            <div class="card"><div class="label">Hit rate</div><div class="value" id="bse-live-hitrate">-</div></div>
-            <div class="card"><div class="label">Avg P/L</div><div class="value" id="bse-live-avgpl">-</div></div>
-            <div class="card"><div class="label">Still open</div><div class="value" id="bse-live-open">-</div></div>
-          </div>
-        </section>
-        <section class="perf-controls">
-          <div class="group">
-            <label for="bse-passfail-filter-symbol">Stock</label>
-            <select id="bse-passfail-filter-symbol"><option value="">All</option></select>
-          </div>
-          <div class="group">
-            <label for="bse-passfail-filter-setup">Setup</label>
-            <select id="bse-passfail-filter-setup"><option value="">All</option></select>
-          </div>
-          <div class="group">
-            <label for="bse-passfail-filter-status">Result</label>
-            <select id="bse-passfail-filter-status">
-              <option value="">All</option>
-              <option value="target">Hit (target)</option>
-              <option value="stop">Not hit (stop)</option>
-              <option value="gap_stop">Not hit (gap stop)</option>
-              <option value="timeout">Not hit (timed out)</option>
-            </select>
-          </div>
-          <div class="group">
-            <label for="bse-passfail-filter-resolved">Show</label>
-            <select id="bse-passfail-filter-resolved">
-              <option value="">All calls</option>
-              <option value="resolved">Resolved only</option>
-            </select>
-          </div>
-          <div class="group">
-            <label for="bse-passfail-filter-rows">Rows</label>
-            <select id="bse-passfail-filter-rows">
-              <option value="25">25</option>
-              <option value="50" selected>50</option>
-              <option value="100">100</option>
-              <option value="all">All</option>
-            </select>
-          </div>
-          <span class="muted" id="bse-passfail-filter-count"></span>
-        </section>
-        <section>
-          <h2>Resolved calls</h2>
-          <table id="bse-passfail-calls"></table>
-        </section>
-      </div>
-
-    <section>
-      <h2>Backfill P&amp;L <span class="muted" style="text-transform:none;">- historical replay, summarised over a timeframe rather than browsable row by row</span>
-        <span style="margin-left:auto; display:flex; align-items:center; gap:6px;">
-          <label for="bse-backfill-days" class="muted" style="text-transform:none; font-size:12px;">over</label>
-          <select id="bse-backfill-days">
-            <option value="30">30d</option>
-            <option value="90">90d</option>
-            <option value="365">1y</option>
-            <option value="" selected>All time</option>
-          </select>
-        </span>
-      </h2>
-      <div class="cards">
-        <div class="card"><div class="label">Resolved</div><div class="value" id="bse-backfill-n">-</div></div>
-        <div class="card"><div class="label">Win rate</div><div class="value" id="bse-backfill-winrate">-</div></div>
-        <div class="card"><div class="label">Avg R</div><div class="value" id="bse-backfill-avgr">-</div></div>
-        <div class="card"><div class="label">P&amp;L %</div><div class="value" id="bse-backfill-pnl">-</div></div>
-      </div>
-    </section>
-
-    <section>
-      <h2>Stock confidence <span class="muted" style="text-transform:none;">- live agent calls only, not backfill. Wilson lower-bound confidence, not raw win rate</span></h2>
-      <table id="bse-symbol-confidence"></table>
-    </section>
+  <div class="cards">
+    <div class="card"><div class="label">Closed today</div><div class="value" id="eod-closed">-</div></div>
+    <div class="card"><div class="label">Net P&amp;L</div><div class="value" id="eod-pnl">-</div></div>
+    <div class="card"><div class="label">Win rate</div><div class="value" id="eod-winrate">-</div></div>
+    <div class="card"><div class="label">Expectancy</div><div class="value" id="eod-expectancy">-</div></div>
+    <div class="card"><div class="label">Still open</div><div class="value" id="eod-open">-</div></div>
   </div>
-</main>
 
-<main id="tab-research" hidden>
+  <section>
+    <h2>Closed calls this day</h2>
+    <table id="eod-trades"></table>
+  </section>
+
+  <section>
+    <h2><span id="rollup-title">Weekly performance</span></h2>
+    <canvas id="perf-chart" width="1000" height="140"></canvas>
+    <table id="rollup-table" style="margin-top:10px;"></table>
+  </section>
+</div>
+
+<div id="tab-research" class="subtab" hidden>
   <section class="perf-controls">
     <div class="group">
       <label for="research-market-select">Market</label>
@@ -476,9 +563,21 @@
     <h2>Calls</h2>
     <table id="research-calls"></table>
   </section>
+</div>
 </main>
 
-<main id="tab-learning" hidden>
+<main id="tab-learningreview" hidden>
+  <section class="perf-controls">
+    <div class="group">
+      <label for="learningreview-view-select">View</label>
+      <select id="learningreview-view-select">
+        <option value="learning" selected>Learning</option>
+        <option value="review">Review</option>
+      </select>
+    </div>
+  </section>
+
+<div id="tab-learning" class="subtab">
   <section class="perf-controls">
     <div class="group">
       <label for="learning-market-select">Market</label>
@@ -494,29 +593,9 @@
     <h2>EOD self-learning <span class="muted" style="text-transform:none;">- retrain on this market's real forward evidence only, never the old backtest window. One row per run. Cannot alert - only ever flags Review if it clears the same evidence bar as everything else.</span></h2>
     <table id="learning-table"></table>
   </section>
-</main>
+</div>
 
-<main id="tab-lookup" hidden>
-  <section class="perf-controls">
-    <div class="group">
-      <label>Market</label>
-      <div class="seg" id="lookup-market">
-        <button data-market="nse" class="active">NSE</button>
-        <button data-market="bse">BSE</button>
-        <button data-market="crypto">Crypto</button>
-      </div>
-    </div>
-    <div class="group" style="flex:1; min-width:200px;">
-      <label for="lookup-code">Symbol</label>
-      <input list="lookup-options" id="lookup-code" placeholder="type to search e.g. SBIN or BTC" style="width:100%; background:#0c0e12; color:var(--fg); border:1px solid var(--line); border-radius:5px; padding:4px 8px; font:inherit;">
-      <datalist id="lookup-options"></datalist>
-    </div>
-    <button class="seg" id="lookup-go" style="background:var(--accent); color:#08111f; border:none; padding:6px 16px; font:inherit; font-weight:600; cursor:pointer; border-radius:6px;">Analyze</button>
-  </section>
-  <section id="lookup-result"><div class="empty-note">pick a symbol and hit Analyze</div></section>
-</main>
-
-<main id="tab-review" hidden>
+<div id="tab-review" class="subtab" hidden>
   <section>
     <h2>Pending review <span class="muted" style="text-transform:none;">- proposals from `tradedesk review week`, never applied automatically</span></h2>
     <div id="review-pending"></div>
@@ -525,51 +604,7 @@
     <h2>Decided</h2>
     <div id="review-decided"></div>
   </section>
-</main>
-
-<main id="tab-performance" hidden>
-  <div class="perf-controls">
-    <div class="group">
-      <label for="eod-date">End of day</label>
-      <input type="date" id="eod-date">
-    </div>
-    <div class="group">
-      <label>Rollup</label>
-      <div class="seg" id="period-seg">
-        <button data-period="week" class="active">Weekly</button>
-        <button data-period="month">Monthly</button>
-      </div>
-    </div>
-    <div class="group">
-      <label for="rollup-n">Periods</label>
-      <select id="rollup-n">
-        <option value="8">8</option>
-        <option value="16" selected>16</option>
-        <option value="26">26</option>
-        <option value="52">52</option>
-      </select>
-    </div>
-    <span class="muted" id="perf-note">paper book - simulates every call, NSE only</span>
-  </div>
-
-  <div class="cards">
-    <div class="card"><div class="label">Closed today</div><div class="value" id="eod-closed">-</div></div>
-    <div class="card"><div class="label">Net P&amp;L</div><div class="value" id="eod-pnl">-</div></div>
-    <div class="card"><div class="label">Win rate</div><div class="value" id="eod-winrate">-</div></div>
-    <div class="card"><div class="label">Expectancy</div><div class="value" id="eod-expectancy">-</div></div>
-    <div class="card"><div class="label">Still open</div><div class="value" id="eod-open">-</div></div>
-  </div>
-
-  <section>
-    <h2>Closed calls this day</h2>
-    <table id="eod-trades"></table>
-  </section>
-
-  <section>
-    <h2><span id="rollup-title">Weekly performance</span></h2>
-    <canvas id="perf-chart" width="1000" height="140"></canvas>
-    <table id="rollup-table" style="margin-top:10px;"></table>
-  </section>
+</div>
 </main>
 
 <script>
@@ -657,36 +692,72 @@ fetch('/api/state').then(r => r.json()).then(s => render('today', s)).then(() =>
 fetch('/api/state/bse').then(r => r.ok ? r.json() : null).then(s => { if (s) { render('bsetoday', s); connect('bsetoday', '/events/bse'); } });
 
 // ---------------------------------------------------------------- tabs
-const TAB_IDS = ['today', 'performance', 'crypto', 'bse', 'research', 'learning', 'lookup', 'review'];
-// Which perf-strip card(s), if any, belong to the tab being switched to - NSE's card for the
-// Calls/Report tabs (the only two showing NSE data), one card each for Crypto/BSE, and no
-// strip at all on tabs that aren't about any single market's performance (Research/Learning/
-// Lookup/Review). Per explicit feedback: each market gets its OWN card where it's relevant,
-// not all three shown everywhere regardless of what you're looking at.
-const PERF_CARDS_BY_TAB = {
-  today: ['nse'], performance: ['nse'], crypto: ['crypto'], bse: ['bse'],
+// Merged 2026-09-15 (explicit request): NSE+BSE share one "Calls" tab (dropdown selects the
+// market; Lookup - still its own independent NSE/BSE/Crypto selector - sits on top of it);
+// Report+Research share one tab; Learning+Review share one tab. Each merge is one <main>
+// with the two original tab bodies inside it as .subtab divs, toggled by a "View"/"Show"
+// dropdown instead of top-level nav buttons - deliberately keeping every inner id, render
+// function and filter untouched so "same UI" holds exactly, not just approximately.
+const TAB_IDS = ['calls', 'crypto', 'reportresearch', 'learningreview'];
+// Which perf-strip card(s), if any, belong to the current view - keyed by the active
+// top-level tab PLUS, for the two merged tabs, whichever sub-view is currently selected
+// within it (a dropdown change can switch this without a tab click). Per standing feedback,
+// each market gets its own card only where relevant, never all three shown everywhere.
+const PERF_CARDS_BY_VIEW = {
+  'calls-nse': ['nse'], 'calls-bse': ['bse'], crypto: ['crypto'],
+  'reportresearch-report': ['nse'], 'reportresearch-research': [], learningreview: [],
 };
-function updatePerfStrip(target) {
-  const show = PERF_CARDS_BY_TAB[target] || [];
+function currentView() {
+  const tab = document.querySelector('.tab-btn.active')?.dataset.tab || 'calls';
+  if (tab === 'calls') return `calls-${$('calls-market-select').value}`;
+  if (tab === 'reportresearch') return `reportresearch-${$('reportresearch-view-select').value}`;
+  return tab;
+}
+function updatePerfStrip() {
+  const show = PERF_CARDS_BY_VIEW[currentView()] || [];
   $('perf-strip').hidden = show.length === 0;
   ['nse', 'crypto', 'bse'].forEach(m => { $(`perf-card-${m}`).hidden = !show.includes(m); });
 }
+function showCallsMarket(market) {
+  $('tab-today-inner').hidden = market !== 'nse';
+  $('tab-bse').hidden = market !== 'bse';
+  if (market === 'bse') {
+    if (!$('bse-view-history').hidden) showLiveView('bse', $('bse-live-view-select').value);
+    loadBackfillPnl('bse');
+    loadSymbolConfidence('bse');
+  }
+  updatePerfStrip();
+}
+$('calls-market-select').addEventListener('change', () => showCallsMarket($('calls-market-select').value));
+function showReportResearchView(view) {
+  $('tab-performance').hidden = view !== 'report';
+  $('tab-research').hidden = view !== 'research';
+  if (view === 'report') loadPerformance();
+  if (view === 'research') loadResearch();
+  updatePerfStrip();
+}
+$('reportresearch-view-select').addEventListener('change', () => showReportResearchView($('reportresearch-view-select').value));
+function showLearningReviewView(view) {
+  $('tab-learning').hidden = view !== 'learning';
+  $('tab-review').hidden = view !== 'review';
+  if (view === 'learning') loadLearning();
+  if (view === 'review') loadReview();
+}
+$('learningreview-view-select').addEventListener('change', () => showLearningReviewView($('learningreview-view-select').value));
 document.querySelectorAll('.tab-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     const target = btn.dataset.tab;
     TAB_IDS.forEach(id => { $('tab-' + id).hidden = target !== id; });
-    updatePerfStrip(target);
-    if (target === 'performance') loadPerformance();
+    if (target === 'calls') showCallsMarket($('calls-market-select').value);
     if (target === 'crypto') { showLiveView('crypto', $('crypto-live-view-select').value); loadBackfillPnl('crypto'); loadSymbolConfidence('crypto'); }
-    if (target === 'bse') { if (!$('bse-view-history').hidden) showLiveView('bse', $('bse-live-view-select').value); loadBackfillPnl('bse'); loadSymbolConfidence('bse'); }
-    if (target === 'research') loadResearch();
-    if (target === 'learning') loadLearning();
-    if (target === 'review') loadReview();
+    if (target === 'reportresearch') showReportResearchView($('reportresearch-view-select').value);
+    if (target === 'learningreview') showLearningReviewView($('learningreview-view-select').value);
+    updatePerfStrip();
   });
 });
-updatePerfStrip('today');  // the default active tab on page load
+showCallsMarket('nse');  // the default active tab on page load
 
 // ---------------------------------------------------------------- status banner
 $('status-banner').innerHTML = 'Live NSE alerts are currently <b>off</b> - the three built-in setups (base_breakout / trend_pullback / nr7_breakout) have not cleared the evidence gate (measured worse than random entry timing), so no live buy alert will fire. The <b>Research</b> tab tracks forward, out-of-sample candidate ideas that cannot alert on their own - if one ever clears the same evidence bar, it shows up automatically in <b>Review</b> for you to look at.';
