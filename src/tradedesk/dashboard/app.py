@@ -125,6 +125,68 @@ def create_app(
         result = await asyncio.to_thread(analyze_symbol, settings, market, code, on)
         return JSONResponse(json.loads(json.dumps(result, default=str)))
 
+    @app.get("/api/potential-calls/summary")
+    async def api_potential_calls_summary() -> JSONResponse:
+        """Compact "how many potential calls today, how many resolved, hit rate" per market
+        (2026-09-15 request: a small Report-tab section covering all three) - reuses the
+        exact same per-market call logs the Calls/Crypto/BSE tabs already read, just
+        summarised into one number set per market rather than a full row-by-row table.
+        Live only for crypto/BSE (excludes the historical backfill) - matching every other
+        "is the agent doing well" number on this dashboard (agent reliability, Coin/Stock
+        confidence); NSE has no backfill concept for this log, every row is naturally live."""
+        from tradedesk.analysis import BSE_LOG, CRYPTO_LOG, NSE_LOG
+
+        out: dict[str, Any] = {}
+        for market, log_path in (("nse", NSE_LOG), ("crypto", CRYPTO_LOG), ("bse", BSE_LOG)):
+            all_rows = _read_call_log(log_path, limit=100_000)
+            rows = all_rows if market == "nse" else [r for r in all_rows if r.get("source") == "live"]  # noqa: E501
+            today = date.today().isoformat()
+            today_rows = [r for r in rows if r.get("logged_at", "").startswith(today)]
+            resolved = [r for r in rows if r.get("outcome")]
+            wins = sum(1 for r in resolved if r.get("label") == 1)
+            out[market] = {
+                "logged_today": len(today_rows),
+                "n_total": len(rows),
+                "n_resolved": len(resolved),
+                "win_rate": wins / len(resolved) if resolved else None,
+            }
+        return JSONResponse(out)
+
+    @app.get("/api/session-report")
+    async def api_session_report(
+        market: Literal["nse", "crypto", "bse"] = "nse", on: str | None = None
+    ) -> JSONResponse:
+        """The full day's dissection for one market's potential calls (2026-09-15 request:
+        "clicking on that section should show the whole picture for the day") - the exact
+        markdown `scripts/<market>_signal_tracker.py` already writes per day
+        (data/reports/<market>_sessions/<date>.md), read back raw rather than recomputed, so
+        the dashboard can never show a different picture than the file the tracker itself
+        produced. `on` defaults to the newest report that exists for that market."""
+        sessions_dir = Path(f"data/reports/{market}_sessions")
+        path: Path | None
+        if on:
+            path = sessions_dir / f"{on}.md"
+        else:
+            candidates = sorted(sessions_dir.glob("*.md")) if sessions_dir.exists() else []
+            path = candidates[-1] if candidates else None
+        if path is None or not path.exists():
+            return JSONResponse({"error": f"no session report found for {market}"}, status_code=404)  # noqa: E501
+        return JSONResponse({"date": path.stem, "text": path.read_text(encoding="utf-8")})
+
+    @app.get("/api/nse/calls")
+    async def api_nse_calls(limit: int = 500) -> JSONResponse:
+        """NSE's "potential calls" log (2026-09-15, data/reports/nse_signal_tracking.jsonl) -
+        every candidate the daily scan evaluates, tradeable or not, resolved forward via
+        triple-barrier the same way crypto/BSE's setups are. Separate from /api/eod's paper
+        book on purpose: the paper book only ever gets a row once a signal actually
+        triggers live, which the eligibility gate currently blocks entirely, so this is the
+        only forward record of what the agent's daily scoring actually predicts vs what
+        really happens. Higher default limit than crypto/BSE's 50 since NSE evaluates the
+        full universe (dozens to ~100+ candidates) every single day, not a fixed watchlist."""
+        from tradedesk.analysis import NSE_LOG
+
+        return JSONResponse(_read_call_log(NSE_LOG, limit))
+
     @app.get("/api/crypto/calls")
     async def api_crypto_calls(limit: int = 50) -> JSONResponse:
         """Crypto's own call log (data/reports/crypto_signal_tracking.jsonl) - kept as a

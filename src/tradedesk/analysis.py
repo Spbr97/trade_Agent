@@ -23,6 +23,11 @@ NSE_DB = Path("data/tradedesk.duckdb")
 CRYPTO_DB = Path("data/crypto.duckdb")
 BSE_DB = Path("data/bse.duckdb")
 NSE_JOURNAL = Path("data/journal.sqlite")
+# 2026-09-15: every candidate the daily scan evaluates, tradeable or not (scripts/
+# nse_signal_tracker.py) - NSE_JOURNAL/paper_trades only ever gets a row once a signal
+# actually triggers live, which the eligibility gate currently blocks for every setup, so
+# this is the only forward record of NSE's "potential calls" right now.
+NSE_LOG = Path("data/reports/nse_signal_tracking.jsonl")
 CRYPTO_LOG = Path("data/reports/crypto_signal_tracking.jsonl")
 BSE_LOG = Path("data/reports/bse_signal_tracking.jsonl")
 

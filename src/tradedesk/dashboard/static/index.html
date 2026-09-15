@@ -535,6 +535,16 @@
   </section>
 
   <section>
+    <h2>Potential calls <span class="muted" style="text-transform:none;">- every candidate each market's daily scan evaluates, tradeable or not, resolved forward the same triple-barrier way real trades are. Click a market to see the whole day's picture: what was evaluated, why, and what actually happened.</span></h2>
+    <div class="cards" id="potential-calls-summary">
+      <div class="card" id="potential-calls-nse" style="cursor:pointer;"><div class="label">NSE</div><div class="value">-</div></div>
+      <div class="card" id="potential-calls-crypto" style="cursor:pointer;"><div class="label">Crypto</div><div class="value">-</div></div>
+      <div class="card" id="potential-calls-bse" style="cursor:pointer;"><div class="label">BSE</div><div class="value">-</div></div>
+    </div>
+    <pre id="potential-calls-detail" hidden style="white-space:pre-wrap; background:#0c0e12; border:1px solid var(--line); border-radius:6px; padding:10px 12px; margin-top:10px; max-height:500px; overflow-y:auto; font-size:12px;"></pre>
+  </section>
+
+  <section>
     <h2>Model calibration <span class="muted" style="text-transform:none;">- how close the model's own p(T1 before stop) has been to what actually happened, per probability bucket. NSE only. Same check `tradedesk ml check-drift` already runs daily and auto-flags to Review on drift - shown here, not just a background pass/fail.</span></h2>
     <div class="cards" id="calibration-summary">
       <div class="card"><div class="label">Predictions logged</div><div class="value" id="calib-n-logged">-</div></div>
@@ -1279,7 +1289,43 @@ document.querySelectorAll('#period-seg button').forEach(btn => {
 });
 $('rollup-n').addEventListener('change', loadRollup);
 
-function loadPerformance() { loadEod(); loadRollup(); loadCalibration(); }
+function loadPerformance() { loadEod(); loadRollup(); loadCalibration(); loadPotentialCallsSummary(); }
+// "Potential calls" summary, all three markets (2026-09-15 request) - always fetched fresh,
+// same "no stale data" reasoning as calibration. Clicking a market's card fetches and shows
+// that day's full session-report text (the exact file scripts/<market>_signal_tracker.py
+// already writes) rather than recomputing anything, so the dashboard can never show a
+// different picture than what the tracker itself produced.
+async function loadPotentialCallsSummary() {
+  try {
+    const r = await fetch('/api/potential-calls/summary');
+    const data = r.ok ? await r.json() : {};
+    for (const m of ['nse', 'crypto', 'bse']) {
+      const s = data[m];
+      const el = $(`potential-calls-${m}`).querySelector('.value');
+      if (!s || s.n_total === 0) { el.innerHTML = 'no calls logged yet'; continue; }
+      const winText = s.n_resolved ? `${pct(s.win_rate)} of ${s.n_resolved} resolved` : `0 of ${s.n_total} resolved`;
+      el.innerHTML = `${s.logged_today} today<br><span class="muted" style="font-size:13px;">${winText}</span>`;
+    }
+  } catch (e) {
+    for (const m of ['nse', 'crypto', 'bse']) $(`potential-calls-${m}`).querySelector('.value').textContent = 'n/a';
+  }
+}
+async function showPotentialCallsDetail(market) {
+  const box = $('potential-calls-detail');
+  box.hidden = false;
+  box.textContent = 'loading...';
+  try {
+    const r = await fetch(`/api/session-report?market=${market}`);
+    if (!r.ok) { box.textContent = `no session report for ${market} yet`; return; }
+    const d = await r.json();
+    box.textContent = d.text;
+  } catch (e) {
+    box.textContent = 'failed to load';
+  }
+}
+['nse', 'crypto', 'bse'].forEach(m => {
+  $(`potential-calls-${m}`).addEventListener('click', () => showPotentialCallsDetail(m));
+});
 // Always fetched fresh on every Report visit (2026-09-15: "no stale data") - never cached
 // client-side, since the underlying check is cheap and the whole point is trusting that
 // what's on screen matches the real shadow log/paper book right now.
