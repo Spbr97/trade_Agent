@@ -7,10 +7,26 @@ the prediction layer (never the setups).
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
+
+# Module-level default paths (not just function-default arguments) so callers - notably
+# dashboard/app.py's /api/ml-calibration - can reference them by name and a test can
+# monkeypatch the module attribute, the same pattern reliability_sources.py already uses for
+# NSE_JOURNAL/CRYPTO_LOG. Mirrors the defaults `tradedesk ml check-drift` already uses.
+SHADOW_LOG_PATH = Path("data/models/shadow.jsonl")
+NSE_JOURNAL_PATH = Path("data/journal.sqlite")
+# Day-by-day calibration trend (2026-09-15 request: "day by day and no stale data") - same
+# append-once-per-day JSONL pattern as reliability.py's agent_reliability_history.jsonl, so
+# "is the model's calibration actually improving" is a real trend to look at, not just
+# today's snapshot re-computed fresh on every dashboard load (which is already always fresh -
+# see log_calibration_snapshot's idempotent-per-day guard for why re-running it is safe).
+CALIBRATION_HISTORY_PATH = Path("data/reports/ml_calibration_history.jsonl")
 
 
 @dataclass(frozen=True)
@@ -92,3 +108,63 @@ def check_and_flag_drift(
                 path=path,
             )
     return report
+
+
+# ------------------------------------------------------------- day-by-day history
+
+
+def report_as_dict(report: DriftReport) -> dict[str, Any]:
+    return {
+        "paused": report.paused,
+        "reason": report.reason,
+        "buckets": [
+            {"lo": lo, "predicted": mp, "realised": rr, "n": n} for lo, mp, rr, n in report.buckets
+        ],
+    }
+
+
+def append_calibration_history(record: dict[str, Any], path: Path = CALIBRATION_HISTORY_PATH) -> None:  # noqa: E501
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps({"date": date.today().isoformat(), **record}, default=str) + "\n")
+
+
+def load_calibration_history(path: Path = CALIBRATION_HISTORY_PATH) -> list[dict[str, Any]]:
+    if not path.exists():
+        return []
+    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]  # noqa: E501
+
+
+def log_daily_calibration_snapshot(
+    *,
+    shadow_log: Path = SHADOW_LOG_PATH,
+    journal_path: Path = NSE_JOURNAL_PATH,
+    history_path: Path = CALIBRATION_HISTORY_PATH,
+) -> dict[str, Any] | None:
+    """Append one calibration snapshot IF one hasn't already been logged today - idempotent
+    regardless of how many times this gets called, so it's safe to call from a scheduled job
+    without a separate lock (mirrors reliability_sources.py::log_daily_reliability_snapshot).
+    Returns the logged record, or None if today's snapshot already existed."""
+    from tradedesk.prediction.predict import read_shadow
+
+    today = date.today().isoformat()
+    if any(row.get("date") == today for row in load_calibration_history(history_path)):
+        return None
+    predictions = read_shadow(shadow_log)
+    outcomes: dict[str, int] = {}
+    if journal_path.exists():
+        from tradedesk.journal import Journal
+
+        with Journal(journal_path) as jn:
+            outcomes = {
+                row["signal_id"]: (1 if row["r_multiple"] > 0 else 0)
+                for row in jn.trades(source="paper")
+            }
+    report = drift_check(predictions, outcomes)
+    record = {
+        "n_logged": int(len(predictions)),
+        "n_resolved_checked": sum(n for _, _, _, n in report.buckets),
+        **report_as_dict(report),
+    }
+    append_calibration_history(record, history_path)
+    return record

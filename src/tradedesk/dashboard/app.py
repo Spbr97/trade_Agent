@@ -180,6 +180,47 @@ def create_app(
 
         return JSONResponse(list(reversed(load_history(market))))
 
+    @app.get("/api/ml-calibration")
+    async def api_ml_calibration() -> JSONResponse:
+        """"How close and how successful are our predictions" (2026-09-15 request) - exposes
+        prediction/calibration.py::drift_check() (built 2026-09-13, already the thing
+        `tradedesk ml check-drift` runs daily as the 5th step of tradedesk-after-close and
+        auto-flags into review_queue.py on drift) so it's visible, not just a background
+        pass/fail. NSE only, matching `ml check-drift`'s own scope - the shadow log and the
+        paper-book outcome proxy (`r_multiple > 0`) it reads are both NSE-only today.
+        Buckets stay empty until real resolved paper trades exist - honestly reports that
+        rather than a fabricated calibration."""
+        from tradedesk.journal import Journal
+        from tradedesk.prediction import calibration as calib
+        from tradedesk.prediction.predict import read_shadow
+
+        predictions = read_shadow(calib.SHADOW_LOG_PATH)
+        journal_path = calib.NSE_JOURNAL_PATH
+        outcomes: dict[str, int] = {}
+        if journal_path.exists():
+            with Journal(journal_path) as jn:
+                outcomes = {
+                    row["signal_id"]: (1 if row["r_multiple"] > 0 else 0)
+                    for row in jn.trades(source="paper")
+                }
+        report = calib.drift_check(predictions, outcomes)
+        return JSONResponse(
+            {
+                "n_logged": int(len(predictions)),
+                "n_resolved_checked": sum(n for _, _, _, n in report.buckets),
+                **calib.report_as_dict(report),
+            }
+        )
+
+    @app.get("/api/ml-calibration/history")
+    async def api_ml_calibration_history() -> JSONResponse:
+        """Day-by-day calibration trend (2026-09-15 request) - one row per day this was
+        checked (`tradedesk ml check-drift`, scheduled daily), so "is the model's calibration
+        actually improving" is a real trend rather than one re-computed-fresh snapshot."""
+        from tradedesk.prediction import calibration as calib
+
+        return JSONResponse(list(reversed(calib.load_calibration_history(calib.CALIBRATION_HISTORY_PATH))))  # noqa: E501
+
     @app.get("/api/reliability/overall")
     async def api_reliability_overall() -> JSONResponse:
         """The one top-right "agent reliability" number - Wilson lower bound pooled across

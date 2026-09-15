@@ -29,6 +29,7 @@ from tradedesk.engine.signals import SetupKind, Signal
 from tradedesk.prediction import (
     FEATURE_NAMES,
     FEATURE_VERSION,
+    DriftReport,
     ModelBundle,
     apply_probability,
     build_dataset,
@@ -42,6 +43,12 @@ from tradedesk.prediction import (
     train,
     train_per_setup,
     triple_barrier,
+)
+from tradedesk.prediction.calibration import (
+    append_calibration_history,
+    load_calibration_history,
+    log_daily_calibration_snapshot,
+    report_as_dict,
 )
 from tradedesk.prediction.features import to_frame
 from tradedesk.prediction.predict import is_current, log_shadow, read_shadow, score_watchlist
@@ -701,6 +708,40 @@ def test_check_and_flag_drift_no_ops_cleanly_with_no_resolved_outcomes(tmp_path:
     report = check_and_flag_drift(log, {}, review_path=queue)
     assert not report.paused
     assert load_queue(queue) == {}
+
+
+def test_log_daily_calibration_snapshot_is_idempotent_within_a_day(tmp_path: Path) -> None:
+    log = tmp_path / "shadow.jsonl"
+    hist = tmp_path / "history.jsonl"
+    log_shadow(log, "s0", 0.65, "v1")
+
+    first = log_daily_calibration_snapshot(
+        shadow_log=log, journal_path=tmp_path / "no_journal.sqlite", history_path=hist
+    )
+    second = log_daily_calibration_snapshot(
+        shadow_log=log, journal_path=tmp_path / "no_journal.sqlite", history_path=hist
+    )
+    assert first is not None
+    assert second is None  # already logged today - no duplicate row
+    assert first["n_logged"] == 1
+    rows = load_calibration_history(hist)
+    assert len(rows) == 1 and rows[0]["n_logged"] == 1 and "date" in rows[0]
+
+
+def test_calibration_history_round_trips(tmp_path: Path) -> None:
+    path = tmp_path / "history.jsonl"
+    assert load_calibration_history(path) == []
+    append_calibration_history({"n_logged": 5, "paused": False, "reason": "fine"}, path)
+    rows = load_calibration_history(path)
+    assert len(rows) == 1 and rows[0]["n_logged"] == 5 and "date" in rows[0]
+
+
+def test_report_as_dict_matches_drift_check_shape() -> None:
+    d = report_as_dict(DriftReport(buckets=[(0.5, 0.6, 0.55, 40)], paused=False, reason="ok"))
+    assert d == {
+        "paused": False, "reason": "ok",
+        "buckets": [{"lo": 0.5, "predicted": 0.6, "realised": 0.55, "n": 40}],
+    }  # fmt: skip
 
 
 # ------------------------------------------------------- end to end

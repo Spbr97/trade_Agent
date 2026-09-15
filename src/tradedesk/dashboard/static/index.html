@@ -150,6 +150,15 @@
           <option value="no">No (rejected)</option>
         </select>
       </div>
+      <div class="group">
+        <label for="today-filter-prob">Model p</label>
+        <select id="today-filter-prob">
+          <option value="">All</option>
+          <option value="0.5">&gt;= 50%</option>
+          <option value="0.6">&gt;= 60%</option>
+          <option value="0.7">&gt;= 70%</option>
+        </select>
+      </div>
       <span class="muted" id="today-filter-count"></span>
     </section>
     <section><h2>Today's calls (NSE)</h2><table id="calls"></table></section>
@@ -187,6 +196,15 @@
             <option value="">All</option>
             <option value="yes">Yes</option>
             <option value="no">No (rejected)</option>
+          </select>
+        </div>
+        <div class="group">
+          <label for="bsetoday-filter-prob">Model p</label>
+          <select id="bsetoday-filter-prob">
+            <option value="">All</option>
+            <option value="0.5">&gt;= 50%</option>
+            <option value="0.6">&gt;= 60%</option>
+            <option value="0.7">&gt;= 70%</option>
           </select>
         </div>
         <span class="muted" id="bsetoday-filter-count"></span>
@@ -515,6 +533,18 @@
     <canvas id="perf-chart" width="1000" height="140"></canvas>
     <table id="rollup-table" style="margin-top:10px;"></table>
   </section>
+
+  <section>
+    <h2>Model calibration <span class="muted" style="text-transform:none;">- how close the model's own p(T1 before stop) has been to what actually happened, per probability bucket. NSE only. Same check `tradedesk ml check-drift` already runs daily and auto-flags to Review on drift - shown here, not just a background pass/fail.</span></h2>
+    <div class="cards" id="calibration-summary">
+      <div class="card"><div class="label">Predictions logged</div><div class="value" id="calib-n-logged">-</div></div>
+      <div class="card"><div class="label">Checked vs real outcome</div><div class="value" id="calib-n-checked">-</div></div>
+      <div class="card"><div class="label">Status</div><div class="value" id="calib-status">-</div></div>
+    </div>
+    <table id="calibration-buckets" style="margin-top:10px;"></table>
+    <h3 style="font-size:13px; text-transform:uppercase; letter-spacing:.06em; color:var(--dim); margin:16px 0 8px;">Day by day</h3>
+    <table id="calibration-history"></table>
+  </section>
 </div>
 
 <div id="tab-research" class="subtab" hidden>
@@ -678,11 +708,13 @@ function renderTodayCalls(prefix) {
   const gradeF = $(`${prefix}-filter-grade`).value;
   const statusF = $(`${prefix}-filter-status`).value;
   const tradeableF = $(`${prefix}-filter-tradeable`).value;
+  const probF = $(`${prefix}-filter-prob`).value;
   const all = todayCalled[prefix];
   const data = all.filter(e => {
     const tradeable = e.rejected_for.length ? 'no' : 'yes';
     return (!setupF || e.setup === setupF) && (!gradeF || e.grade === gradeF)
-      && (!statusF || e.state === statusF) && (!tradeableF || tradeable === tradeableF);
+      && (!statusF || e.state === statusF) && (!tradeableF || tradeable === tradeableF)
+      && (!probF || (e.probability != null && e.probability >= Number(probF)));
   });
   // Highest score first, so "which one would I consider" is the top row without hunting -
   // the score is a heuristic composite, not a win probability (see the Confidence/Model
@@ -705,7 +737,7 @@ function renderTodayCalls(prefix) {
   $(`${prefix}-filter-count`).textContent = `${data.length} of ${all.length} shown`;
 }
 ['today', 'bsetoday'].forEach(prefix => {
-  ['setup', 'grade', 'status', 'tradeable'].forEach(kind => {
+  ['setup', 'grade', 'status', 'tradeable', 'prob'].forEach(kind => {
     $(`${prefix}-filter-${kind}`).addEventListener('change', () => renderTodayCalls(prefix));
   });
 });
@@ -1247,7 +1279,35 @@ document.querySelectorAll('#period-seg button').forEach(btn => {
 });
 $('rollup-n').addEventListener('change', loadRollup);
 
-function loadPerformance() { loadEod(); loadRollup(); }
+function loadPerformance() { loadEod(); loadRollup(); loadCalibration(); }
+// Always fetched fresh on every Report visit (2026-09-15: "no stale data") - never cached
+// client-side, since the underlying check is cheap and the whole point is trusting that
+// what's on screen matches the real shadow log/paper book right now.
+async function loadCalibration() {
+  try {
+    const [curR, histR] = await Promise.all([
+      fetch('/api/ml-calibration'), fetch('/api/ml-calibration/history'),
+    ]);
+    const cur = curR.ok ? await curR.json() : null;
+    const hist = histR.ok ? await histR.json() : [];
+    if (cur) {
+      $('calib-n-logged').textContent = cur.n_logged;
+      $('calib-n-checked').textContent = cur.n_resolved_checked;
+      $('calib-status').textContent = cur.n_resolved_checked === 0 ? 'not enough resolved trades yet' : (cur.paused ? 'drifted' : 'within tolerance');
+      $('calib-status').className = 'value ' + (cur.n_resolved_checked === 0 ? '' : (cur.paused ? 'neg' : 'pos'));
+      rows($('calibration-buckets'), ['#Predicted p >=', '#Predicted (avg)', '#Realised', '#N'],
+        (cur.buckets || []).map(b => `<tr><td class="num">${pct(b.lo)}</td><td class="num">${pct(b.predicted)}</td><td class="num">${pct(b.realised)}</td><td class="num">${b.n}</td></tr>`));
+    }
+    rows($('calibration-history'), ['Date', '#Logged', '#Checked', 'Status'],
+      hist.map(h => {
+        const status = (h.n_resolved_checked || 0) === 0 ? 'not enough data' : (h.paused ? 'drifted' : 'within tolerance');
+        const cls = (h.n_resolved_checked || 0) === 0 ? '' : (h.paused ? 'neg' : 'pos');
+        return `<tr><td>${h.date}</td><td class="num">${h.n_logged}</td><td class="num">${h.n_resolved_checked || 0}</td><td class="${cls}">${status}</td></tr>`;
+      }));
+  } catch (e) {
+    $('calib-status').textContent = 'n/a';
+  }
+}
 
 async function loadEod() {
   const on = $('eod-date').value;

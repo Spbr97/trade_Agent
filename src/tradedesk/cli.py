@@ -1480,11 +1480,18 @@ def ml(
     pipeline build_dataset() uses for backtests, which is out of scope for closing this one
     gap - see the ML training plan for why this was scoped as a proxy, not exact."""
     from tradedesk.journal import Journal
-    from tradedesk.prediction.calibration import check_and_flag_drift
+    from tradedesk.prediction.calibration import (  # noqa: E501
+        check_and_flag_drift,
+        log_daily_calibration_snapshot,
+    )
 
     if what != "check-drift":
         raise typer.BadParameter("only `ml check-drift` exists")
     _ = load_config(root)
+    # Day-by-day history (2026-09-15 request) - logged regardless of whether there's
+    # anything to check yet, idempotent per day, so the dashboard's calibration trend has a
+    # real (even if empty) row every day rather than only appearing once trades resolve.
+    log_daily_calibration_snapshot(shadow_log=shadow_log, journal_path=journal)
     with Journal(journal) as jn:
         outcomes = {
             row["signal_id"]: (1 if row["r_multiple"] > 0 else 0)
