@@ -89,6 +89,17 @@ def estimator(family: str, hp: dict, seed: int = 14) -> Any:
             random_state=seed,
             verbosity=-1,
         )
+    elif family == "extratrees":
+        from sklearn.ensemble import ExtraTreesClassifier
+
+        model = ExtraTreesClassifier(
+            n_estimators=hp["iterations"],
+            max_depth=hp["depth"],
+            min_samples_leaf=20,
+            max_features=0.75,
+            n_jobs=2,
+            random_state=seed,
+        )
     else:
         raise ValueError(f"Unknown model family: {family}")
     return ImputedTree(model)
