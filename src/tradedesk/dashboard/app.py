@@ -457,6 +457,27 @@ def create_app(
             return JSONResponse({"error": "no BSE live state configured for this dashboard"}, 404)
         return _sse_stream(bse_state)
 
+    # 2026-09-16: mount the M14-M18 research lab's own FastAPI app under /lab so it's
+    # reachable through this same process/port (and therefore the same Cloudflare tunnel)
+    # instead of needing a second exposed port. This is a straight ASGI mount of the lab's
+    # OWN create_app(root, output) - none of its routes, registry access, or read-only
+    # discipline are touched; its static page was updated separately (API_BASE) to prefix
+    # its own fetch calls with the mount path so it works identically standalone (still
+    # servable on its own port 8766 if ever wanted) or mounted here.
+    import sys
+
+    repo_root = Path(__file__).resolve().parents[3]
+    if str(repo_root) not in sys.path:
+        sys.path.insert(0, str(repo_root))
+    try:
+        from tradedesk_lab.artifacts import OUTPUT as LAB_OUTPUT
+        from tradedesk_lab.artifacts import ROOT as LAB_ROOT
+        from tradedesk_lab.server import create_app as create_lab_app
+
+        app.mount("/lab", create_lab_app(LAB_ROOT, LAB_OUTPUT))
+    except ImportError:
+        pass  # tradedesk_lab not present in this checkout
+
     return app
 
 

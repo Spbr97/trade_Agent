@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 from enum import StrEnum
+from typing import Any
 
 
 class Kind(StrEnum):
@@ -37,7 +38,7 @@ class Decision:
     sector_regime: str | None = None
     expected_holding_sessions: int | None = None
     max_holding_sessions: int | None = None
-    model_agreement: dict | None = None
+    model_agreement: dict[str, Any] | None = None
     expected_return_pct: float | None = None
     expected_net_return_pct: float | None = None
     reward_risk: float | None = None
@@ -45,7 +46,7 @@ class Decision:
     estimated_costs_pct: float | None = None
     risk_per_trade_pct: float | None = None
 
-    def to_json(self) -> dict:
+    def to_json(self) -> dict[str, Any]:
         return asdict(self)
 
     def to_text(self) -> str:
@@ -54,7 +55,7 @@ class Decision:
 
 
 def from_entry(
-    entry: dict,
+    entry: dict[str, Any],
     as_of: str,
     *,
     confirmed: bool = False,
@@ -102,7 +103,7 @@ def from_entry(
 
 
 def from_position(
-    position: dict,
+    position: dict[str, Any],
     as_of: str,
     *,
     exit_reasons: tuple[str, ...] = (),

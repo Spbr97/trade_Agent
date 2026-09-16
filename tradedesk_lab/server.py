@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 from pathlib import Path
+from typing import Any
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import HTMLResponse
@@ -16,18 +17,18 @@ from tradedesk_lab.registry import Registry
 def create_app(root: Path, output: Path) -> FastAPI:
     app = FastAPI(title="tradedesk Research Lab", docs_url=None, redoc_url=None)
 
-    def read_runs() -> list[dict]:
+    def read_runs() -> list[dict[str, Any]]:
         path = output / "registry.sqlite"
         if not path.exists():
             return []
         with Registry(path, readonly=True) as registry:
             return registry.runs()
 
-    def latest() -> dict | None:
+    def latest() -> dict[str, Any] | None:
         runs = read_runs()
         return next((run["report"] for run in runs if run["status"] == "completed"), None)
 
-    def read_forward() -> dict:
+    def read_forward() -> dict[str, Any]:
         path = output / "forward/state.json"
         if not path.exists():
             return {
@@ -52,8 +53,8 @@ def create_app(root: Path, output: Path) -> FastAPI:
         return (Path(__file__).parent / "static/index.html").read_text(encoding="utf-8")
 
     @app.get("/api/summary")
-    async def summary() -> dict:
-        def load() -> dict:
+    async def summary() -> dict[str, Any]:
+        def load() -> dict[str, Any]:
             rows = read_runs()
             return {
                 "report": latest(),
@@ -66,16 +67,16 @@ def create_app(root: Path, output: Path) -> FastAPI:
         return await asyncio.to_thread(load)
 
     @app.get("/api/research/runs")
-    async def runs() -> list[dict]:
+    async def runs() -> list[dict[str, Any]]:
         return await asyncio.to_thread(read_runs)
 
     @app.get("/api/forward")
-    async def forward() -> dict:
+    async def forward() -> dict[str, Any]:
         return await asyncio.to_thread(read_forward)
 
     @app.get("/api/research/run/{identifier}")
-    async def run(identifier: str) -> dict:
-        def load() -> dict | None:
+    async def run(identifier: str) -> dict[str, Any]:
+        def load() -> dict[str, Any] | None:
             if not (output / "registry.sqlite").exists():
                 return None
             with Registry(output / "registry.sqlite", readonly=True) as registry:
@@ -87,8 +88,8 @@ def create_app(root: Path, output: Path) -> FastAPI:
         return result
 
     @app.get("/api/research/agreement")
-    async def agreement(limit: int = Query(100, ge=1, le=1000)) -> list[dict]:
-        def load() -> list[dict] | None:
+    async def agreement(limit: int = Query(100, ge=1, le=1000)) -> list[dict[str, Any]]:
+        def load() -> list[dict[str, Any]] | None:
             report = latest()
             if report is None:
                 return None
@@ -101,8 +102,8 @@ def create_app(root: Path, output: Path) -> FastAPI:
         return result
 
     @app.get("/api/decisions")
-    async def decisions(market: str = Query("nse", pattern="^(nse|bse|crypto)$")) -> dict:
-        def load() -> dict:
+    async def decisions(market: str = Query("nse", pattern="^(nse|bse|crypto)$")) -> dict[str, Any]:
+        def load() -> dict[str, Any]:
             directory = root / "data/watchlists"
             if market != "nse":
                 directory /= market
