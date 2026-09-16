@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 
 from tradedesk_lab.artifacts import OUTPUT, ROOT, verify_base
@@ -18,6 +19,9 @@ def main() -> None:
     sub.add_parser("verify-base")
     serve = sub.add_parser("serve")
     serve.add_argument("--port", type=int, default=8766)
+    forward = sub.add_parser("forward")
+    forward.add_argument("--watch", action="store_true")
+    forward.add_argument("--interval-seconds", type=int, default=900)
     args = parser.parse_args()
     if args.command == "verify-base":
         print(verify_base())
@@ -28,6 +32,15 @@ def main() -> None:
         from tradedesk_lab.server import create_app
 
         uvicorn.run(create_app(ROOT, OUTPUT), host="127.0.0.1", port=args.port)
+        return
+    if args.command == "forward":
+        from tradedesk_lab.forward import collect, watch
+
+        if args.watch:
+            watch(args.interval_seconds)
+        else:
+            state = collect()
+            print(json.dumps(state["summary"], indent=2))
         return
     import joblib
 

@@ -27,6 +27,26 @@ def create_app(root: Path, output: Path) -> FastAPI:
         runs = read_runs()
         return next((run["report"] for run in runs if run["status"] == "completed"), None)
 
+    def read_forward() -> dict:
+        path = output / "forward/state.json"
+        if not path.exists():
+            return {
+                "activation": None,
+                "summary": None,
+                "records": [],
+                "recent_errors": [],
+            }
+        state = json.loads(path.read_text(encoding="utf-8"))
+        records = []
+        for row in state.get("records", [])[-200:]:
+            records.append({k: v for k, v in row.items() if k not in {"features", "signal"}})
+        return {
+            "activation": state.get("activation"),
+            "summary": state.get("summary"),
+            "records": records,
+            "recent_errors": state.get("recent_errors", []),
+        }
+
     @app.get("/", response_class=HTMLResponse)
     async def index() -> str:
         return (Path(__file__).parent / "static/index.html").read_text(encoding="utf-8")
@@ -48,6 +68,10 @@ def create_app(root: Path, output: Path) -> FastAPI:
     @app.get("/api/research/runs")
     async def runs() -> list[dict]:
         return await asyncio.to_thread(read_runs)
+
+    @app.get("/api/forward")
+    async def forward() -> dict:
+        return await asyncio.to_thread(read_forward)
 
     @app.get("/api/research/run/{identifier}")
     async def run(identifier: str) -> dict:

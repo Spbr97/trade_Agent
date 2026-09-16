@@ -41,6 +41,7 @@ async def test_preview_empty_and_calls_are_readonly(tmp_path):
         assert (await client.get("/")).status_code == 200
         assert (await client.get("/api/summary")).json()["report"] is None
         assert (await client.get("/api/research/agreement")).status_code == 404
+        assert (await client.get("/api/forward")).json()["activation"] is None
         assert (await client.get("/api/decisions?market=nse")).json()["as_of"] == "2026-09-15"
         assert (await client.get("/api/decisions?market=../../other")).status_code == 422
         assert (await client.post("/api/summary")).status_code == 405

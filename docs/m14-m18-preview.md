@@ -13,6 +13,8 @@ From the repository root, using its existing Python 3.12 environment:
 .\.venv\Scripts\python.exe -m tradedesk_lab prepare
 .\.venv\Scripts\python.exe -m tradedesk_lab train
 .\.venv\Scripts\python.exe -m tradedesk_lab serve --port 8766
+.\.venv\Scripts\python.exe -m tradedesk_lab forward
+.\.venv\Scripts\python.exe -m tradedesk_lab forward --watch --interval-seconds 900
 .\.venv\Scripts\python.exe -m pytest tests_lab -q
 .\.venv\Scripts\python.exe -m tradedesk_lab verify-base
 ```
@@ -88,8 +90,8 @@ has adequate evidence. No model or setup is automatically promoted by the lab.
 ## Review / later merge
 
 Review only new `tradedesk_lab/`, `tests_lab/`, and `docs/m14-m18-preview.md` files.
-The pre-existing dirty files and Groww additions remain the user's work. No commit,
-push, merge, scheduled task change or production restart is part of this preview.
+The pre-existing dirty files and Groww additions remain the user's work. No push,
+merge, scheduled task change or production restart is part of this preview.
 
 ## First measured run — 2026-09-16
 
@@ -116,5 +118,21 @@ The original plan's modifications to production CLI, scan wiring, dependency fil
 dashboard, PLAN.md and CLAUDE.md were intentionally replaced by isolated equivalents
 to respect the no-base-changes requirement. Decisions expose missing forecasts as
 null rather than inventing expected returns or holding periods. Agreement shown
-here is frozen historical scoring, not newly scored live calls. Live integration
-and forward validation remain separate work for a later approval/review.
+here is frozen historical scoring, not newly scored live calls.
+
+## Prospective shadow evidence
+
+`tradedesk_lab forward` freezes the completed run's artifact hashes and creates a
+prospective cohort. Its activation boundary is the newest watchlist already present,
+so older files cannot be relabelled as forward evidence. Later runs ingest only newer
+NSE watchlists, construct features using candles available at the arming close, save
+the model-family probabilities once, and later resolve triggered calls with the base
+daily entry and triple-barrier rules. The first run activates the clock; `--watch`
+polls for new watchlists and newly available candles.
+
+The collector reads production watchlists and DuckDB candles but writes only
+`data/m14_m18/forward/state.json`. Scores never flow back into a watchlist, journal,
+portfolio, configuration or production dashboard. The dashboard's Forward evidence
+tab distinguishes every scored observation from the research-selected cohort. The
+current frozen run has no development champion, so selected-call count remains zero
+while all new candidates are still observed for calibration and later research.
