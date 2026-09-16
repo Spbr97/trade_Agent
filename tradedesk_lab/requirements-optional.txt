@@ -1,0 +1,6 @@
+# Install with uv pip --target data/m14_m18/deps --no-deps (see docs).
+# This file does not change the base project's dependencies or lock file.
+catboost==1.2.8
+graphviz==0.21
+plotly==6.3.0
+narwhals==2.4.0
