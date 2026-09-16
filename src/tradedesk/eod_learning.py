@@ -97,7 +97,13 @@ EVENT_FAMILY = "event"
 # before any of this ran, same discipline as the H1/H2 proof plan.
 BRIER_IMPROVEMENT_MARGIN = 0.005
 
-MIN_RESOLVED_TO_FIT = 50  # below this, purged_walk_forward has nothing meaningful to fold
+MIN_RESOLVED_TO_FIT = 20  # 2026-09-15, lowered from 50 per explicit user request ("let it
+# memorise and see a pattern in 20/25 trades, instead of ignoring") - accepted as a real,
+# named tradeoff, not a free lunch: purged_walk_forward folds are thinner here than at 50,
+# so early MODEL/EXPLORE decisions at n~20-30 are noisier and more likely to be reversed by
+# REVALIDATE once more data arrives. That reversal path (REVALIDATE_EVERY, the symmetric
+# BRIER_IMPROVEMENT_MARGIN bar to adopt AND to keep) is exactly the safety net that makes
+# starting earlier survivable - a bad early call gets re-tested and dropped, not frozen in.
 FINAL_TEST_FRAC = 0.2
 ROWS_PER_FEATURE = 15  # the sample-size cap behind _max_features_for
 REVALIDATE_EVERY = 8  # fits between feature-revalidation passes

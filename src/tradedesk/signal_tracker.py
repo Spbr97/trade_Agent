@@ -58,6 +58,10 @@ class TrackedSignal:
     exit_price: float | None = None
     r_multiple: float | None = None
     resolved_at: str | None = None
+    # Shadow-model probability at arming time (WatchlistEntry.probability, 2026-09-15), for the
+    # per-call "what did it predict vs what happened" diagnostic (dashboard Learning > Predictions).
+    # None for any row logged before this field existed, or on a day scoring was skipped/stale.
+    probability: float | None = None
     # "live" | "backfill". Defaults to "backfill" so every row already logged before this
     # field existed (crypto's one-shot 2018-2026 replay, BSE's 5-large-cap history, and any
     # live-tracker row logged before 2026-09-13) loads as "backfill" on the round trip
@@ -297,7 +301,7 @@ def log_new_signals(
             setup=sig.setup.value, grade=e.grade.value, armed_on=sig.armed_on.isoformat(),
             entry=sig.trigger, stop=sig.stop, t1=sig.t1, t2=sig.t2,
             net_rr_t1=e.net_rr_t1, net_rr_t2=e.net_rr_t2, rejected_for=list(e.rejected_for),
-            logged_at=datetime.now(IST).isoformat(), source=source,
+            probability=e.probability, logged_at=datetime.now(IST).isoformat(), source=source,
         )  # fmt: skip
         rows[sig.id] = row
         new_rows.append(row)

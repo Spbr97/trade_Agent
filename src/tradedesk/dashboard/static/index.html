@@ -161,7 +161,7 @@
       </div>
       <span class="muted" id="today-filter-count"></span>
     </section>
-    <section><h2>Today's calls (NSE)</h2><table id="calls"></table></section>
+    <section><h2><span id="today-calls-heading">Today's calls (NSE)</span></h2><table id="calls"></table></section>
     <section><h2>Open positions</h2><table id="positions"></table></section>
   </div>
 
@@ -209,7 +209,7 @@
         </div>
         <span class="muted" id="bsetoday-filter-count"></span>
       </section>
-      <section><h2>Today's calls (BSE) <span class="muted" style="text-transform:none;">- full-universe live session, same as NSE's Calls tab; triggers are journaled but there's no BSE paper book to grade them yet</span></h2><table id="bsetoday-calls"></table></section>
+      <section><h2><span id="bsetoday-calls-heading">Today's calls (BSE)</span> <span class="muted" style="text-transform:none;">- full-universe live session, same as NSE's Calls tab; triggers are journaled but there's no BSE paper book to grade them yet</span></h2><table id="bsetoday-calls"></table></section>
       <section><h2>Open positions (BSE)</h2><table id="bsetoday-positions"></table></section>
     </div>
 
@@ -613,6 +613,7 @@
       <label for="learningreview-view-select">View</label>
       <select id="learningreview-view-select">
         <option value="learning" selected>Learning</option>
+        <option value="predictions">Predictions</option>
         <option value="review">Review</option>
       </select>
     </div>
@@ -634,6 +635,29 @@
     <h2>EOD self-learning <span class="muted" style="text-transform:none;">- retrain on this market's real forward evidence only, never the old backtest window. One row per run. Cannot alert - only ever flags Review if it clears the same evidence bar as everything else.</span></h2>
     <table id="learning-table"></table>
   </section>
+</div>
+
+<div id="tab-predictions" class="subtab" hidden>
+  <section class="perf-controls">
+    <div class="group">
+      <label for="predictions-market-select">Market</label>
+      <select id="predictions-market-select">
+        <option value="nse" selected>NSE</option>
+        <option value="crypto">Crypto</option>
+        <option value="bse">BSE</option>
+      </select>
+    </div>
+    <div class="group">
+      <label for="predictions-filter-status">Status</label>
+      <select id="predictions-filter-status">
+        <option value="">All</option>
+        <option value="pending">Pending</option>
+        <option value="resolved">Resolved</option>
+      </select>
+    </div>
+    <span class="muted">Every candidate logged from the first prediction onward - what it predicted, side by side with what actually happened once it resolves. Nothing here changes any model; it is the raw material a human (or the model, once it has enough of these) can look for a pattern in.</span>
+  </section>
+  <section><table id="predictions-table"></table></section>
 </div>
 
 <div id="tab-review" class="subtab" hidden>
@@ -789,9 +813,25 @@ function updatePerfStrip() {
   $('perf-strip').hidden = show.length === 0;
   ['nse', 'crypto', 'bse'].forEach(m => { $(`perf-card-${m}`).hidden = !show.includes(m); });
 }
+// 2026-09-15: post-close (or pre-open) this table is actually the NEXT session's plan -
+// built at 16:00/16:15 IST from today's close, for tomorrow's 09:10 live session, so it
+// isn't stale "today" leftovers and shouldn't be emptied (it's the only preview of what
+// the agent will watch overnight). It just needs an honest label - relabel by wall clock
+// against the 09:15-15:30 IST NSE/BSE session window rather than emptying the data.
+function updateCallsHeadings() {
+  const ist = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
+  const mins = ist.getHours() * 60 + ist.getMinutes();
+  const inSession = mins >= 9 * 60 + 15 && mins < 15 * 60 + 30;
+  const nse = $('today-calls-heading'), bse = $('bsetoday-calls-heading');
+  if (nse) nse.textContent = inSession ? "Today's calls (NSE)" : "Next session's plan (NSE)";
+  if (bse) bse.textContent = inSession ? "Today's calls (BSE)" : "Next session's plan (BSE)";
+}
+updateCallsHeadings();
+setInterval(updateCallsHeadings, 60000);
 function showCallsMarket(market) {
   $('tab-today-inner').hidden = market !== 'nse';
   $('tab-bse').hidden = market !== 'bse';
+  updateCallsHeadings();
   loadCallsSymbolConfidence(market === 'nse' ? 'today' : 'bsetoday');
   if (market === 'bse') {
     if (!$('bse-view-history').hidden) showLiveView('bse', $('bse-live-view-select').value);
@@ -811,8 +851,10 @@ function showReportResearchView(view) {
 $('reportresearch-view-select').addEventListener('change', () => showReportResearchView($('reportresearch-view-select').value));
 function showLearningReviewView(view) {
   $('tab-learning').hidden = view !== 'learning';
+  $('tab-predictions').hidden = view !== 'predictions';
   $('tab-review').hidden = view !== 'review';
   if (view === 'learning') loadLearning();
+  if (view === 'predictions') loadPredictions();
   if (view === 'review') loadReview();
 }
 $('learningreview-view-select').addEventListener('change', () => showLearningReviewView($('learningreview-view-select').value));
@@ -1155,6 +1197,44 @@ function renderLearningTable(history) {
         <td class="num">${h.test_net_r != null ? fmt(h.test_net_r, 4) : '-'}</td>
         <td class="num">${nFeat || '-'}</td>
         <td>${summary}</td></tr>`;
+    }));
+}
+let predictionsCache = [];
+async function loadPredictions() {
+  const market = $('predictions-market-select').value;
+  const path = { nse: '/api/nse/calls?limit=300', crypto: '/api/crypto/calls?limit=300', bse: '/api/bse/calls?limit=300' }[market];
+  const r = await fetch(path);
+  let rows_ = r.ok ? await r.json() : [];
+  // Crypto/BSE logs are mostly the one-time historical backfill, not this agent's own real
+  // predictions - same "live only" discipline as everywhere else on this dashboard (Coin/
+  // Stock confidence, agent reliability, potential-calls summary). NSE has no backfill for
+  // this log, so every row is naturally live.
+  if (market !== 'nse') rows_ = rows_.filter(r_ => r_.source === 'live');
+  predictionsCache = rows_;
+  renderPredictionsTable();
+}
+$('predictions-market-select').addEventListener('change', loadPredictions);
+$('predictions-filter-status').addEventListener('change', renderPredictionsTable);
+function renderPredictionsTable() {
+  const status = $('predictions-filter-status').value;
+  let list = predictionsCache;
+  if (status === 'pending') list = list.filter(r_ => r_.outcome == null);
+  if (status === 'resolved') list = list.filter(r_ => r_.outcome != null);
+  if (!list.length) {
+    rows($('predictions-table'), ['Status'], [`<tr><td class="empty-note">no predictions logged yet for this market</td></tr>`]);
+    return;
+  }
+  rows($('predictions-table'),
+    ['Armed','Symbol','Setup','Grade','#Model p','Tradeable','Outcome','#R','Note'],
+    list.map(r_ => {
+      const tradeable = (r_.rejected_for || []).length === 0;
+      const outcomeClass = r_.outcome === 'target' ? 'triggered' : (r_.outcome && r_.outcome !== 'target' ? 'stopped' : 'planned');
+      const outcomeText = r_.outcome ? `${r_.outcome}${r_.label === 1 ? ' (win)' : r_.label === 0 ? ' (loss)' : ''}` : 'pending';
+      const note = tradeable ? '' : `<span class="muted" title="${(r_.rejected_for || []).join('; ')}">${(r_.rejected_for || [])[0] || ''}${(r_.rejected_for || []).length > 1 ? ` +${r_.rejected_for.length - 1} more` : ''}</span>`;
+      return `<tr><td>${(r_.armed_on || r_.logged_at || '').slice(0, 10)}</td><td>${r_.symbol}</td><td>${r_.setup}</td>
+        <td>${r_.grade}</td><td class="num">${r_.probability != null ? pct(r_.probability) : '-'}</td>
+        <td>${tradeable ? 'yes' : 'no'}</td><td class="${outcomeClass}">${outcomeText}</td>
+        <td class="num">${r_.r_multiple != null ? fmt(r_.r_multiple, 2) : '-'}</td><td>${note}</td></tr>`;
     }));
 }
 function renderResearchSummary(summary) {
