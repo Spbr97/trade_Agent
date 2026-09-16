@@ -283,6 +283,72 @@ def create_app(
 
         return JSONResponse(list(reversed(calib.load_calibration_history(calib.CALIBRATION_HISTORY_PATH))))  # noqa: E501
 
+    @app.get("/api/lab/summary")
+    async def api_lab_summary() -> JSONResponse:
+        """Read-only glance at the M14-M18 research lab (2026-09-16) - its own SQLite
+        registry (tradedesk_lab.registry.Registry, opened read-only, same as the lab's own
+        standalone dashboard reads it) and its own forward-evidence state file. This
+        dashboard never writes into data/m14_m18/ - the lab's own isolation guarantee
+        (verify-base) is unaffected by surfacing a summary here. The lab's own richer
+        diagnostics (CPCV/PBO/DSR charts, per-run detail) stay at its standalone page
+        (127.0.0.1:8766), linked from the UI rather than duplicated."""
+        import sys
+
+        # tradedesk_lab lives at the repo root, not under src/ - `tradedesk dashboard`'s
+        # console-script entry point doesn't put the repo root on sys.path the way
+        # `python -m`/pytest do (both of which is how this imported cleanly everywhere it
+        # was tested before), so it needs adding explicitly here, once.
+        repo_root = Path(__file__).resolve().parents[3]
+        if str(repo_root) not in sys.path:
+            sys.path.insert(0, str(repo_root))
+        try:
+            from tradedesk_lab.artifacts import OUTPUT as LAB_OUTPUT
+            from tradedesk_lab.registry import Registry
+        except ImportError:
+            return JSONResponse({"error": "tradedesk_lab not present in this checkout"}, 404)
+
+        def load() -> dict[str, Any]:
+            reg_path = LAB_OUTPUT / "registry.sqlite"
+            runs: list[dict[str, Any]] = []
+            if reg_path.exists():
+                with Registry(reg_path, readonly=True) as registry:
+                    runs = registry.runs()
+            report = next((r["report"] for r in runs if r["status"] == "completed"), None)
+            portfolio = None
+            eligibility = None
+            if report:
+                portfolio = (
+                    report.get("historical_holdout", {})
+                    .get("existing_candidates", {})
+                    .get("portfolio")
+                )
+                eligibility = report.get("eligibility")
+            fwd_path = LAB_OUTPUT / "forward/state.json"
+            forward = json.loads(fwd_path.read_text(encoding="utf-8")) if fwd_path.exists() else None  # noqa: E501
+            return {
+                "n_runs": len(runs),
+                "latest_run_id": report["id"] if report else None,
+                "latest_run_market": report["metadata"]["market"] if report else None,
+                "latest_run_range": (
+                    f"{report['metadata']['from']} to {report['metadata']['to']}" if report else None  # noqa: E501
+                ),
+                "historical_portfolio": (
+                    {
+                        "trades": portfolio["trades"],
+                        "net_pnl": portfolio["net_pnl"],
+                        "net_win_rate": portfolio["net_win_rate"],
+                        "sharpe": portfolio["sharpe"],
+                    }
+                    if portfolio
+                    else None
+                ),
+                "eligibility_decision": eligibility["decision"] if eligibility else None,
+                "forward_summary": forward.get("summary") if forward else None,
+                "forward_activation": forward.get("activation") if forward else None,
+            }
+
+        return JSONResponse(await asyncio.to_thread(load))
+
     @app.get("/api/reliability/overall")
     async def api_reliability_overall() -> JSONResponse:
         """The one top-right "agent reliability" number - Wilson lower bound pooled across

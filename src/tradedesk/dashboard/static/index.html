@@ -614,6 +614,7 @@
       <select id="learningreview-view-select">
         <option value="learning" selected>Learning</option>
         <option value="predictions">Predictions</option>
+        <option value="lab">Research Lab</option>
         <option value="review">Review</option>
       </select>
     </div>
@@ -658,6 +659,24 @@
     <span class="muted">Every candidate logged from the first prediction onward - what it predicted, side by side with what actually happened once it resolves. Nothing here changes any model; it is the raw material a human (or the model, once it has enough of these) can look for a pattern in.</span>
   </section>
   <section><table id="predictions-table"></table></section>
+</div>
+
+<div id="tab-lab" class="subtab" hidden>
+  <section>
+    <h2>M14-M18 research lab <span class="muted" style="text-transform:none;">- own SQLite registry, own store (data/m14_m18/), read-only from here; nothing this dashboard shows or does can write into it or touch anything live</span></h2>
+    <div id="lab-summary" class="cards">
+      <div class="card"><div class="label">Latest run</div><div class="value" id="lab-run">-</div></div>
+      <div class="card"><div class="label">Historical replay</div><div class="value" id="lab-replay">-</div></div>
+      <div class="card"><div class="label">Eligibility</div><div class="value" id="lab-eligibility">-</div></div>
+    </div>
+    <h3 style="margin-top:16px;">Forward evidence <span class="muted" style="text-transform:none;">- genuinely new candidates scored since the frozen model activated, checked daily</span></h3>
+    <div id="lab-forward" class="cards">
+      <div class="card"><div class="label">Scored</div><div class="value" id="lab-fwd-scored">-</div></div>
+      <div class="card"><div class="label">Resolved</div><div class="value" id="lab-fwd-resolved">-</div></div>
+      <div class="card"><div class="label">Hit rate</div><div class="value" id="lab-fwd-hitrate">-</div></div>
+    </div>
+    <p class="muted">For CPCV/PBO/DSR diagnostics, per-run detail and comparison charts, open the lab's own page: <a href="http://127.0.0.1:8766/" target="_blank" rel="noopener">127.0.0.1:8766</a></p>
+  </section>
 </div>
 
 <div id="tab-review" class="subtab" hidden>
@@ -852,10 +871,28 @@ $('reportresearch-view-select').addEventListener('change', () => showReportResea
 function showLearningReviewView(view) {
   $('tab-learning').hidden = view !== 'learning';
   $('tab-predictions').hidden = view !== 'predictions';
+  $('tab-lab').hidden = view !== 'lab';
   $('tab-review').hidden = view !== 'review';
   if (view === 'learning') loadLearning();
   if (view === 'predictions') loadPredictions();
+  if (view === 'lab') loadLab();
   if (view === 'review') loadReview();
+}
+async function loadLab() {
+  try {
+    const r = await fetch('/api/lab/summary');
+    const d = r.ok ? await r.json() : {};
+    $('lab-run').textContent = d.latest_run_id ? `${d.latest_run_market || '-'} (${d.latest_run_range || '-'})` : 'no completed run yet';
+    const p = d.historical_portfolio;
+    $('lab-replay').textContent = p ? `${p.trades} trades, ${pct(p.net_win_rate)} win, ${fmt(p.net_pnl, 0)} net P&L` : '-';
+    $('lab-eligibility').textContent = d.eligibility_decision || '-';
+    const fs = d.forward_summary;
+    $('lab-fwd-scored').textContent = fs ? fs.total_scored : '-';
+    $('lab-fwd-resolved').textContent = fs ? (fs.all_scored ? fs.all_scored.resolved : '-') : '-';
+    $('lab-fwd-hitrate').textContent = fs && fs.all_scored && fs.all_scored.hit_rate != null ? pct(fs.all_scored.hit_rate) : '-';
+  } catch (e) {
+    $('lab-run').textContent = 'failed to load';
+  }
 }
 $('learningreview-view-select').addEventListener('change', () => showLearningReviewView($('learningreview-view-select').value));
 document.querySelectorAll('.tab-btn').forEach(btn => {

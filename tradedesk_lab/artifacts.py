@@ -6,7 +6,7 @@ import hashlib
 import json
 import subprocess
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / "data" / "m14_m18"
@@ -36,7 +36,7 @@ def git(*args: str) -> str:
 def protect() -> dict[str, str]:
     path = OUTPUT / "base_manifest.json"
     if path.exists():
-        return json.loads(path.read_text(encoding="utf-8"))
+        return cast(dict[str, str], json.loads(path.read_text(encoding="utf-8")))
     names = git("ls-files", "-z").split("\0")
     names += git("ls-files", "--others", "--exclude-standard", "-z").split("\0")
     manifest = {
