@@ -22,6 +22,9 @@ def main() -> None:
     intraday = sub.add_parser("intraday-research")
     intraday.add_argument("--sessions", type=int, default=120)
     intraday.add_argument("--cohorts", type=int, default=200)
+    mcb = sub.add_parser("mcb-prepare")
+    mcb.add_argument("--sessions", type=int, default=120)
+    sub.add_parser("mcb-audit")
     sub.add_parser("verify-base")
     serve = sub.add_parser("serve")
     serve.add_argument("--port", type=int, default=8766)
@@ -29,13 +32,28 @@ def main() -> None:
     forward.add_argument("--watch", action="store_true")
     forward.add_argument("--interval-seconds", type=int, default=900)
     args = parser.parse_args()
+    if args.command == "mcb-audit":
+        from tradedesk_lab.mcb_data_audit import audit_mcb_data
+
+        print(json.dumps(audit_mcb_data(), indent=2))
+        return
+    if args.command == "mcb-prepare":
+        if args.sessions < 1:
+            parser.error("sessions must be positive")
+        from tradedesk_lab.mcb_dataset import prepare_mcb
+
+        data = prepare_mcb(sessions=args.sessions)
+        print(json.dumps(data.manifest, indent=2))
+        return
     if args.command == "intraday-research":
         if args.sessions < 1 or args.cohorts < 1:
             parser.error("sessions and cohorts must be positive")
         from tradedesk_lab.intraday_research import run_research
 
         report = run_research(sessions=args.sessions, n_cohorts=args.cohorts)
-        print("Intraday diagnostic:", report["run_id"], "Live eligible:", report["eligible_for_live"])
+        print(
+            "Intraday diagnostic:", report["run_id"], "Live eligible:", report["eligible_for_live"]
+        )
         return
     if args.command in {"prepare-clean", "reliability"}:
         from tradedesk_lab.clean_dataset import load_prepared, prepare_clean

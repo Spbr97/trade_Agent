@@ -438,14 +438,14 @@ def resolve_record(
     economics = record.get("economics")
     if costs is None:
         costs = EquityCostModel(ChargeSchedule.model_validate((economics or {}).get("costs", {})))
-    known_sessions = sorted(set(
-        session_dates if session_dates is not None else list(future.index.date)
-    ))
+    known_sessions = sorted(
+        set(session_dates if session_dates is not None else list(future.index.date))
+    )
     if session_dates is not None and not future.empty:
         if not known_sessions or future.index[-1].date() > known_sessions[-1]:
             raise ValueError("Benchmark session calendar is missing or stale")
     if session_dates is not None and not record.get("entry_date"):
-        expected = [day for day in known_sessions if signal.armed_on < day][:signal.valid_sessions]
+        expected = [day for day in known_sessions if signal.armed_on < day][: signal.valid_sessions]
         missing = set(expected) - set(future.index.date)
         if missing:
             raise ValueError(f"Cannot infer entry over missing candles: {min(missing)}")
@@ -621,9 +621,7 @@ def _collect(root: Path, output: Path) -> dict[str, Any]:
     contract_hashes = _contract_hashes()
     watchlists = _watchlists(root)
     if state is None:
-        latest_existing = max(
-            [report["metadata"]["to"], *(value["on"] for _, value in watchlists)]
-        )
+        latest_existing = max([report["metadata"]["to"], *(value["on"] for _, value in watchlists)])
         state = {
             "version": STATE_VERSION,
             "activation": {

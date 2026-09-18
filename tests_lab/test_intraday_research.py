@@ -291,17 +291,21 @@ def test_offline_report_uses_own_namespace_and_excludes_incomplete_sessions(tmp_
     risk = RiskConfig(trading_capital=Decimal("100000"))
     monkeypatch.setattr(research, "load_config", lambda root: SimpleNamespace(risk=risk))
     idx = pd.date_range("2026-09-15 09:15", periods=75, freq="5min", tz="Asia/Kolkata")
-    idx = idx.append(pd.date_range("2026-09-16 09:15", periods=10, freq="5min",
-                                  tz="Asia/Kolkata"))
+    idx = idx.append(pd.date_range("2026-09-16 09:15", periods=10, freq="5min", tz="Asia/Kolkata"))
     with duckdb.connect(str(tmp_path / "data/tradedesk.duckdb")) as con:
-        con.execute("CREATE TABLE candles(scrip_code VARCHAR, interval VARCHAR, ts BIGINT, "
-                    "open DOUBLE, high DOUBLE, low DOUBLE, close DOUBLE, volume BIGINT)")
+        con.execute(
+            "CREATE TABLE candles(scrip_code VARCHAR, interval VARCHAR, ts BIGINT, "
+            "open DOUBLE, high DOUBLE, low DOUBLE, close DOUBLE, volume BIGINT)"
+        )
         con.execute("CREATE TABLE instruments(scrip_code VARCHAR, trading_symbol VARCHAR)")
         con.execute("INSERT INTO instruments VALUES ('NSE_1', 'TEST')")
-        con.executemany("INSERT INTO candles VALUES (?,?,?,?,?,?,?,?,?)", [
-            ("NSE_1", Interval.M5.value, int(stamp.timestamp()), 100, 101, 99, 100.5, 1000)
-            for stamp in idx
-        ])
+        con.executemany(
+            "INSERT INTO candles VALUES (?,?,?,?,?,?,?,?)",
+            [
+                ("NSE_1", Interval.M5.value, int(stamp.timestamp()), 100, 101, 99, 100.5, 1000)
+                for stamp in idx
+            ],
+        )
     output = tmp_path / "data/research"
     output.mkdir()
     primary = output / "latest.json"

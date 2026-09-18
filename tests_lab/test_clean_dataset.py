@@ -4,12 +4,12 @@ import duckdb
 import numpy as np
 import pandas as pd
 import pytest
+from tradedesk_lab import clean_dataset
+from tradedesk_lab.artifacts import ROOT
 
 from tradedesk.config import load_config
 from tradedesk.engine.indicators import daily_features
 from tradedesk.engine.signals import Signal
-from tradedesk_lab import clean_dataset
-from tradedesk_lab.artifacts import ROOT
 
 
 def candles():
@@ -22,9 +22,16 @@ def candles():
 
 def sig():
     return Signal(
-        id="valid", scrip_code="NSE_1", symbol="TEST", setup="nr7_breakout",
-        armed_on=candles().index[260].date(), trigger=100.05, stop=95,
-        t1=110, t2=115, atr=4,
+        id="valid",
+        scrip_code="NSE_1",
+        symbol="TEST",
+        setup="nr7_breakout",
+        armed_on=candles().index[260].date(),
+        trigger=100.05,
+        stop=95,
+        t1=110,
+        t2=115,
+        atr=4,
     )
 
 
@@ -37,7 +44,9 @@ def test_features_ignore_future_candles_context_and_saved_fill_geometry():
     changed.loc[changed.index > pd.Timestamp(signal.armed_on)] *= 10
     second = clean_dataset.point_in_time_features(
         signal.model_copy(update={"trigger": 101.0, "stop": 90, "t1": 115}),
-        daily_features(changed), changed, changed,
+        daily_features(changed),
+        changed,
+        changed,
     )
     assert first == second
     assert set(first) == set(clean_dataset.FEATURES)
@@ -70,18 +79,30 @@ def test_rebuild_rejects_bad_geometry_and_preserves_old_artifacts(tmp_path, monk
     reports.mkdir(parents=True)
     frame = candles()
     row = {
-        "signal_id": "valid", "scrip_code": "NSE_1", "setup": "nr7_breakout",
-        "armed_on": frame.index[260], "entry_date": frame.index[261], "entry": 100.05,
-        "stop": 95, "t1": 110, "t2": 115, "atr": 4,
+        "signal_id": "valid",
+        "scrip_code": "NSE_1",
+        "setup": "nr7_breakout",
+        "armed_on": frame.index[260],
+        "entry_date": frame.index[261],
+        "entry": 100.05,
+        "stop": 95,
+        "t1": 110,
+        "t2": 115,
+        "atr": 4,
     }
     pd.DataFrame([row, row | {"signal_id": "bad", "t1": 99}]).to_csv(
-        reports / "barrier_signals.csv", index=False,
+        reports / "barrier_signals.csv",
+        index=False,
     )
     with duckdb.connect(str(tmp_path / "data/tradedesk.duckdb")) as con:
-        con.execute("CREATE TABLE instruments(scrip_code VARCHAR, trading_symbol VARCHAR, "
-                    "exch VARCHAR, kind VARCHAR)")
-        con.execute("INSERT INTO instruments VALUES ('BENCH','NIFTY 50','NSE','index'), "
-                    "('VIX','INDIA VIX','NSE','index')")
+        con.execute(
+            "CREATE TABLE instruments(scrip_code VARCHAR, trading_symbol VARCHAR, "
+            "exch VARCHAR, kind VARCHAR)"
+        )
+        con.execute(
+            "INSERT INTO instruments VALUES ('BENCH','NIFTY 50','NSE','index'), "
+            "('VIX','INDIA VIX','NSE','index')"
+        )
         rows = frame.copy()
         rows["ts"] = frame.index.tz_localize("Asia/Kolkata").as_unit("s").asi8
         rows["interval"] = "1day"
