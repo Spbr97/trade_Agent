@@ -39,6 +39,31 @@ useful step is a broader historically frozen, liquid M5 universe followed by raw
 after-cost evaluation; classification or expected-move training remains premature until
 enough resolved events exist.
 
+### Anticipatory Early Momentum research track
+
+The app examples also exposed a second setup family that should not be forced through
+MCB. `AEM_v1` now represents the two requested behaviors in the isolated lab:
+
+- anticipate a move before formal resistance breaks, using a causal one-minute momentum
+  ignition or impulse/pullback that holds VWAP;
+- use a smaller 0.8% target, 0.6% stop, and 90-minute maximum hold;
+- enter on the next one-minute bar, or use a short-lived VWAP limit when a pullback signal
+  remains stretched, with costs and conservative stop ordering applied.
+
+Two years of one-minute history were loaded and coverage-verified for the five supplied
+symbols. The reconstruction produces strict cost-adjusted winners near the reported
+prices for Skipper, Nitin Spinners, Goodluck, and the 10 September Uniparts example.
+Purple Style Labs remains excluded because nine daily sessions cannot provide a stable
+trend, ATR, volume, or liquidity baseline.
+
+This is pattern reproduction, not evidence of a reliable strategy. Across the complete
+ten-symbol, 120-session diagnostic, AEM produced 107 resolved trades, 37.4% strict
+success, negative mean net R, and remained ineligible for live use. The result proves
+that anticipatory pricing and quick targets are implementable, while also proving that
+the success-only app examples do not contain enough information to distinguish the many
+similar-looking losers. Context/ranking work must improve the broad out-of-sample result
+without weakening the negative-event population.
+
 ## Executive decision
 
 Do not rebuild the application around the reference directory tree in the master

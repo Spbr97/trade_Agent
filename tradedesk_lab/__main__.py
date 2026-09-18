@@ -24,6 +24,8 @@ def main() -> None:
     intraday.add_argument("--cohorts", type=int, default=200)
     mcb = sub.add_parser("mcb-prepare")
     mcb.add_argument("--sessions", type=int, default=120)
+    aem = sub.add_parser("aem-prepare")
+    aem.add_argument("--sessions", type=int, default=120)
     sub.add_parser("mcb-audit")
     sub.add_parser("verify-base")
     serve = sub.add_parser("serve")
@@ -36,6 +38,14 @@ def main() -> None:
         from tradedesk_lab.mcb_data_audit import audit_mcb_data
 
         print(json.dumps(audit_mcb_data(), indent=2))
+        return
+    if args.command == "aem-prepare":
+        if args.sessions < 1:
+            parser.error("sessions must be positive")
+        from tradedesk_lab.aem_dataset import prepare_aem
+
+        data = prepare_aem(sessions=args.sessions)
+        print(json.dumps(data.manifest, indent=2))
         return
     if args.command == "mcb-prepare":
         if args.sessions < 1:

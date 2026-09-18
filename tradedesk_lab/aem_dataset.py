@@ -1,4 +1,4 @@
-"""Point-in-time MCB event reconstruction from daily candidates and M5 sessions."""
+"""Point-in-time event reconstruction for anticipatory early momentum."""
 
 from __future__ import annotations
 
@@ -8,7 +8,6 @@ from collections import Counter
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
 from uuid import uuid4
 
 import duckdb
@@ -20,28 +19,35 @@ from tradedesk.broker.indstocks.models import Interval
 from tradedesk.config import load_config
 from tradedesk.engine.indicators import daily_features, intraday_features
 from tradedesk.markets.market import nse_market
+from tradedesk_lab.aem_contract import DEFAULT_AEM_CONTRACT, AemContract
+from tradedesk_lab.aem_detector import detect_daily_candidate, evaluate_trigger
+from tradedesk_lab.aem_labels import label_trade
 from tradedesk_lab.artifacts import OUTPUT, ROOT, digest, write_json
-from tradedesk_lab.mcb_contract import DEFAULT_MCB_CONTRACT, McbContract
-from tradedesk_lab.mcb_detector import detect_daily_candidate, evaluate_trigger
-from tradedesk_lab.mcb_features import BAR, time_of_day_rvol
-from tradedesk_lab.mcb_labels import label_trade
+from tradedesk_lab.mcb_dataset import _read_frames
+from tradedesk_lab.mcb_features import time_of_day_rvol
+
+AEM_OUTPUT = OUTPUT / "aem"
 
 
 @dataclass
-class McbDataset:
+class AemDataset:
     events: pd.DataFrame
     manifest: dict
-    contract: McbContract
+    contract: AemContract
 
 
-def _complete_session(frame: pd.DataFrame) -> bool:
-    if len(frame) != 75:
+def _complete_signal_session(frame: pd.DataFrame) -> bool:
+    if len(frame) < 2:
         return False
     idx = pd.DatetimeIndex(frame.index)
+    bar = idx.to_series().diff().dropna().median()
+    if not isinstance(bar, pd.Timedelta) or bar <= pd.Timedelta(0):
+        return False
+    expected = int(pd.Timedelta(minutes=375) / bar)
     return bool(
-        idx[0].strftime("%H:%M") == "09:15"
-        and idx[-1].strftime("%H:%M") == "15:25"
-        and (idx.to_series().diff().iloc[1:] == BAR).all()
+        len(frame) in {expected, expected + 1}
+        and idx[0].strftime("%H:%M") == "09:15"
+        and (idx.to_series().diff().iloc[1:] == bar).all()
     )
 
 
@@ -52,24 +58,30 @@ def build_events(
     *,
     risk,
     costs,
-    contract: McbContract = DEFAULT_MCB_CONTRACT,
+    execution: dict[str, pd.DataFrame] | None = None,
+    contract: AemContract = DEFAULT_AEM_CONTRACT,
     evaluation_sessions: int | None = None,
 ) -> tuple[pd.DataFrame, dict]:
-    """Reconstruct every daily-qualified MCB session, including sessions with no trade."""
+    """Keep every eligible daily session, including rejected intraday opportunities."""
     rows: list[dict] = []
     audit: Counter = Counter()
     for code in sorted(set(daily) & set(intraday)):
-        print(f"MCB events: {code}", flush=True)
+        print(f"AEM events: {code}", flush=True)
         day_frame = daily_features(daily[code].sort_index())
-        raw = intraday[code].sort_index()
-        if raw.empty:
-            continue
-        enriched = intraday_features(raw)
+        enriched = intraday_features(intraday[code].sort_index())
         enriched["tod_rvol"] = time_of_day_rvol(
             enriched,
             lookback_sessions=contract.rvol_lookback_sessions,
             min_sessions=contract.rvol_min_sessions,
         )
+        execution_by_date: dict = {}
+        if execution is not None and code in execution:
+            execution_frame = execution[code]
+            for execution_start, execution_end in sessions_in(execution_frame.index):
+                execution_session = execution_frame.iloc[execution_start : execution_end + 1]
+                execution_by_date[pd.Timestamp(execution_session.index[0]).date()] = (
+                    execution_session
+                )
         day_index = pd.DatetimeIndex(day_frame.index)
         day_dates = day_index.tz_convert("Asia/Kolkata").date if day_index.tz else day_index.date
         spans = sessions_in(enriched.index)
@@ -78,7 +90,7 @@ def build_events(
         for start, end in spans:
             session = enriched.iloc[start : end + 1]
             session_on = pd.Timestamp(session.index[0]).date()
-            if not _complete_session(session):
+            if not _complete_signal_session(session):
                 audit["incomplete_session"] += 1
                 continue
             prior = [value for value in day_dates if value < session_on]
@@ -88,11 +100,7 @@ def build_events(
             armed_on = max(prior)
             try:
                 candidate = detect_daily_candidate(
-                    code,
-                    symbols.get(code, code),
-                    day_frame,
-                    armed_on,
-                    contract,
+                    code, symbols.get(code, code), day_frame, armed_on, contract
                 )
             except ValueError as exc:
                 audit[str(exc)] += 1
@@ -101,13 +109,10 @@ def build_events(
                 audit["daily_conditions_failed"] += 1
                 continue
             audit["daily_candidates"] += 1
-            decision = None
-            best = None
-            best_score = -1
-            # Every assessment happens after the current bar closes. Entry, if any, is
-            # the following bar's open and therefore cannot be retroactive.
+            decision, best, best_score = None, None, -1
+            signal_bar = pd.DatetimeIndex(session.index).to_series().diff().dropna().median()
             for position in range(contract.opening_range_bars - 1, len(session) - 1):
-                at = pd.Timestamp(session.index[position]) + BAR
+                at = pd.Timestamp(session.index[position]) + signal_bar
                 if at.strftime("%H:%M") > contract.latest_decision_time:
                     break
                 current = evaluate_trigger(candidate, session, at, contract)
@@ -135,22 +140,28 @@ def build_events(
                 },
             }
             if decision is None:
-                audit["no_trade_sessions"] += 1
+                reasons = list(best.reasons) if best else ["no_eligible_intraday_bar"]
                 rows.append(
                     {
                         **base,
                         "decision": "NO_TRADE",
                         "available_at": best.available_at if best else None,
-                        "reasons": list(best.reasons) if best else ["no_eligible_intraday_bar"],
+                        "reasons": reasons,
                         "label": None,
                         "strict_success": None,
                         "net_r": None,
                     }
                 )
-                for reason in rows[-1]["reasons"]:
+                audit["no_trade_sessions"] += 1
+                for reason in reasons:
                     audit[f"reject_{reason}"] += 1
                 continue
-            result = label_trade(candidate, decision, session, risk, costs, contract)
+            fill_session = execution_by_date.get(session_on, session)
+            if fill_session is not session:
+                audit["m1_execution"] += 1
+            else:
+                audit["m5_execution_fallback"] += 1
+            result = label_trade(candidate, decision, fill_session, risk, costs, contract)
             audit[f"outcome_{result['status']}"] += 1
             rows.append(
                 {
@@ -170,83 +181,63 @@ def build_events(
     if not events.empty:
         events = events.sort_values(["session_date", "event_id"]).reset_index(drop=True)
         if events.event_id.duplicated().any():
-            raise ValueError("duplicate MCB event identifiers")
+            raise ValueError("duplicate AEM event identifiers")
     return events, dict(audit)
 
 
-def _read_frames(
+def _read_m1_frames(
     root: Path,
-    *,
+    codes: set[str],
     sessions: int | None,
-    contract: Any,
-    label: str = "MCB",
-) -> tuple[dict, dict, dict]:
-    daily, intraday, symbols = {}, {}, {}
+) -> dict[str, pd.DataFrame]:
+    frames: dict[str, pd.DataFrame] = {}
     with duckdb.connect(str(root / "data/tradedesk.duckdb"), read_only=True) as con:
-        codes = [
-            row[0]
-            for row in con.execute(
-                "SELECT scrip_code FROM candles "
-                "WHERE interval IN (?,?) AND scrip_code LIKE 'NSE_%' "
-                "GROUP BY scrip_code HAVING count(DISTINCT interval)=2 ORDER BY 1",
-                [Interval.D1.value, Interval.M5.value],
-            ).fetchall()
-        ]
-        print(f"{label} data: {len(codes)} symbols have daily and M5 candles", flush=True)
-        for code in codes:
-            print(f"{label} data: loading {code}", flush=True)
-            frames = {}
-            for interval in (Interval.D1, Interval.M5):
-                raw = con.execute(
-                    "SELECT ts,open,high,low,close,volume FROM candles "
-                    "WHERE scrip_code=? AND interval=? ORDER BY ts",
-                    [code, interval.value],
-                ).df()
-                raw.index = pd.DatetimeIndex(
-                    pd.to_datetime(raw.pop("ts"), unit="s", utc=True).dt.tz_convert("Asia/Kolkata")
-                )
-                if raw.index.has_duplicates:
-                    raise ValueError(f"duplicate {interval.value} candles for {code}")
-                frames[interval] = raw
-            m5 = frames[Interval.M5]
-            spans = sessions_in(m5.index)
-            if sessions is not None and len(spans) > sessions + contract.rvol_min_sessions:
-                m5 = m5.iloc[spans[-sessions - contract.rvol_min_sessions][0] :]
-            daily[code], intraday[code] = frames[Interval.D1], m5
-            row = con.execute(
-                "SELECT trading_symbol FROM instruments WHERE scrip_code=?", [code]
-            ).fetchone()
-            symbols[code] = row[0] if row else code
-    return daily, intraday, symbols
+        for code in sorted(codes):
+            raw = con.execute(
+                "SELECT ts,open,high,low,close,volume FROM candles "
+                "WHERE scrip_code=? AND interval=? ORDER BY ts",
+                [code, Interval.M1.value],
+            ).df()
+            if raw.empty:
+                continue
+            raw.index = pd.DatetimeIndex(
+                pd.to_datetime(raw.pop("ts"), unit="s", utc=True).dt.tz_convert("Asia/Kolkata")
+            )
+            spans = sessions_in(raw.index)
+            if sessions is not None and len(spans) > sessions:
+                raw = raw.iloc[spans[-sessions][0] :]
+            frames[code] = raw
+    return frames
 
 
-def prepare_mcb(
+def prepare_aem(
     root: Path = ROOT,
-    output: Path = OUTPUT,
+    output: Path = AEM_OUTPUT,
     *,
     sessions: int | None = 120,
-    contract: McbContract = DEFAULT_MCB_CONTRACT,
-) -> McbDataset:
+    contract: AemContract = DEFAULT_AEM_CONTRACT,
+) -> AemDataset:
     if sessions is not None and sessions < 1:
         raise ValueError("sessions must be positive or None")
-    print("MCB: loading read-only source candles", flush=True)
-    daily, intraday, symbols = _read_frames(root, sessions=sessions, contract=contract)
-    print("MCB: reconstructing point-in-time events", flush=True)
+    print("AEM: loading read-only source candles", flush=True)
+    daily, intraday, symbols = _read_frames(root, sessions=sessions, contract=contract, label="AEM")
+    execution = _read_m1_frames(root, set(intraday), sessions)
+    print("AEM: reconstructing point-in-time events", flush=True)
     settings = load_config(root)
     events, audit = build_events(
         daily,
-        intraday,
+        execution,
         symbols,
         risk=settings.risk,
         costs=nse_market(settings).costs,
+        execution=execution,
         contract=contract,
         evaluation_sessions=sessions,
     )
     run_id = uuid4().hex
     serial = events.copy()
-    for column in ("reasons",):
-        if column in serial:
-            serial[column] = serial[column].map(json.dumps)
+    if "reasons" in serial:
+        serial["reasons"] = serial["reasons"].map(json.dumps)
     dataset_hash = hashlib.sha256(
         pd.util.hash_pandas_object(serial, index=True).values.tobytes()
     ).hexdigest()
@@ -263,26 +254,28 @@ def prepare_mcb(
         "data_store": str(root / "data/tradedesk.duckdb"),
         "sessions_requested": sessions,
         "symbols_with_daily_and_m5": len(symbols),
+        "symbols_with_m1_execution": len(execution),
         "events": len(events),
         "resolved_trades": len(resolved),
         "strict_success_rate": float(resolved.label.mean()) if len(resolved) else None,
         "mean_net_r": float(resolved.net_r.mean()) if len(resolved) else None,
+        "mean_minutes_held": float(resolved.minutes_held.mean()) if len(resolved) else None,
         "dataset_sha256": dataset_hash,
         "audit": audit,
         "limitations": [
-            "Historical diagnostic only; all source periods may already have been inspected.",
-            "Available M5 symbols are a selected, survivorship-biased pilot universe.",
-            "No bid/ask history; configured slippage is an estimate.",
-            "Intraday costs remain provisional until a real intraday contract note exists.",
-            "Daily qualification uses prior closes; app reports are hypotheses only.",
-            "No production setup, model, dashboard, alert or execution path is changed.",
+            "Historical diagnostic only; thresholds are hypotheses, not optimized proof.",
+            "The ten-symbol M5 universe is selected and survivorship-biased.",
+            "Five supplied app examples are success-only and cannot establish precision.",
+            "No bid/ask history; configured slippage and intraday costs are provisional.",
+            "No production scanner, model, dashboard, alert, or execution path is changed.",
         ],
     }
-    dataset = McbDataset(events=events, manifest=manifest, contract=contract)
-    folder = output / "mcb/datasets" / run_id
-    folder.mkdir(parents=True, exist_ok=False)
-    joblib.dump(dataset, folder / "dataset.joblib")
-    serial.to_csv(folder / "events.csv", index=False)
-    write_json(folder / "manifest.json", manifest)
-    write_json(output / "mcb/dataset-latest.json", {"id": run_id})
-    return dataset
+    target = output / "datasets" / run_id
+    target.mkdir(parents=True, exist_ok=False)
+    joblib.dump(
+        AemDataset(events=events, manifest=manifest, contract=contract), target / "dataset.joblib"
+    )
+    serial.to_csv(target / "events.csv", index=False)
+    write_json(target / "manifest.json", manifest)
+    write_json(output / "latest.json", {"id": run_id, "path": str(target)})
+    return AemDataset(events=events, manifest=manifest, contract=contract)
