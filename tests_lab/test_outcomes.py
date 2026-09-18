@@ -1,17 +1,25 @@
 import numpy as np
 import pandas as pd
 import pytest
+from tradedesk_lab.outcomes import geometry_error, simulate_outcome
 
 from tradedesk.config.models import ChargeSchedule
 from tradedesk.engine.signals import ExitPlan, Signal
 from tradedesk.markets.costs import EquityCostModel
-from tradedesk_lab.outcomes import geometry_error, simulate_outcome
 
 
 def sig(**changes):
     values = dict(
-        id="one", scrip_code="one", symbol="one", setup="nr7_breakout",
-        armed_on="2026-01-01", trigger=100, stop=95, t1=110, t2=115, atr=2,
+        id="one",
+        scrip_code="one",
+        symbol="one",
+        setup="nr7_breakout",
+        armed_on="2026-01-01",
+        trigger=100,
+        stop=95,
+        t1=110,
+        t2=115,
+        atr=2,
         exit_plan=ExitPlan(partial_fraction=1.0),
     )
     return Signal(**(values | changes))
@@ -19,8 +27,13 @@ def sig(**changes):
 
 def bars(**changes):
     frame = pd.DataFrame(
-        dict(open=[100., 103.], high=[111., 111.], low=[99., 101.],
-             close=[101., 110.], volume=[100000, 100000]),
+        dict(
+            open=[100.0, 103.0],
+            high=[111.0, 111.0],
+            low=[99.0, 101.0],
+            close=[101.0, 110.0],
+            volume=[100000, 100000],
+        ),
         index=pd.to_datetime(["2026-01-02", "2026-01-05"]),
     )
     for key, value in changes.items():
@@ -47,8 +60,13 @@ def test_entry_day_high_before_unknown_fill_is_not_a_target_win():
 def test_target_touch_after_known_open_can_still_lose_after_costs():
     signal = sig(stop=99.9, t1=100.01)
     result = simulate_outcome(
-        signal, bars(low=[99.95, 100]), "2026-01-02", 100, 1,
-        EquityCostModel(ChargeSchedule()), entry_at_open=True,
+        signal,
+        bars(low=[99.95, 100]),
+        "2026-01-02",
+        100,
+        1,
+        EquityCostModel(ChargeSchedule()),
+        entry_at_open=True,
     )
     assert result["target_hit"] is True
     assert result["strict_success"] is False and result["label"] == 0
@@ -57,11 +75,15 @@ def test_target_touch_after_known_open_can_still_lose_after_costs():
 
 def test_stop_wins_ambiguous_bar_and_gap_exit_is_gap_aware():
     costs = EquityCostModel(ChargeSchedule())
-    result = simulate_outcome(sig(), bars(low=[94., 99.]), "2026-01-02", 100, 10, costs)
+    result = simulate_outcome(sig(), bars(low=[94.0, 99.0]), "2026-01-02", 100, 10, costs)
     assert result["outcome"] == "stop" and result["label"] == 0
     result = simulate_outcome(
-        sig(), bars(open=[100., 90.], high=[102., 96.], low=[99., 89.]),
-        "2026-01-02", 100, 10, costs,
+        sig(),
+        bars(open=[100.0, 90.0], high=[102.0, 96.0], low=[99.0, 89.0]),
+        "2026-01-02",
+        100,
+        10,
+        costs,
     )
     assert result["outcome"] == "gap_stop"
     assert result["exit_price"] < 90
@@ -70,8 +92,12 @@ def test_stop_wins_ambiguous_bar_and_gap_exit_is_gap_aware():
 def test_profitable_time_exit_is_not_relabelled_as_target_success():
     signal = sig(exit_plan=ExitPlan(partial_fraction=1, time_stop_sessions=1, time_stop_min_r=1))
     result = simulate_outcome(
-        signal, bars(high=[102., 104.], close=[101., 103.]),
-        "2026-01-02", 100, 100, EquityCostModel(ChargeSchedule()),
+        signal,
+        bars(high=[102.0, 104.0], close=[101.0, 103.0]),
+        "2026-01-02",
+        100,
+        100,
+        EquityCostModel(ChargeSchedule()),
     )
     assert result["outcome"] == "time_stop"
     assert result["net_profitable"] is True and result["label"] == 0

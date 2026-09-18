@@ -12,7 +12,6 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
-from decimal import Decimal
 from enum import StrEnum
 from pathlib import Path
 from typing import Any
@@ -37,7 +36,7 @@ from tradedesk.models import TradeType, price_decimal
 from tradedesk.reliability import wilson_lower_bound
 from tradedesk.risk.sizing import SizeInputs, position_size
 from tradedesk.setups.intraday import INTRADAY_REGISTRY, IntradaySetupContext
-from tradedesk_lab.artifacts import OUTPUT, ROOT, write_json
+from tradedesk_lab.artifacts import OUTPUT, ROOT, digest, write_json
 
 BAR = pd.Timedelta(minutes=5)
 TARGET_R = 2.0  # preregistered, never searched to inflate hit rate
@@ -53,8 +52,12 @@ class ResearchSignal(IntradaySignal):
 
 
 def _geometry(
-    kind: ResearchSetupKind, df: pd.DataFrame, ctx: IntradaySetupContext,
-    stop: float, level: float, reasons: list[str],
+    kind: ResearchSetupKind,
+    df: pd.DataFrame,
+    ctx: IntradaySetupContext,
+    stop: float,
+    level: float,
+    reasons: list[str],
 ) -> ResearchSignal | None:
     last = df.iloc[-1]
     trigger, atr = float(last.high), float(last.atr14)
@@ -64,13 +67,25 @@ def _geometry(
     at = pd.Timestamp(df.index[-1]) + BAR
     return ResearchSignal(
         id=f"{kind.value}:{ctx.scrip_code}:{at.isoformat()}",
-        scrip_code=ctx.scrip_code, symbol=ctx.symbol, setup=kind,
-        interval=ctx.interval, armed_at=at, trigger=trigger, stop=stop,
-        t1=trigger + TARGET_R * risk, t2=trigger + TARGET_R * risk, atr=atr,
-        valid_bars=3, chased_atr_mult=0.5,
+        scrip_code=ctx.scrip_code,
+        symbol=ctx.symbol,
+        setup=kind,
+        interval=ctx.interval,
+        armed_at=at,
+        trigger=trigger,
+        stop=stop,
+        t1=trigger + TARGET_R * risk,
+        t2=trigger + TARGET_R * risk,
+        atr=atr,
+        valid_bars=3,
+        chased_atr_mult=0.5,
         exit_plan=IntradayExitPlan(partial_fraction=1.0, max_hold_bars=75),
-        geometry={"reference_level": level, "planned_target_r": TARGET_R,
-                  "decision_at": at.isoformat(), "bar_open_at": str(df.index[-1])},
+        geometry={
+            "reference_level": level,
+            "planned_target_r": TARGET_R,
+            "decision_at": at.isoformat(),
+            "bar_open_at": str(df.index[-1]),
+        },
         reasons=reasons,
     )
 
@@ -83,7 +98,7 @@ def _eligible_session(df: pd.DataFrame) -> pd.DataFrame | None:
     if clock < "09:45" or clock > "14:45":
         return None
     session_bar = int(df.iloc[-1].get("session_bar", len(df) - 1))
-    session = df.iloc[-session_bar - 1:]
+    session = df.iloc[-session_bar - 1 :]
     if len(session) < 7:
         return None
     row = session.iloc[-1]
@@ -103,7 +118,10 @@ class SupportResistanceReversal:
     kind = ResearchSetupKind.SUPPORT_REVERSAL
 
     def arm(
-        self, df: pd.DataFrame, ctx: IntradaySetupContext, params: dict[str, Any],
+        self,
+        df: pd.DataFrame,
+        ctx: IntradaySetupContext,
+        params: dict[str, Any],
     ) -> ResearchSignal | None:
         session = _eligible_session(df)
         if session is None or (ctx.alignment is not None and ctx.alignment.conflict):
@@ -120,7 +138,11 @@ class SupportResistanceReversal:
             return None
         stop = float(min(last.low, support) - 0.1 * last.atr14)
         return _geometry(
-            self.kind, session, ctx, stop, support,
+            self.kind,
+            session,
+            ctx,
+            stop,
+            support,
             ["prior support tested at least twice", "bullish rejection closes above support"],
         )
 
@@ -131,7 +153,10 @@ class BreakoutRetest:
     kind = ResearchSetupKind.BREAKOUT_RETEST
 
     def arm(
-        self, df: pd.DataFrame, ctx: IntradaySetupContext, params: dict[str, Any],
+        self,
+        df: pd.DataFrame,
+        ctx: IntradaySetupContext,
+        params: dict[str, Any],
     ) -> ResearchSignal | None:
         session = _eligible_session(df)
         if session is None or (ctx.alignment is not None and ctx.alignment.conflict):
@@ -139,7 +164,7 @@ class BreakoutRetest:
         last = session.iloc[-1]
         # Never call the breakout's own low a retest: require a distinct later bar.
         for k in range(len(session) - 2, max(4, len(session) - 5) - 1, -1):
-            prior = session.iloc[max(0, k - 12):k]
+            prior = session.iloc[max(0, k - 12) : k]
             if len(prior) < 5:
                 continue
             breakout = session.iloc[k]
@@ -152,7 +177,7 @@ class BreakoutRetest:
                 and breakout.atr14 > 0
             ):
                 continue
-            after = session.iloc[k + 1:]
+            after = session.iloc[k + 1 :]
             if (after.close < resistance - tolerance).any():
                 continue
             if not (
@@ -162,13 +187,22 @@ class BreakoutRetest:
                 continue
             stop = float(min(last.low, resistance) - 0.1 * last.atr14)
             result = _geometry(
-                self.kind, session, ctx, stop, resistance,
+                self.kind,
+                session,
+                ctx,
+                stop,
+                resistance,
                 ["close broke established resistance", "a later bar retested and held resistance"],
             )
             if result is not None:
-                return result.model_copy(update={"geometry": {
-                    **result.geometry, "breakout_bar": str(session.index[k]),
-                }})
+                return result.model_copy(
+                    update={
+                        "geometry": {
+                            **result.geometry,
+                            "breakout_bar": str(session.index[k]),
+                        }
+                    }
+                )
         return None
 
 
@@ -209,8 +243,13 @@ class ResolvedCandidate:
 
 
 def resolve_barriers(
-    arrays: tuple[np.ndarray, ...], start: int, end: int, *,
-    stop: float, target: float, slippage: float,
+    arrays: tuple[np.ndarray, ...],
+    start: int,
+    end: int,
+    *,
+    stop: float,
+    target: float,
+    slippage: float,
 ) -> tuple[int, float, str]:
     """Entry occurs at ``start`` OPEN; that bar's entire range is therefore subsequent."""
     opens, highs, lows, closes = arrays
@@ -226,7 +265,11 @@ def resolve_barriers(
 
 
 def fill_candidate(
-    sig: ResearchSignal, frame: pd.DataFrame, arm: int, start: int, end: int,
+    sig: ResearchSignal,
+    frame: pd.DataFrame,
+    arm: int,
+    start: int,
+    end: int,
     slippage: float,
 ) -> tuple[ResolvedCandidate | None, str]:
     """A later CLOSED bar confirms continuation; enter the following bar's open.
@@ -253,49 +296,98 @@ def fill_candidate(
             return None, "chased_at_fill"
         arrays = tuple(frame[c].to_numpy(float) for c in ("open", "high", "low", "close"))
         exit_bar, exit_price, reason = resolve_barriers(
-            arrays, j, end, stop=sig.stop, target=sig.t1, slippage=slippage,
+            arrays,
+            j,
+            end,
+            stop=sig.stop,
+            target=sig.t1,
+            slippage=slippage,
         )
         return ResolvedCandidate(
-            signal=sig, session=str(pd.Timestamp(frame.index[j]).date()),
-            decision_at=sig.armed_at.isoformat(), entry_at=frame.index[j].isoformat(),
-            exit_at=(frame.index[exit_bar] + BAR).isoformat(), entry_bar=j,
-            session_start=start, session_end=end, entry=entry, exit=exit_price,
-            stop=sig.stop, target=sig.t1,
+            signal=sig,
+            session=str(pd.Timestamp(frame.index[j]).date()),
+            decision_at=sig.armed_at.isoformat(),
+            entry_at=frame.index[j].isoformat(),
+            exit_at=(frame.index[exit_bar] + BAR).isoformat(),
+            entry_bar=j,
+            session_start=start,
+            session_end=end,
+            entry=entry,
+            exit=exit_price,
+            stop=sig.stop,
+            target=sig.t1,
             gross_r=(exit_price - entry) / (entry - sig.stop),
-            target_hit=reason == "target", exit_reason=reason,
+            target_hit=reason == "target",
+            exit_reason=reason,
         ), "filled"
     return None, "expired_unconfirmed"
 
 
 def _size_and_cost(
-    trade: ResolvedCandidate, equity: float, risk: RiskConfig, costs: EquityCostModel,
+    trade: ResolvedCandidate,
+    equity: float,
+    risk: RiskConfig,
+    costs: EquityCostModel,
     heat: float | None = None,
 ) -> tuple[float, float, float]:
-    size = position_size(SizeInputs(
-        equity=equity, entry=trade.entry, stop=trade.stop,
-        max_risk_pct=float(risk.max_risk_per_trade_pct),
-        max_position_value_pct=float(risk.max_position_value_pct),
-        available_heat_pct=heat,
-    ))
+    size = position_size(
+        SizeInputs(
+            equity=equity,
+            entry=trade.entry,
+            stop=trade.stop,
+            max_risk_pct=float(risk.max_risk_per_trade_pct),
+            max_position_value_pct=float(risk.max_position_value_pct),
+            available_heat_pct=heat,
+        )
+    )
     qty = size.qty
+    # Include estimated stop-exit slippage and both fees in the maximum cash loss.
+    budget = equity * min(
+        float(risk.max_risk_per_trade_pct),
+        max(0.0, heat) if heat is not None else float(risk.max_risk_per_trade_pct),
+    )
+    while qty and _stop_loss(trade, qty, costs) > budget:
+        qty -= 1
     if not qty:
         return 0.0, 0.0, 0.0
-    fees = float(costs.round_trip_cost(
-        trade_type=TradeType.INTRADAY, qty=qty,
-        entry_price=price_decimal(trade.entry), exit_price=price_decimal(trade.exit),
-    ).total)
+    fees = float(
+        costs.round_trip_cost(
+            trade_type=TradeType.INTRADAY,
+            qty=qty,
+            entry_price=price_decimal(trade.entry),
+            exit_price=price_decimal(trade.exit),
+        ).total
+    )
     pnl = (trade.exit - trade.entry) * qty - fees
     return qty, fees, pnl
 
 
+def _stop_loss(trade: ResolvedCandidate, qty: float, costs: EquityCostModel) -> float:
+    stop_fill = trade.stop * (1 - float(costs.slippage_pct))
+    fee = float(
+        costs.round_trip_cost(
+            trade_type=TradeType.INTRADAY,
+            qty=qty,
+            entry_price=price_decimal(trade.entry),
+            exit_price=price_decimal(stop_fill),
+        ).total
+    )
+    return (trade.entry - stop_fill) * qty + fee
+
+
 def _trade_row(
-    trade: ResolvedCandidate, equity: float, risk: RiskConfig, costs: EquityCostModel,
+    trade: ResolvedCandidate,
+    equity: float,
+    risk: RiskConfig,
+    costs: EquityCostModel,
 ) -> dict:
     qty, fees, pnl = _size_and_cost(trade, equity, risk, costs)
     data = asdict(trade)
     data["signal"] = trade.signal.model_dump(mode="json")
     data.update(
-        qty=qty, costs=fees, net_pnl=pnl,
+        qty=qty,
+        costs=fees,
+        net_pnl=pnl,
         net_r=pnl / (qty * (trade.entry - trade.stop)) if qty else None,
         success=bool(qty and trade.target_hit and pnl > 0),
     )
@@ -309,22 +401,29 @@ def summarize(rows: list[dict], calendar: list[str]) -> dict:
     by_date: dict[str, list[dict]] = {d: [] for d in calendar}
     for row in filled:
         by_date.setdefault(row["session"], []).append(row)
-    daily = [{
-        "session": d, "calls": len(trades),
-        "successes": sum(t["success"] for t in trades),
-        "success_rate": sum(t["success"] for t in trades) / len(trades) if trades else None,
-        "net_pnl": sum(t["net_pnl"] for t in trades),
-    } for d, trades in sorted(by_date.items())]
+    daily = [
+        {
+            "session": d,
+            "calls": len(trades),
+            "successes": sum(t["success"] for t in trades),
+            "success_rate": sum(t["success"] for t in trades) / len(trades) if trades else None,
+            "net_pnl": sum(t["net_pnl"] for t in trades),
+        }
+        for d, trades in sorted(by_date.items())
+    ]
     active = [d for d in daily if d["calls"]]
     return {
-        "trades": n, "successes": wins, "success_rate": wins / n if n else None,
+        "trades": n,
+        "successes": wins,
+        "success_rate": wins / n if n else None,
         "wilson_lower_95": wilson_lower_bound(wins, n),
         "target_hit_rate": sum(r["target_hit"] for r in filled) / n if n else None,
         "net_win_rate": sum(r["net_pnl"] > 0 for r in filled) / n if n else None,
         "mean_net_r": float(np.mean([r["net_r"] for r in filled])) if n else None,
         "net_pnl": sum(r["net_pnl"] for r in filled),
         "costs": sum(r["costs"] for r in filled),
-        "sessions": len(daily), "active_sessions": len(active),
+        "sessions": len(daily),
+        "active_sessions": len(active),
         "no_call_sessions": len(daily) - len(active),
         "active_sessions_at_70": sum(d["success_rate"] >= 0.7 for d in active),
         "active_sessions_at_80": sum(d["success_rate"] >= 0.8 for d in active),
@@ -333,8 +432,11 @@ def summarize(rows: list[dict], calendar: list[str]) -> dict:
 
 
 def portfolio_replay(
-    trades: list[ResolvedCandidate], risk: RiskConfig, costs: EquityCostModel,
-    sectors: dict[str, str], calendar: list[str],
+    trades: list[ResolvedCandidate],
+    risk: RiskConfig,
+    costs: EquityCostModel,
+    sectors: dict[str, str],
+    calendar: list[str],
 ) -> dict:
     """Chronological candidate replay through existing Portfolio limits and settlement.
 
@@ -354,8 +456,10 @@ def portfolio_replay(
             if trade.exit_at > at:
                 continue
             reason = {
-                "stop": FillReason.STOP, "gap_stop": FillReason.GAP_STOP,
-                "target": FillReason.PARTIAL, "session_close": FillReason.END,
+                "stop": FillReason.STOP,
+                "gap_stop": FillReason.GAP_STOP,
+                "target": FillReason.PARTIAL,
+                "session_close": FillReason.END,
             }[trade.exit_reason]
             fill = Fill(pos.entry_date, trade.exit, pos.qty_open, reason)
             pos.fills.append(fill)
@@ -375,16 +479,27 @@ def portfolio_replay(
             if not ok:
                 rejections[reason] += 1
                 continue
-            qty, fees, pnl = _size_and_cost(
-                trade, portfolio.equity, risk, costs, portfolio.available_heat_pct(),
+            open_loss = sum(_stop_loss(t, p.qty_open, costs) for t, p in pending)
+            available_heat = float(risk.max_portfolio_heat_pct) - open_loss / portfolio.equity
+            qty, _, _ = _size_and_cost(
+                trade,
+                portfolio.equity,
+                risk,
+                costs,
+                available_heat,
             )
             committed = sum(p.entry_price * p.qty_open for p in portfolio.open.values())
             qty = min(qty, float(max(0, int((portfolio.equity - committed) / trade.entry))))
             if qty <= 0:
                 rejections["zero_size_or_cash"] += 1
                 continue
+            if trade.target * (1 - float(costs.slippage_pct)) <= trade.entry:
+                rejections["target_below_entry_after_slippage"] += 1
+                continue
             net_rr = costs.net_reward_risk(
-                trade_type=TradeType.INTRADAY, qty=qty, entry=price_decimal(trade.entry),
+                trade_type=TradeType.INTRADAY,
+                qty=qty,
+                entry=price_decimal(trade.entry),
                 stop=price_decimal(trade.stop * (1 - float(costs.slippage_pct))),
                 target=price_decimal(trade.target * (1 - float(costs.slippage_pct))),
             )
@@ -392,21 +507,34 @@ def portfolio_replay(
                 rejections["configured_min_net_rr"] += 1
                 continue
             pos = Position(
-                trade.signal, pd.Timestamp(day).date(), trade.entry, qty, qty, trade.stop,
+                trade.signal,
+                pd.Timestamp(day).date(),
+                trade.entry,
+                qty,
+                qty,
+                trade.stop,
                 fills=[Fill(pd.Timestamp(day).date(), trade.entry, qty, FillReason.ENTRY)],
             )
             portfolio.open_position(pos)
             pending.append((trade, pos))
             row = _trade_row(trade, portfolio.equity, risk, costs)
             # Cash availability can lower the initial per-opportunity quantity.
-            actual_costs = float(costs.round_trip_cost(
-                trade_type=TradeType.INTRADAY, qty=qty,
-                entry_price=price_decimal(trade.entry), exit_price=price_decimal(trade.exit),
-            ).total)
+            actual_costs = float(
+                costs.round_trip_cost(
+                    trade_type=TradeType.INTRADAY,
+                    qty=qty,
+                    entry_price=price_decimal(trade.entry),
+                    exit_price=price_decimal(trade.exit),
+                ).total
+            )
             net = (trade.exit - trade.entry) * qty - actual_costs
-            row.update(qty=qty, costs=actual_costs, net_pnl=net,
-                       net_r=net / (qty * (trade.entry - trade.stop)),
-                       success=bool(trade.target_hit and net > 0))
+            row.update(
+                qty=qty,
+                costs=actual_costs,
+                net_pnl=net,
+                net_r=net / (qty * (trade.entry - trade.stop)),
+                success=bool(trade.target_hit and net > 0),
+            )
             selected.append(row)
         settle_before(f"{day}T23:59:59+05:30")
         portfolio.mark_to_market({})
@@ -414,22 +542,43 @@ def portfolio_replay(
     equity = np.array([initial, *[e for _, e in portfolio.equity_curve]])
     summary = summarize(selected, calendar)
     return {
-        **summary, "initial_capital": initial, "ending_capital": portfolio.equity,
+        **summary,
+        "initial_capital": initial,
+        "ending_capital": portfolio.equity,
         "max_drawdown": float(np.max(1 - equity / np.maximum.accumulate(equity))),
-        "rejections": dict(rejections), "rows": selected,
-        "enforced": ["risk sizing", "position value", "cash", "portfolio heat",
-                     "max positions", "daily entries", "weekly realised loss limit",
-                     "consecutive loss pause", "stop reentry cooldown", "sector caps",
-                     "no entry window", "configured minimum net reward/risk"],
-        "not_evaluated": ["daily market regime/VIX gate", "results-event blackout",
-                          "live spread/depth/latency", "mark-to-market intrabar loss limit"],
+        "rejections": dict(rejections),
+        "rows": selected,
+        "enforced": [
+            "risk sizing including estimated stop slippage and fees",
+            "position value",
+            "cash",
+            "portfolio heat including estimated fees",
+            "max positions",
+            "daily entries",
+            "weekly realised loss limit",
+            "consecutive loss pause",
+            "stop reentry cooldown",
+            "sector caps",
+            "no entry window",
+            "configured minimum net reward/risk",
+        ],
+        "not_evaluated": [
+            "daily market regime/VIX gate",
+            "results-event blackout",
+            "live spread/depth/latency",
+            "mark-to-market intrabar loss limit",
+        ],
         "scope": "Diagnostic capped replay; not a production-eligibility decision.",
     }
 
 
 def matched_random(
-    trades: list[ResolvedCandidate], frames: dict[str, pd.DataFrame], *,
-    n_cohorts: int, slippage: float, seed: int = 20260916,
+    trades: list[ResolvedCandidate],
+    frames: dict[str, pd.DataFrame],
+    *,
+    n_cohorts: int,
+    slippage: float,
+    seed: int = 20260916,
 ) -> dict:
     """Same symbol/session, same risk distance and realised target multiple.
 
@@ -461,8 +610,12 @@ def matched_random(
         for cohort, j in enumerate(rng.choice(positions, size=n_cohorts)):
             entry = float(arrays[0][j]) * (1 + slippage)
             _, exit_price, _ = resolve_barriers(
-                arrays, int(j), trade.session_end, stop=entry - distance,
-                target=entry + reward, slippage=slippage,
+                arrays,
+                int(j),
+                trade.session_end,
+                stop=entry - distance,
+                target=entry + reward,
+                slippage=slippage,
             )
             means[cohort] += (exit_price - entry) / distance
         used += 1
@@ -472,11 +625,17 @@ def matched_random(
     means /= used
     actual = float(np.mean(real_r))
     p = float((1 + np.sum(means >= actual)) / (n_cohorts + 1))
-    return {"n": used, "cohorts": n_cohorts, "seed": seed,
-            "setup_mean_gross_r": actual, "null_mean_gross_r": float(means.mean()),
-            "gross_r_lift": actual - float(means.mean()), "p_value": p,
-            "beats_random_at_05": p < 0.05,
-            "scope": "Gross R timing diagnostic; costs/portfolio reported separately."}
+    return {
+        "n": used,
+        "cohorts": n_cohorts,
+        "seed": seed,
+        "setup_mean_gross_r": actual,
+        "null_mean_gross_r": float(means.mean()),
+        "gross_r_lift": actual - float(means.mean()),
+        "p_value": p,
+        "beats_random_at_05": p < 0.05,
+        "scope": "Gross R timing diagnostic; costs/portfolio reported separately.",
+    }
 
 
 def _read_frames(root: Path, sessions: int | None) -> tuple[dict, dict]:
@@ -484,33 +643,39 @@ def _read_frames(root: Path, sessions: int | None) -> tuple[dict, dict]:
     with duckdb.connect(str(root / "data/tradedesk.duckdb"), read_only=True) as con:
         codes = con.execute(
             "SELECT DISTINCT scrip_code FROM candles WHERE interval=? "
-            "AND scrip_code LIKE 'NSE_%' ORDER BY 1", [Interval.M5.value],
+            "AND scrip_code LIKE 'NSE_%' ORDER BY 1",
+            [Interval.M5.value],
         ).fetchall()
         for (code,) in codes:
             raw = con.execute(
                 "SELECT ts, open, high, low, close, volume FROM candles "
-                "WHERE scrip_code=? AND interval=? ORDER BY ts", [code, Interval.M5.value],
+                "WHERE scrip_code=? AND interval=? ORDER BY ts",
+                [code, Interval.M5.value],
             ).df()
             idx = pd.to_datetime(raw.pop("ts"), unit="s", utc=True).dt.tz_convert("Asia/Kolkata")
             raw.index = pd.DatetimeIndex(idx)
             spans = sessions_in(raw.index)
             if sessions is not None and len(spans) > sessions + 5:
-                raw = raw.iloc[spans[-sessions - 5][0]:]  # indicator warmup, not evaluated
+                raw = raw.iloc[spans[-sessions - 5][0] :]  # indicator warmup, not evaluated
             features = intraday_features(raw)
             if sessions is not None:
                 spans = sessions_in(features.index)
                 if len(spans) > sessions:
-                    features = features.iloc[spans[-sessions][0]:]
+                    features = features.iloc[spans[-sessions][0] :]
             frames[code] = features
             row = con.execute(
-                "SELECT trading_symbol FROM instruments WHERE scrip_code=?", [code],
+                "SELECT trading_symbol FROM instruments WHERE scrip_code=?",
+                [code],
             ).fetchone()
             symbols[code] = row[0] if row else code
     return frames, symbols
 
 
 def run_research(
-    root: Path = ROOT, output: Path = OUTPUT, *, sessions: int | None = 120,
+    root: Path = ROOT,
+    output: Path = OUTPUT,
+    *,
+    sessions: int | None = 120,
     n_cohorts: int = 200,
 ) -> dict:
     """Evaluate fixed candidates against existing M5 history; persist only research outputs."""
@@ -526,15 +691,37 @@ def run_research(
     signals: Counter = Counter()
     rejects = {kind.value: Counter() for kind in ResearchSetupKind}
     candidates: dict[str, list[ResolvedCandidate]] = {k.value: [] for k in ResearchSetupKind}
+    quality: Counter = Counter()
     with research_registry():
         for code, frame in frames.items():
             for start, end in sessions_in(frame.index):
                 # At most 75 bars supplied to scan_bar; no quadratic full-history slicing.
-                session_frame = frame.iloc[start:end + 1]
+                session_frame = frame.iloc[start : end + 1]
+                if (
+                    len(session_frame) != 75
+                    or session_frame.index[0].strftime("%H:%M") != "09:15"
+                    or session_frame.index[-1].strftime("%H:%M") != "15:25"
+                    or not (session_frame.index.to_series().diff().iloc[1:] == BAR).all()
+                ):
+                    quality["skipped_incomplete_or_nonstandard_symbol_sessions"] += 1
+                    continue
+                ohlc = session_frame[["open", "high", "low", "close"]]
+                if (
+                    not np.isfinite(ohlc.to_numpy()).all()
+                    or (ohlc <= 0).any().any()
+                    or (session_frame.high < ohlc[["open", "close", "low"]].max(axis=1)).any()
+                    or (session_frame.low > ohlc[["open", "close", "high"]].min(axis=1)).any()
+                    or (session_frame.volume < 0).any()
+                ):
+                    quality["skipped_invalid_ohlcv_symbol_sessions"] += 1
+                    continue
+                quality["complete_symbol_sessions"] += 1
                 for i in range(start + 6, end - 1):
                     snapshot = IntradaySnapshot(
-                        at=frame.index[i] + BAR, arming_interval=Interval.M5,
-                        features={code: session_frame}, symbols=symbols,
+                        at=frame.index[i] + BAR,
+                        arming_interval=Interval.M5,
+                        features={code: session_frame},
+                        symbols=symbols,
                     )
                     for sig in scan_bar(snapshot, list(ResearchSetupKind), {}):
                         kind = sig.setup.value
@@ -551,26 +738,40 @@ def run_research(
     run_id = datetime.now(UTC).strftime("%Y%m%dT%H%M%S") + "-" + uuid4().hex[:8]
     strategies = {}
     for kind, trades in candidates.items():
-        rows = [_trade_row(t, float(settings.risk.trading_capital), settings.risk, costs)
-                for t in trades]
+        rows = [
+            _trade_row(t, float(settings.risk.trading_capital), settings.risk, costs)
+            for t in trades
+        ]
         strategies[kind] = {
-            "armed_signals": signals[kind], "executable_candidates": len(trades),
+            "armed_signals": signals[kind],
+            "executable_candidates": len(trades),
             "entry_rejections": dict(rejects[kind]),
             "opportunity_diagnostic": summarize(rows, calendar),
             "portfolio": portfolio_replay(trades, settings.risk, costs, sectors, calendar),
             "matched_random": matched_random(
-                trades, frames, n_cohorts=n_cohorts, slippage=slip,
+                trades,
+                frames,
+                n_cohorts=n_cohorts,
+                slippage=slip,
             ),
             "rows": rows,
         }
     report = {
-        "schema_version": 1, "run_id": run_id,
+        "schema_version": 1,
+        "run_id": run_id,
+        "strategy_source_sha256": digest(Path(__file__)),
+        "risk_configuration": settings.risk.model_dump(mode="json"),
         "created_at": datetime.now(UTC).isoformat(),
-        "status": "historical_diagnostic_only", "eligible_for_live": False,
-        "target_r": TARGET_R, "sessions_requested": sessions,
-        "session_count": len(calendar), "from": calendar[0] if calendar else None,
+        "status": "historical_diagnostic_only",
+        "eligible_for_live": False,
+        "target_r": TARGET_R,
+        "sessions_requested": sessions,
+        "session_count": len(calendar),
+        "from": calendar[0] if calendar else None,
         "through": calendar[-1] if calendar else None,
-        "symbols": symbols, "bars": sum(len(f) for f in frames.values()),
+        "symbols": symbols,
+        "bars": sum(len(f) for f in frames.values()),
+        "data_quality": dict(quality),
         "strategies": strategies,
         "limitations": [
             "Existing stored NSE M5 symbols only; selected survivorship-biased universe.",
@@ -583,6 +784,8 @@ def run_research(
             "A profitable session-close exit is not a target-hit success.",
             "Wilson bounds assume independent calls; correlated rows weaken that evidence.",
             "Unknown sectors share one conservative capped bucket.",
+            "Only complete regular 09:15-15:30 sessions evaluated; gaps/short sessions excluded.",
+            "Gap-through-stop losses can exceed the sized stop-loss cash budget.",
         ],
     }
     destination = output / "intraday_research" / run_id / "report.json"

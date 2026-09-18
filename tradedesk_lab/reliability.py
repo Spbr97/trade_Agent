@@ -200,6 +200,10 @@ def _stack(train, inner, outer, calendar, trials, scope):
 
 
 def _fold_predictions(train, test, dataset, choices, trials, scope):
+    if train.empty or test.empty:
+        raise ValueError("Both training and evaluation rows are required")
+    if pd.to_datetime(train.label_end_date).max() >= pd.to_datetime(test.armed_on).min():
+        raise ValueError("Training labels overlap evaluation time; purge before fitting")
     inner, outer, bundles = {}, {}, {}
     folds = walk_forward(train, dataset.calendar, splits=3)
     for family, hp in choices.items():
@@ -266,6 +270,31 @@ def run_reliability(dataset: Dataset, *, output: Path = OUTPUT, outer_splits: in
     frame = dataset.frame.sort_values(["armed_on", "signal_id"]).reset_index(drop=True)
     if dataset.manifest.get("label_version") != "net-target-v2":
         raise ValueError("Reliability comparison requires freshly rebuilt net-target-v2 labels")
+    forbidden = {
+        "label",
+        "outcome",
+        "strict_success",
+        "target_hit",
+        "net_profitable",
+        "net_r",
+        "gross_r",
+        "net_pnl",
+        "costs",
+        "entry_date",
+        "label_end_date",
+        "trade_end_date",
+        "exit_price",
+        "sessions_to_outcome",
+        "realised_r",
+    }
+    if forbidden.intersection(dataset.features):
+        raise ValueError("Outcome or future entry fields cannot be model features")
+    if not frame.label.isin([0, 1]).all() or not np.isfinite(frame.net_r).all():
+        raise ValueError("Only fully resolved binary labels with finite net returns are eligible")
+    if frame.signal_id.duplicated().any():
+        raise ValueError("Duplicate signal identifiers cannot enter reliability research")
+    if frame.label_end_date.isna().any() or (frame.label_end_date < frame.armed_on).any():
+        raise ValueError("Every outcome must have a valid label interval")
     dates = np.sort(frame.armed_on.unique())
     if len(dates) < 120:
         raise ValueError("At least 120 distinct dates required for nested temporal validation")
@@ -325,6 +354,8 @@ def run_reliability(dataset: Dataset, *, output: Path = OUTPUT, outer_splits: in
     )
     print("Reliability: freezing final candidates and historical diagnostic policies", flush=True)
     inner, probabilities, bundles = _fold_predictions(dev, test, dataset, choices, trials, "final")
+    if not probabilities:
+        raise ValueError("No usable final calibrated candidates; no research pointer was updated")
     identifier = uuid4().hex
     folder = output / "reliability" / identifier
     folder.mkdir(parents=True, exist_ok=False)
@@ -357,6 +388,11 @@ def run_reliability(dataset: Dataset, *, output: Path = OUTPUT, outer_splits: in
                     trials.append(
                         {"scope": "historical-diagnostic-only", "kind": "selector", **row}
                     )
+    if candidate is not None and (
+        candidate not in policies or policies[candidate]["policy"]["threshold"] > 1
+    ):
+        # An earlier outer score cannot bypass an abstaining final inner selector.
+        candidate = None
     report = {
         "id": identifier,
         "created_at": datetime.now(UTC).isoformat(),
@@ -379,6 +415,21 @@ def run_reliability(dataset: Dataset, *, output: Path = OUTPUT, outer_splits: in
                 "arming close; per-session cap groups armed_on, never future entry_date"
             ),
             "target": {"precision": 0.8, "wilson_lower": 0.7, "calls": 100, "active_sessions": 30},
+            "availability_scope": (
+                "Historical source includes triggered candidates only; session top-k availability "
+                "is conditional on that pool. Full prospective watchlist replay is still required."
+            ),
+            "economics_scope": (
+                "After-cost candidate outcomes, not a position/sector/portfolio constrained replay"
+            ),
+        },
+        "baseline": {
+            "development": session_metrics(
+                evaluation, np.ones(len(evaluation), dtype=bool), calendar
+            ),
+            "historical_diagnostic": session_metrics(
+                test, np.ones(len(test), dtype=bool), final_calendar
+            ),
         },
         "development": development,
         "historical_diagnostic": historical,

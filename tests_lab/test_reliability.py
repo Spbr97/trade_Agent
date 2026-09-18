@@ -128,3 +128,47 @@ def test_legacy_target_labels_cannot_enter_new_research(tmp_path):
     ds = Dataset(frame, ["score"], calendar, {}, {})
     with pytest.raises(ValueError, match="net-target-v2"):
         run_reliability(ds, output=tmp_path)
+
+
+def test_unpurged_outer_labels_cannot_reach_a_model(monkeypatch):
+    frame, calendar = example_frame()
+    train = frame.loc[frame.armed_on <= calendar[100]].reset_index(drop=True)
+    test = frame.loc[frame.armed_on > calendar[100]].reset_index(drop=True)
+    ds = Dataset(frame, ["score"], calendar, {}, {"label_version": "net-target-v2"})
+    with pytest.raises(ValueError, match="overlap evaluation time"):
+        _fold_predictions(train, test, ds, {"logistic": {}}, [], "test")
+
+
+def test_post_outcome_feature_and_unresolved_rows_are_rejected(tmp_path):
+    frame, calendar = example_frame()
+    ds = Dataset(frame, ["score", "net_r"], calendar, {}, {"label_version": "net-target-v2"})
+    with pytest.raises(ValueError, match="cannot be model features"):
+        run_reliability(ds, output=tmp_path)
+    ds.features = ["score"]
+    ds.frame.loc[0, "net_r"] = np.nan
+    with pytest.raises(ValueError, match="fully resolved"):
+        run_reliability(ds, output=tmp_path)
+
+
+def test_calibrator_only_observes_dates_after_training_label_resolution(monkeypatch):
+    from tradedesk_lab.models import fit
+
+    frame, calendar = example_frame(150)
+    frame["label"] = np.arange(len(frame)) % 2
+    fitted_rows = []
+
+    class RecordingEstimator:
+        def fit(self, features, labels):
+            fitted_rows.append(features.index.to_numpy())
+            return self
+
+        def predict_proba(self, features):
+            assert (
+                frame.loc[fitted_rows[0], "label_end_date"].max()
+                < frame.loc[features.index, "armed_on"].min()
+            )
+            return np.column_stack([np.full(len(features), 0.4), np.full(len(features), 0.6)])
+
+    monkeypatch.setattr("tradedesk_lab.models.estimator", lambda *args: RecordingEstimator())
+    fit("logistic", {"C": 0.1}, frame, ["score"], calendar)
+    assert len(fitted_rows) == 1

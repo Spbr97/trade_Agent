@@ -6,10 +6,13 @@ import hashlib
 import json
 import os
 import time
+from collections.abc import Iterator
 from contextlib import contextmanager
-from datetime import UTC, date, datetime, time as daytime, timedelta
+from copy import deepcopy
+from datetime import UTC, date, datetime, timedelta
+from datetime import time as daytime
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any
 from zoneinfo import ZoneInfo
 
 import duckdb
@@ -33,7 +36,16 @@ from tradedesk_lab.registry import Registry
 
 STATE_VERSION = 2
 IST = ZoneInfo("Asia/Kolkata")
-TERMINAL = {"resolved", "chased", "invalidated", "expired", "invalid_geometry", "unsizeable"}
+TERMINAL = {
+    "resolved",
+    "chased",
+    "invalidated",
+    "expired",
+    "invalid_geometry",
+    "unsizeable",
+    "rejected_geometry",
+    "untradeable",
+}
 
 
 @contextmanager
@@ -79,10 +91,15 @@ def _read(path: Path) -> dict[str, Any]:
 def _contract_hashes() -> dict[str, str]:
     """Freeze outcome, feature, model-loader and execution implementations per cohort."""
     names = (
-        "tradedesk_lab/forward.py", "tradedesk_lab/outcomes.py", "tradedesk_lab/portable.py",
-        "src/tradedesk/backtest/fills.py", "src/tradedesk/engine/indicators.py",
-        "src/tradedesk/prediction/features.py", "src/tradedesk/risk/sizing.py",
-        "src/tradedesk/markets/costs.py", "src/tradedesk/risk/costs.py",
+        "tradedesk_lab/forward.py",
+        "tradedesk_lab/outcomes.py",
+        "tradedesk_lab/portable.py",
+        "src/tradedesk/backtest/fills.py",
+        "src/tradedesk/engine/indicators.py",
+        "src/tradedesk/prediction/features.py",
+        "src/tradedesk/risk/sizing.py",
+        "src/tradedesk/markets/costs.py",
+        "src/tradedesk/risk/costs.py",
     )
     return {name: digest(ROOT / name) for name in names if (ROOT / name).is_file()}
 
@@ -118,12 +135,40 @@ def _score_deadline(armed: date, holidays: set[date]) -> datetime:
 
 def _prediction_hash(record: dict[str, Any]) -> str:
     names = (
-        "signal_id", "source_sha256", "armed_on", "scored_at", "signal", "features",
-        "features_sha256", "probabilities", "ensemble_probability", "spread", "agreement",
-        "selected_for_research", "model_run_id", "artifact_sha256", "contract_sha256",
-        "contract_version", "model_label_contract", "economics", "score_deadline",
-        "prospective_eligible", "evidence_class", "selection_reason", "calendar_sha256",
+        "signal_id",
+        "source_sha256",
+        "armed_on",
+        "scored_at",
+        "signal",
+        "symbol",
+        "scrip_code",
+        "setup",
+        "qty",
+        "rejected_for",
+        "features",
+        "features_sha256",
+        "probabilities",
+        "ensemble_probability",
+        "spread",
+        "agreement",
+        "selected_for_research",
+        "model_run_id",
+        "artifact_sha256",
+        "contract_sha256",
+        "contract_version",
+        "model_label_contract",
+        "economics",
+        "score_deadline",
+        "prospective_eligible",
+        "evidence_class",
+        "selection_reason",
+        "calendar_sha256",
     )
+    return _feature_hash({name: record.get(name) for name in names})
+
+
+def _entry_hash(record: dict[str, Any]) -> str:
+    names = ("entry_date", "fill_price", "hypothetical_qty", "entry_at_open", "entry_recorded_at")
     return _feature_hash({name: record.get(name) for name in names})
 
 
@@ -144,10 +189,12 @@ def _watchlists(root: Path) -> list[tuple[Path, dict[str, Any]]]:
     result = []
     for path in sorted((root / "data/watchlists").glob("*.json")):
         try:
-            value = _read(path)
+            payload = path.read_bytes()
+            value = json.loads(payload)
             date.fromisoformat(value["on"])
         except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError):
             continue
+        value["_collector_sha256"] = hashlib.sha256(payload).hexdigest()
         result.append((path, value))
     return result
 
@@ -233,9 +280,7 @@ def _instrument_maps(
         if symbol.upper() in equity and sector.upper() in indices
     }
     sector_codes = {
-        sector: indices[sector.upper()]
-        for sector in membership
-        if sector.upper() in indices
+        sector: indices[sector.upper()] for sector in membership if sector.upper() in indices
     }
     return indices.get(settings.universe.benchmark.upper()), sector_of, sector_codes
 
@@ -291,13 +336,17 @@ def _score(
     values: dict[str, float],
     report: dict[str, Any],
     activation: dict[str, Any],
-    scored_at: datetime,
+    scored_at: datetime | None,
     holidays: set[date],
     calendar_hash: str | None,
 ) -> dict[str, Any]:
     frame = pd.DataFrame([values], columns=next(iter(bundles.values())).features)
     probabilities = {family: float(bundle.predict(frame)[0]) for family, bundle in bundles.items()}
+    # Capture completion time, not the beginning of a potentially long collection cycle.
+    scored_at = scored_at or datetime.fromisoformat(now())
     values_array = np.array(list(probabilities.values()), dtype=float)
+    if not np.all(np.isfinite(values_array) & (values_array >= 0) & (values_array <= 1)):
+        raise ValueError("Frozen models returned an invalid probability")
     mean = float(values_array.mean())
     spread = float(np.ptp(values_array))
     agrees = spread <= 0.10
@@ -315,7 +364,7 @@ def _score(
     record = {
         "signal_id": signal["id"],
         "source_watchlist": path.name,
-        "source_sha256": digest(path),
+        "source_sha256": watchlist.get("_collector_sha256") or digest(path),
         "armed_on": signal["armed_on"],
         "scored_at": scored_at.isoformat(),
         "score_deadline": deadline.isoformat(),
@@ -323,15 +372,17 @@ def _score(
         "evidence_class": "prospective" if prospective else "retrospective_late",
         "calendar_sha256": calendar_hash,
         "model_run_id": report["id"],
-        "model_label_contract": report.get("metadata", {}).get("contract_version", "legacy-v1"),
-        "artifact_sha256": activation["artifact_sha256"],
-        "contract_sha256": activation["contract_sha256"],
+        "model_label_contract": report.get("metadata", {}).get(
+            "label_version", report.get("metadata", {}).get("contract_version", "legacy-v1")
+        ),
+        "artifact_sha256": deepcopy(activation["artifact_sha256"]),
+        "contract_sha256": deepcopy(activation["contract_sha256"]),
         "contract_version": CONTRACT_VERSION,
-        "economics": activation["economics"],
+        "economics": deepcopy(activation["economics"]),
         "symbol": signal["symbol"],
         "scrip_code": signal["scrip_code"],
         "setup": signal["setup"],
-        "signal": signal,
+        "signal": deepcopy(signal),
         "qty": entry.get("qty"),
         "rejected_for": entry.get("rejected_for", []),
         "features": clean,
@@ -375,6 +426,8 @@ def resolve_record(
         return False
     if record.get("prediction_sha256") and record["prediction_sha256"] != _prediction_hash(record):
         raise ValueError("Frozen prediction payload was modified")
+    if record.get("entry_sha256") and record["entry_sha256"] != _entry_hash(record):
+        raise ValueError("Frozen entry payload was modified")
     if record["status"] in TERMINAL:
         return False
     signal = Signal.model_validate(record["signal"])
@@ -385,11 +438,26 @@ def resolve_record(
     economics = record.get("economics")
     if costs is None:
         costs = EquityCostModel(ChargeSchedule.model_validate((economics or {}).get("costs", {})))
-    known_sessions = sorted(set(session_dates or list(future.index.date)))
+    known_sessions = sorted(set(
+        session_dates if session_dates is not None else list(future.index.date)
+    ))
+    if session_dates is not None and not future.empty:
+        if not known_sessions or future.index[-1].date() > known_sessions[-1]:
+            raise ValueError("Benchmark session calendar is missing or stale")
+    if session_dates is not None and not record.get("entry_date"):
+        expected = [day for day in known_sessions if signal.armed_on < day][:signal.valid_sessions]
+        missing = set(expected) - set(future.index.date)
+        if missing:
+            raise ValueError(f"Cannot infer entry over missing candles: {min(missing)}")
     if record.get("entry_date"):
         result = simulate_outcome(
-            signal, featured, date.fromisoformat(record["entry_date"]),
-            float(record["fill_price"]), float(record["hypothetical_qty"]), costs,
+            signal,
+            featured,
+            date.fromisoformat(record["entry_date"]),
+            float(record["fill_price"]),
+            float(record["hypothetical_qty"]),
+            costs,
+            entry_at_open=record.get("entry_at_open", False),
         )
         record.update(result)
         if record["status"] == "resolved":
@@ -423,21 +491,27 @@ def resolve_record(
             error = geometry_error(float(fill), signal.stop, signal.t1)
             if error:
                 record.update(
-                    status="invalid_geometry", outcome="invalid_geometry",
-                    exclusion_reason=error, resolved_at=now(),
+                    status="invalid_geometry",
+                    outcome="invalid_geometry",
+                    exclusion_reason=error,
+                    resolved_at=now(),
                 )
                 break
             if economics:
                 multiplier = economics["regime_size_multiplier"].get(signal.regime, 0.5)
-                size = position_size(SizeInputs(
-                    equity=float(economics["trading_capital"]), entry=float(fill), stop=signal.stop,
-                    max_risk_pct=float(economics["max_risk_per_trade_pct"]),
-                    max_position_value_pct=float(economics["max_position_value_pct"]),
-                    size_multiplier=float(multiplier),
-                    gap_risk_cap_pct=float(economics["gap_risk_cap_pct"]),
-                    gap95_pct=gap95_pct(bars.loc[bars.index.date <= signal.armed_on]),
-                    available_heat_pct=float(economics["max_portfolio_heat_pct"]),
-                ))
+                size = position_size(
+                    SizeInputs(
+                        equity=float(economics["trading_capital"]),
+                        entry=float(fill),
+                        stop=signal.stop,
+                        max_risk_pct=float(economics["max_risk_per_trade_pct"]),
+                        max_position_value_pct=float(economics["max_position_value_pct"]),
+                        size_multiplier=float(multiplier),
+                        gap_risk_cap_pct=float(economics["gap_risk_cap_pct"]),
+                        gap95_pct=gap95_pct(bars.loc[bars.index.date <= signal.armed_on]),
+                        available_heat_pct=float(economics["max_portfolio_heat_pct"]),
+                    )
+                )
                 qty = size.qty
                 record["sizing_caps"] = size.caps
             else:
@@ -447,8 +521,17 @@ def resolve_record(
                 break
             record.update(entry_date=str(stamp.date()), fill_price=float(fill))
             record["hypothetical_qty"] = qty
+            record["entry_at_open"] = bar.open >= signal.trigger
+            record["entry_recorded_at"] = now()
+            record["entry_sha256"] = _entry_hash(record)
             result = simulate_outcome(
-                signal, featured, stamp.date(), float(fill), qty, costs,
+                signal,
+                featured,
+                stamp.date(),
+                float(fill),
+                qty,
+                costs,
+                entry_at_open=record["entry_at_open"],
             )
             record.update(result)
             if record["status"] == "resolved":
@@ -496,9 +579,7 @@ def summarize(state: dict[str, Any], latest_candle: str | None) -> dict[str, Any
         ),
         "pending_entry": sum(row["status"] == "pending_entry" for row in eligible),
         "triggered_pending": sum(row["status"] == "triggered_pending" for row in eligible),
-        "untriggered_terminal": sum(
-            row["status"] in TERMINAL - {"resolved"} for row in eligible
-        ),
+        "untriggered_terminal": sum(row["status"] in TERMINAL - {"resolved"} for row in eligible),
         "contract_version": CONTRACT_VERSION,
         "all_scored": evidence(resolved),
         "selected_calls": len(selected),
@@ -508,10 +589,13 @@ def summarize(state: dict[str, Any], latest_candle: str | None) -> dict[str, Any
             day: evidence([row for row in resolved if row["entry_date"] == day])
             for day in sorted({row["entry_date"] for row in resolved})
         },
-        "retrospective": evidence([
-            row for row in records
-            if row.get("evidence_class") == "retrospective_late" and row["status"] == "resolved"
-        ]),
+        "retrospective": evidence(
+            [
+                row
+                for row in records
+                if row.get("evidence_class") == "retrospective_late" and row["status"] == "resolved"
+            ]
+        ),
         "latest_candle": latest_candle,
         "minimum_early_read": 30,
         "minimum_oos_evidence": 100,
@@ -538,7 +622,7 @@ def _collect(root: Path, output: Path) -> dict[str, Any]:
     watchlists = _watchlists(root)
     if state is None:
         latest_existing = max(
-            (value["on"] for _, value in watchlists), default=report["metadata"]["to"]
+            [report["metadata"]["to"], *(value["on"] for _, value in watchlists)]
         )
         state = {
             "version": STATE_VERSION,
@@ -573,7 +657,9 @@ def _collect(root: Path, output: Path) -> dict[str, Any]:
     if activation["contract_sha256"] != contract_hashes:
         raise ValueError("Forward contract code changed; create a separately named forward cohort")
     if activation["contract_version"] != CONTRACT_VERSION:
-        raise ValueError("Forward outcome contract changed; create a separately named forward cohort")
+        raise ValueError(
+            "Forward outcome contract changed; create a separately named forward cohort"
+        )
     economics = activation["economics"]
     costs = EquityCostModel(ChargeSchedule.model_validate(economics["costs"]))
     existing = {row["signal_id"] for row in state["records"]}
@@ -614,8 +700,17 @@ def _collect(root: Path, output: Path) -> dict[str, Any]:
                     )
                     state["records"].append(
                         _score(
-                            entry, watchlist, source, bundles, bars(code), values, report,
-                            activation, as_of, holidays, calendar_hash,
+                            entry,
+                            watchlist,
+                            source,
+                            bundles,
+                            bars(code),
+                            values,
+                            report,
+                            activation,
+                            None,
+                            holidays,
+                            calendar_hash,
                         )
                     )
                     existing.add(signal_id)
@@ -625,7 +720,10 @@ def _collect(root: Path, output: Path) -> dict[str, Any]:
             try:
                 sessions = list(bars(benchmark).index.date) if benchmark else None
                 resolve_record(
-                    record, bars(record["scrip_code"]), slippage, costs=costs,
+                    record,
+                    bars(record["scrip_code"]),
+                    slippage,
+                    costs=costs,
                     session_dates=sessions,
                 )
             except Exception as exc:
@@ -659,8 +757,11 @@ def watch(interval_seconds: int, root: Path = ROOT, output: Path = OUTPUT) -> No
                     state = collect(root, output)
                     summary = state["summary"]
                     status.update(
-                        status="waiting", last_success_at=now(), current_error=None,
-                        consecutive_failures=0, model_run_id=state["activation"]["model_run_id"],
+                        status="waiting",
+                        last_success_at=now(),
+                        current_error=None,
+                        consecutive_failures=0,
+                        model_run_id=state["activation"]["model_run_id"],
                     )
                     if state.get("current_errors"):
                         status["last_error"] = state["current_errors"][-1]
@@ -674,7 +775,9 @@ def watch(interval_seconds: int, root: Path = ROOT, output: Path = OUTPUT) -> No
                 except Exception as exc:
                     error = {"at": now(), "error": f"{type(exc).__name__}: {exc}"}
                     status.update(
-                        status="error", current_error=error, last_error=error,
+                        status="error",
+                        current_error=error,
+                        last_error=error,
                         consecutive_failures=status.get("consecutive_failures", 0) + 1,
                     )
                     print(f"Forward collection failed: {error['error']}", flush=True)

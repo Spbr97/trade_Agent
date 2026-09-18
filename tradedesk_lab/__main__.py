@@ -16,6 +16,12 @@ def main() -> None:
     train = sub.add_parser("train")
     train.add_argument("--no-cpcv", action="store_true")
     sub.add_parser("prepare")
+    sub.add_parser("prepare-clean")
+    reliability = sub.add_parser("reliability")
+    reliability.add_argument("--use-prepared", action="store_true")
+    intraday = sub.add_parser("intraday-research")
+    intraday.add_argument("--sessions", type=int, default=120)
+    intraday.add_argument("--cohorts", type=int, default=200)
     sub.add_parser("verify-base")
     serve = sub.add_parser("serve")
     serve.add_argument("--port", type=int, default=8766)
@@ -23,6 +29,26 @@ def main() -> None:
     forward.add_argument("--watch", action="store_true")
     forward.add_argument("--interval-seconds", type=int, default=900)
     args = parser.parse_args()
+    if args.command == "intraday-research":
+        if args.sessions < 1 or args.cohorts < 1:
+            parser.error("sessions and cohorts must be positive")
+        from tradedesk_lab.intraday_research import run_research
+
+        report = run_research(sessions=args.sessions, n_cohorts=args.cohorts)
+        print("Intraday diagnostic:", report["run_id"], "Live eligible:", report["eligible_for_live"])
+        return
+    if args.command in {"prepare-clean", "reliability"}:
+        from tradedesk_lab.clean_dataset import load_prepared, prepare_clean
+
+        data = load_prepared() if getattr(args, "use_prepared", False) else prepare_clean()
+        if args.command == "reliability":
+            from tradedesk_lab.reliability import run_reliability
+
+            report = run_reliability(data)
+            print("Reliability diagnostic:", report["id"], report["eligibility"]["decision"])
+        else:
+            print(json.dumps(data.manifest, indent=2))
+        return
     if args.command == "verify-base":
         print(verify_base())
         return

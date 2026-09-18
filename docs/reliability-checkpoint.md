@@ -1,4 +1,32 @@
-# Paused research checkpoint — 16 September 2026
+# Paused research checkpoint — 18 September 2026
+
+## Current pause
+
+The user explicitly requested that all agents remain parked until they say
+"resume agents" again. No research agent, training run, forward watcher, or
+performance experiment may be started before that instruction.
+
+The resumed work saved after commit `6c01ffa` remains work in progress:
+
+- Forward-integrity implementation and expanded regression tests.
+- Stricter after-cost outcome accounting and immutable prediction records.
+- Reliability model guards for time overlap, unresolved labels, unsafe features,
+  abstention, and triggered-pool limitations.
+- Support/resistance reversal and breakout/retest intraday research with portfolio
+  limits and conservative completed-session checks.
+- A separate clean historical dataset builder and new lab-only CLI commands.
+
+Reported targeted checks before the pause were 19 passing forward tests and 13
+passing intraday tests. The complete final lab suite was not run. Reliability tests
+were blocked during SciPy native import, the new clean-dataset tests were not run,
+and real-data evaluation was blocked by the production scanner's DuckDB lock.
+The production scanner and dashboard were intentionally left alone.
+
+No new dataset, model, policy, or forward cohort has been activated or promoted.
+No accuracy improvement has been demonstrated. The checkpoint is not merge-ready.
+Existing unrelated untracked Groww files are excluded from this research commit.
+
+## Previous checkpoint — 16 September 2026
 
 The user requested that work be wrapped up and committed, with agents paused until
 the user explicitly asks to resume them. Do not automatically restart agents,

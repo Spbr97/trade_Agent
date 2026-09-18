@@ -51,9 +51,16 @@ def simulate_outcome(
         return {
             "status": "rejected_geometry" if error else "untradeable",
             "exclusion_reason": error or "nonpositive_quantity",
-            "label": None, "strict_success": None, "target_hit": None,
-            "net_r": None, "gross_r": None, "net_pnl": None, "costs": None,
-            "outcome": "excluded", "exit_price": None, "label_end_date": None,
+            "label": None,
+            "strict_success": None,
+            "target_hit": None,
+            "net_r": None,
+            "gross_r": None,
+            "net_pnl": None,
+            "costs": None,
+            "outcome": "excluded",
+            "exit_price": None,
+            "label_end_date": None,
             "contract_version": CONTRACT_VERSION,
         }
     data = bars.copy()
@@ -64,19 +71,32 @@ def simulate_outcome(
     start = pd.Timestamp(entry_date).date()
     future = data.loc[pd.DatetimeIndex(data.index).date >= start]
     pending = {
-        "status": "triggered_pending", "entry_date": str(start),
-        "fill_price": fill_price, "label": None, "strict_success": None,
-        "target_hit": None, "gross_r": None, "net_r": None, "net_pnl": None,
-        "costs": None, "exit_price": None, "outcome": "insufficient",
-        "sessions_to_outcome": None, "label_end_date": None,
+        "status": "triggered_pending",
+        "entry_date": str(start),
+        "fill_price": fill_price,
+        "label": None,
+        "strict_success": None,
+        "target_hit": None,
+        "gross_r": None,
+        "net_r": None,
+        "net_pnl": None,
+        "costs": None,
+        "exit_price": None,
+        "outcome": "insufficient",
+        "sessions_to_outcome": None,
+        "label_end_date": None,
         "contract_version": CONTRACT_VERSION,
         "entry_day_ordering": "known_open" if entry_at_open else "conservative_close_confirmation",
     }
     if future.empty or pd.Timestamp(future.index[0]).date() != start:
         return pending
     position = Position(
-        signal=signal, entry_date=start, entry_price=fill_price,
-        qty_initial=qty, qty_open=qty, stop=signal.stop,
+        signal=signal,
+        entry_date=start,
+        entry_price=fill_price,
+        qty_initial=qty,
+        qty_open=qty,
+        stop=signal.stop,
         fills=[Fill(start, fill_price, qty, FillReason.ENTRY)],
     )
     for session, (stamp, row) in enumerate(future.iterrows()):
@@ -84,9 +104,14 @@ def simulate_outcome(
         if session == 0 and not entry_at_open and float(row.close) < signal.t1:
             high = min(high, math.nextafter(signal.t1, -math.inf))
         bar = Bar(
-            on=pd.Timestamp(stamp).date(), open=float(row.open), high=high,
-            low=float(row.low), close=float(row.close), volume=int(row.volume),
-            ema10=float(row.ema10), atr=float(row.atr14),
+            on=pd.Timestamp(stamp).date(),
+            open=float(row.open),
+            high=high,
+            low=float(row.low),
+            close=float(row.close),
+            volume=int(row.volume),
+            ema10=float(row.ema10),
+            atr=float(row.atr14),
         )
         evaluate_exit(position, bar, float(costs.slippage_pct), entry_day=session == 0)
         if not position.closed:
@@ -97,25 +122,29 @@ def simulate_outcome(
         # classifying all legs from the final exit date. One DP charge per sell date.
         for trade_type in (TradeType.INTRADAY, TradeType.DELIVERY):
             quantity = sum(
-                f.qty for f in sells
+                f.qty
+                for f in sells
                 if (TradeType.INTRADAY if f.on == start else TradeType.DELIVERY) == trade_type
             )
             if quantity:
                 charges += costs.leg_cost(
-                    side=Side.BUY, trade_type=trade_type, qty=quantity,
+                    side=Side.BUY,
+                    trade_type=trade_type,
+                    qty=quantity,
                     price=price_decimal(fill_price),
                 ).total
         dp_dates: set[date] = set()
         for fill in sells:
             trade_type = TradeType.INTRADAY if fill.on == start else TradeType.DELIVERY
             charges += costs.leg_cost(
-                side=Side.SELL, trade_type=trade_type, qty=fill.qty,
-                price=price_decimal(fill.price), dp_applies=fill.on not in dp_dates,
+                side=Side.SELL,
+                trade_type=trade_type,
+                qty=fill.qty,
+                price=price_decimal(fill.price),
+                dp_applies=fill.on not in dp_dates,
             ).total
             dp_dates.add(fill.on)
-        proceeds = sum(
-            (price_decimal(f.price) * qty_decimal(f.qty) for f in sells), Decimal("0")
-        )
+        proceeds = sum((price_decimal(f.price) * qty_decimal(f.qty) for f in sells), Decimal("0"))
         gross = proceeds - price_decimal(fill_price) * qty_decimal(qty)
         net = gross - charges
         initial_risk = (price_decimal(fill_price) - price_decimal(signal.stop)) * qty_decimal(qty)
@@ -123,13 +152,20 @@ def simulate_outcome(
         success = target_hit and net > 0
         final_reason = sells[-1].reason
         return {
-            **pending, "status": "resolved", "target_hit": target_hit,
-            "strict_success": success, "label": int(success),
+            **pending,
+            "status": "resolved",
+            "target_hit": target_hit,
+            "strict_success": success,
+            "label": int(success),
             "outcome": "target" if final_reason == FillReason.PARTIAL else final_reason.value,
-            "net_profitable": net > 0, "gross_r": float(gross / initial_risk),
-            "net_r": float(net / initial_risk), "net_pnl": float(net),
-            "costs": float(charges), "exit_price": float(proceeds / qty_decimal(qty)),
-            "sessions_to_outcome": session, "label_end_date": str(bar.on),
+            "net_profitable": net > 0,
+            "gross_r": float(gross / initial_risk),
+            "net_r": float(net / initial_risk),
+            "net_pnl": float(net),
+            "costs": float(charges),
+            "exit_price": float(proceeds / qty_decimal(qty)),
+            "sessions_to_outcome": session,
+            "label_end_date": str(bar.on),
             "fills": [
                 {"on": str(f.on), "price": f.price, "qty": f.qty, "reason": f.reason.value}
                 for f in position.fills
