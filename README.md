@@ -27,6 +27,7 @@ to keep collecting evidence, not because it's expected to work.
 | M11 prediction layer | Shadow-only (never places or sizes a trade). Purged walk-forward validation, a locked final-test set, per-model hyperparameter tuning, per-setup breakdown, sector-return features, and a closed calibration-drift loop (`tradedesk ml check-drift`) as of 2026-09-13. Honest current finding: OOS ROC-AUC ~0.55, no threshold shows a real edge yet (`has_edge=False`) — it's a rigorous pipeline, not (yet) a profitable one. A follow-up mean-reversion feature search found a real gross edge (+0.067R, statistically significant) that does not survive real costs at policy-compliant sizing; a model trained on it scored a coin-flip OOS AUC (0.4996) — reported honestly as a negative result, not shipped. |
 | Setup eligibility gate | **Every setup currently shows NO TRADE.** As of 2026-09-13 no signal alerts until its setup has *proven* itself — ≥500 resolved trades, ≥100 out-of-sample, ≥80% win rate, and (the strongest check) beats a matched random-entry timing baseline by a real margin. None of the three live NSE setups clear it yet; measured against random timing they are actually *worse* than picking an entry at random. This is deliberate, not a bug — see "Signal eligibility" below. |
 | Intraday research (unreleased) | A from-scratch intraday/scalping engine (session VWAP, multi-timeframe alignment, a 10-state regime taxonomy, and a null-timing validation gate) was built and proven against 2 years of real 1–60 minute data for 5 liquid NSE names. The one setup tried (VWAP Reclaim) failed the same random-timing test above (p=0.44) and is built, tested, and wired into nothing live. Infrastructure only — no intraday alerting exists. |
+| Research lab / strategy validation harness | `tradedesk_lab/` (M14–M18) is an isolated sandbox — hash-verified to never touch production — for statistical-rigor re-checks, prospective forward scoring, and crypto intraday research. `tradedesk_lab/harness/` is a reusable gauntlet (random-entry benchmark → in-sample → walk-forward → parameter sensitivity → Monte Carlo → regime split → kill criteria) any new rule set can be run through before it's trusted. First real run: `MomentumContinuation` on crypto H1 data, correctly killed at the random-entry-benchmark stage (p=0.986, worse than random timing). Results render at `/lab`'s Harness tab, mounted under the main dashboard's port. |
 
 Details: [docs/signoff-m2-m3.md](docs/signoff-m2-m3.md), [docs/signoff-crypto-phase4.md](docs/signoff-crypto-phase4.md).
 
@@ -69,11 +70,11 @@ uv run tradedesk dashboard                  # http://127.0.0.1:8765 - Calls/Repo
 
 ### Unattended automation
 
-9 Windows Scheduled Tasks (`Get-ScheduledTask -TaskName tradedesk-*`) run this without you:
-evening scan + `ml check-drift` after each NSE/BSE close, live monitoring during market
-hours on all three markets, a crypto check every 3h from 09:00 to 00:00 IST, and a NIFTY
-options-chain snapshot daily (forward-only data collection - see `CLAUDE.md` for why). To
-run any check manually right now instead of waiting for its schedule:
+~15 Windows Scheduled Tasks (`Get-ScheduledTask -TaskName tradedesk-*`) run this without you:
+data loads, live sessions, after-close scans and `ml check-drift` on each market, per-market
+signal trackers, research trackers, EOD learning, an options snapshot, and an always-on
+dashboard. See `CLAUDE.md` for the full list and the `--no-sync` scheduling gotcha. To run
+any check manually right now instead of waiting for its schedule:
 
 ```powershell
 Start-ScheduledTask -TaskName tradedesk-after-close       # NSE
@@ -102,7 +103,8 @@ never silent.
 - A candle window narrower than ~6 days ending at "now" silently drops the newest bar — an
   undocumented API quirk. `candles_history()` pads around it.
 - Windows Smart App Control blocks some brand-new wheels (numpy 2.5, pandas 3); hence the pins in
-  `pyproject.toml`.
+  `pyproject.toml`. It also blocks `mypy` itself on this machine — `ruff check` + `pytest` are
+  the reliable local checks; don't rely on the `mypy` line above actually running.
 - This folder is OneDrive-synced — exclude `.venv/` from sync, or accept a slow first install.
 
 ## Scope
