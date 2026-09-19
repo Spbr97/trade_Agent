@@ -74,6 +74,28 @@ def metrics(trades: Sequence[ClosedTrade]) -> Metrics:
     return m
 
 
+def longest_streak(results: Sequence[float], *, win: bool) -> int:
+    """Longest run of consecutive wins (`> 0`) or losses (`<= 0`) in `results`' given order -
+    caller decides the order (chronological for a real trade sequence, a Monte Carlo
+    reshuffle's random order for that distribution). Takes plain R-multiples/P&L floats, not
+    `ClosedTrade`, so it works for any trade representation (e.g. tradedesk_lab's
+    `ResolvedCandidate`), not just the production backtester's own trade type."""
+    best = current = 0
+    for r in results:
+        hit = r > 0 if win else r <= 0
+        current = current + 1 if hit else 0
+        best = max(best, current)
+    return best
+
+
+def longest_losing_streak(results: Sequence[float]) -> int:
+    return longest_streak(results, win=False)
+
+
+def longest_winning_streak(results: Sequence[float]) -> int:
+    return longest_streak(results, win=True)
+
+
 def max_drawdown(equity: pd.Series) -> float:
     """Largest peak-to-trough fall as a fraction of the peak."""
     if equity.empty:

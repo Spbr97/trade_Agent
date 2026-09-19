@@ -101,6 +101,22 @@ def create_app(root: Path, output: Path) -> FastAPI:
             raise HTTPException(404, "No recorded ensemble predictions yet")
         return result
 
+    @app.get("/api/harness")
+    async def harness() -> list[dict[str, Any]]:
+        def load() -> list[dict[str, Any]]:
+            directory = output / "harness"
+            if not directory.exists():
+                return []
+            reports = []
+            for report_path in sorted(directory.glob("*/latest.json")):
+                try:
+                    reports.append(json.loads(report_path.read_text(encoding="utf-8")))
+                except (json.JSONDecodeError, OSError):
+                    continue
+            return reports
+
+        return await asyncio.to_thread(load)
+
     @app.get("/api/decisions")
     async def decisions(market: str = Query("nse", pattern="^(nse|bse|crypto)$")) -> dict[str, Any]:
         def load() -> dict[str, Any]:
