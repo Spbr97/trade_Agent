@@ -11,7 +11,14 @@ from datetime import date
 
 import pandas as pd
 
-from tradedesk.backtest.reports import cagr, equity_curve_from_trades, log_returns, sharpe_ratio
+from tradedesk.backtest.reports import (
+    cagr,
+    equity_curve_from_trades,
+    log_returns,
+    longest_losing_streak,
+    longest_winning_streak,
+    sharpe_ratio,
+)
 
 
 @dataclass
@@ -60,6 +67,20 @@ def test_sharpe_ratio_zero_on_flat_or_short_series() -> None:
 def test_cagr_zero_on_empty_or_nonpositive_start() -> None:
     assert cagr(pd.Series(dtype=float), date(2024, 1, 1), date(2024, 12, 31)) == 0.0
     assert cagr(pd.Series([0.0, 100.0]), date(2024, 1, 1), date(2024, 12, 31)) == 0.0
+
+
+def test_longest_streak_counts_consecutive_runs_in_given_order() -> None:
+    results = [1.0, 2.0, -1.0, -0.5, -2.0, 3.0, -0.1, -0.2]
+    assert longest_losing_streak(results) == 3  # the -1.0/-0.5/-2.0 run
+    assert longest_winning_streak(results) == 2  # the 1.0/2.0 run
+    assert longest_losing_streak([]) == 0
+    assert longest_losing_streak([1.0, 2.0]) == 0
+    assert longest_winning_streak([-1.0]) == 0
+
+
+def test_longest_streak_treats_exact_zero_as_a_loss() -> None:
+    # r_multiple == 0 is a scratch, not a win - matches metrics()'s own `r > 0` win test.
+    assert longest_losing_streak([0.0, 0.0, 1.0]) == 2
 
 
 def test_equity_curve_from_trades_forward_fills_between_exits() -> None:
