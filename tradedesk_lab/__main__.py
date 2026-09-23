@@ -5,6 +5,8 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from datetime import UTC, date, datetime
+from uuid import uuid4
 
 from tradedesk_lab.artifacts import OUTPUT, ROOT, verify_base
 
@@ -26,6 +28,11 @@ def main() -> None:
     mcb.add_argument("--sessions", type=int, default=120)
     aem = sub.add_parser("aem-prepare")
     aem.add_argument("--sessions", type=int, default=120)
+    aem.add_argument("--as-of", type=date.fromisoformat)
+    universe = sub.add_parser("nse-screen")
+    universe.add_argument("--as-of", type=date.fromisoformat)
+    universe.add_argument("--shortlist-size", type=int, default=50)
+    universe.add_argument("--backfill-sessions", type=int, default=120)
     sub.add_parser("mcb-audit")
     sub.add_parser("verify-base")
     serve = sub.add_parser("serve")
@@ -34,6 +41,35 @@ def main() -> None:
     forward.add_argument("--watch", action="store_true")
     forward.add_argument("--interval-seconds", type=int, default=900)
     args = parser.parse_args()
+    if args.command == "nse-screen":
+        if args.shortlist_size < 1 or args.backfill_sessions < 1:
+            parser.error("shortlist size and backfill sessions must be positive")
+        from tradedesk_lab.nse_universe import run_nse_screen
+
+        report = run_nse_screen(
+            as_of=args.as_of,
+            shortlist_size=args.shortlist_size,
+            backfill_sessions=args.backfill_sessions,
+        )
+        print(
+            json.dumps(
+                {
+                    key: report.get(key)
+                    for key in (
+                        "status",
+                        "artifact_path",
+                        "summary",
+                        "backfill_plan",
+                        "error",
+                        "recovery",
+                    )
+                },
+                indent=2,
+            )
+        )
+        if report["status"].startswith("blocked_"):
+            raise SystemExit(1)
+        return
     if args.command == "mcb-audit":
         from tradedesk_lab.mcb_data_audit import audit_mcb_data
 
@@ -42,10 +78,42 @@ def main() -> None:
     if args.command == "aem-prepare":
         if args.sessions < 1:
             parser.error("sessions must be positive")
-        from tradedesk_lab.aem_dataset import prepare_aem
+        import duckdb
 
-        data = prepare_aem(sessions=args.sessions)
-        print(json.dumps(data.manifest, indent=2))
+        from tradedesk_lab.aem_dataset import prepare_aem
+        from tradedesk_lab.artifacts import write_json
+
+        try:
+            data = prepare_aem(sessions=args.sessions, as_of=args.as_of)
+        except duckdb.IOException as exc:
+            # A blocked read is not a new dataset and must not replace latest.json.
+            target = OUTPUT / "aem" / "blocked" / f"{uuid4().hex}.json"
+            report = {
+                "status": "blocked_source_unavailable",
+                "created_at": datetime.now(UTC).isoformat(),
+                "eligible_for_live": False,
+                "sessions_requested": args.sessions,
+                "as_of_requested": str(args.as_of) if args.as_of else None,
+                "error": str(exc),
+                "recovery": (
+                    "Retry after the existing database owner releases its connection. "
+                    "Do not stop the live service or copy a database while it is being written."
+                ),
+                "artifact_path": str(target),
+            }
+            write_json(target, report)
+            print(json.dumps(report, indent=2))
+            raise SystemExit(1) from exc
+        print(
+            json.dumps(
+                {
+                    key: value
+                    for key, value in data.manifest.items()
+                    if key not in {"source", "dependency_sha256", "diagnostics"}
+                },
+                indent=2,
+            )
+        )
         return
     if args.command == "mcb-prepare":
         if args.sessions < 1:

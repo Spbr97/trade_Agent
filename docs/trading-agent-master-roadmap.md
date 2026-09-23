@@ -5,9 +5,10 @@ of the current repository. The user subsequently authorized implementation. Work
 restricted to the isolated research lab: it does not authorize live execution, agent
 resumption, model promotion, or dashboard/management changes.
 
-The research agents remain parked until the user explicitly says **resume agents**.
-The current implementation branch is `codex/reliability-80-research`; its starting WIP
-checkpoint is `ba71981`. The unrelated untracked Groww work is outside this roadmap.
+The user explicitly resumed agents on 23 September 2026. The integrated starting
+checkpoint is `705895b`; resumed work is isolated on `codex/nse-anticipatory-validation`.
+See [the current validation checkpoint](nse-aem-validation-checkpoint.md).
+The unrelated untracked Groww work remains outside this roadmap.
 
 ## Implementation status — 18 September 2026
 
@@ -437,9 +438,10 @@ cannot silently affect existing scans.
 
 ## Next concrete task
 
-Keep the agents parked. Expand from the ten-symbol diagnostic to a representative,
-historically frozen liquid pilot universe, using the existing loader and database
-contract. Rebuild the event dataset, then run the raw setup and matched-random evaluation
-before authorizing classification or expected-move models. This is the smallest sequence
-that can answer the decisive first question: **does MCB itself have a reproducible
-after-cost edge?**
+Screen every locally stored NSE cash EQ stock, freeze the daily shortlist independently
+of M1/M5 availability, and review the separate data-coverage/backfill plan. Reconstruct
+AEM using the corrected v2 feature/label contract without changing entry thresholds.
+The old 37.4% figure is a legacy v1 development diagnostic, not a v2 result or OOS proof.
+Next build a matched-random baseline with identical entry, fill, cost and holding rules,
+followed by portfolio-constrained replay and frozen prospective evidence. Classification
+and expected-move training remain downstream of trustworthy data and execution labels.

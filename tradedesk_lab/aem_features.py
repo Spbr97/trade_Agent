@@ -21,9 +21,11 @@ def daily_snapshot(
     """Evidence known after the daily close, without requiring MCB compression."""
     cutoff = pd.Timestamp(on).date()
     idx = pd.DatetimeIndex(frame.index)
+    if idx.hasnans or not idx.is_monotonic_increasing or idx.has_duplicates:
+        raise ValueError("invalid_daily_timestamps")
     dates = idx.tz_convert("Asia/Kolkata").date if idx.tz is not None else idx.date
     history = frame.loc[dates <= cutoff]
-    if history.empty or pd.Timestamp(history.index[-1]).date() != cutoff:
+    if history.empty or dates[dates <= cutoff][-1] != cutoff:
         raise ValueError("missing_daily_close")
     if len(history) < contract.minimum_daily_sessions:
         raise ValueError("insufficient_daily_warmup")
@@ -68,7 +70,46 @@ def intraday_snapshot(
     resistance: float,
     contract: AemContract,
 ) -> dict[str, Any]:
-    """Evaluate a completed M5 bar for a move toward, but not through, resistance."""
+    """Evaluate a fresh, completed M1 bar using the frozen signal interval."""
+    when = pd.Timestamp(at)
+    if pd.isna(when):
+        raise ValueError("invalid_decision_timestamp")
+    when = when.tz_localize("Asia/Kolkata") if when.tz is None else when.tz_convert("Asia/Kolkata")
+    bar = pd.Timedelta(minutes=contract.signal_interval_minutes)
+    if when != when.floor("min"):
+        raise ValueError("unaligned_decision_timestamp")
+    idx = _ist_index(frame)
+    if idx.hasnans or not idx.is_monotonic_increasing or idx.has_duplicates:
+        raise ValueError("invalid_signal_timestamps")
+    # Discard all future candles before indicators or interval checks. Appending
+    # sparse future data must never change which bar was closed at this decision.
+    frame = frame.loc[idx + bar <= when]
+    if frame.empty:
+        raise ValueError("no_closed_intraday_bar")
+    closed_idx = _ist_index(frame)
+    session_idx = closed_idx[closed_idx.date == when.date()]
+    if len(session_idx) < contract.opening_range_bars:
+        raise ValueError("opening_range_incomplete")
+    if session_idx[-1] + bar != when:
+        raise ValueError("stale_signal_bar")
+    if (
+        session_idx[0] != when.normalize() + pd.Timedelta(hours=9, minutes=15)
+        or not ((session_idx[1:] - session_idx[:-1]) == bar).all()
+    ):
+        raise ValueError("incomplete_signal_session")
+    current = frame.loc[closed_idx.date == when.date()]
+    try:
+        values = current[["open", "high", "low", "close", "volume"]].to_numpy(dtype=float)
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError("invalid_signal_bar") from exc
+    if (
+        not np.isfinite(values).all()
+        or (values[:, :4] <= 0).any()
+        or (values[:, 4] < 0).any()
+        or (values[:, 2] > np.minimum(values[:, 0], values[:, 3])).any()
+        or (values[:, 1] < np.maximum(values[:, 0], values[:, 3])).any()
+    ):
+        raise ValueError("invalid_signal_bar")
     enriched = frame
     if not {"vwap", "atr14", "session_bar"}.issubset(enriched):
         enriched = intraday_features(enriched)
@@ -79,21 +120,10 @@ def intraday_snapshot(
             lookback_sessions=contract.rvol_lookback_sessions,
             min_sessions=contract.rvol_min_sessions,
         )
-    when = pd.Timestamp(at)
-    if when.tz is None:
-        when = when.tz_localize("Asia/Kolkata")
-    else:
-        when = when.tz_convert("Asia/Kolkata")
     idx = _ist_index(enriched)
-    differences = idx.to_series().diff().dropna()
-    bar = differences.median() if not differences.empty else pd.Timedelta(minutes=1)
     closed = enriched.loc[idx + bar <= when]
-    if closed.empty:
-        raise ValueError("no_closed_intraday_bar")
     session_idx = _ist_index(closed)
     session = closed.loc[session_idx.date == when.date()]
-    if len(session) < contract.opening_range_bars:
-        raise ValueError("opening_range_incomplete")
     last = session.iloc[-1]
     previous = session.iloc[-2] if len(session) > 1 else last
     close = float(last.close)

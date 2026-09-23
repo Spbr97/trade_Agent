@@ -15,8 +15,10 @@ from dataclasses import asdict, dataclass
 @dataclass(frozen=True)
 class AemContract:
     strategy_version: str = "AEM_v1"
-    feature_version: str = "aem-point-in-time-v1"
-    label_version: str = "aem-quick-net-target-v1"
+    feature_version: str = "aem-point-in-time-v2"
+    label_version: str = "aem-quick-net-target-v2"
+    signal_interval_minutes: int = 1
+    execution_interval_minutes: int = 1
     minimum_daily_sessions: int = 60
     resistance_lookback_sessions: int = 10
     maximum_resistance_distance: float = 0.06
@@ -42,6 +44,8 @@ class AemContract:
     rvol_min_sessions: int = 5
 
     def __post_init__(self) -> None:
+        if self.signal_interval_minutes != 1 or self.execution_interval_minutes != 1:
+            raise ValueError("AEM requires one-minute signal and execution bars")
         if self.minimum_daily_sessions < 50:
             raise ValueError("daily history floor is too short")
         if self.resistance_lookback_sessions < 5:

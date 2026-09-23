@@ -1,6 +1,15 @@
-# Paused research checkpoint — 18 September 2026
+# Research checkpoints
 
-## Current pause
+## Resumed — 23 September 2026
+
+The user explicitly resumed agents. The historical pause below is superseded.
+The previously integrated checkpoint is `705895b`; the new isolated branch is
+`codex/nse-anticipatory-validation`. Current work and verification are recorded in
+[NSE/AEM validation checkpoint](nse-aem-validation-checkpoint.md).
+No production code, dashboard, management service, strategy eligibility, or orders
+are changed by this resumption. Existing unrelated Groww work remains excluded.
+
+## Historical pause — 18 September 2026
 
 The user explicitly requested that all agents remain parked until they say
 "resume agents" again. No research agent, training run, forward watcher, or
