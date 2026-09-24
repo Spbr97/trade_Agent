@@ -1,6 +1,6 @@
 # Accuracy-first checkbox roadmap
 
-Updated: 24 September 2026. Working branch: `codex/nse-anticipatory-validation`.
+Updated: 25 September 2026. Working branch: `codex/aem-baseline-gates`.
 
 Primary objective: maintain and improve the reliability of executable NSE calls,
 working toward 70–80% successful calls within sessions. Prioritize anticipatory
@@ -38,6 +38,12 @@ dated records. Proposed future production changes in those documents remain defe
   30 April 2026, whose reproducible 21-bar opening gap is retained and rejected.
 - [x] Replay the unchanged AEM contract on the frozen 50-stock cohort: **149/693
   strict wins (21.50%)**, **−0.27471R per resolved fill**. The baseline fails.
+- [x] Run the broader matched-random gate: observed timing is **−0.03949R per
+  attempt worse** than 500 matched timing-null cohorts. The gate fails.
+- [x] Run all registered execution stresses. The worst case is doubled slippage at
+  **18.90% strict success** and **−0.44255R per fill**. The gate fails.
+- [x] Run the portfolio-constrained replay: **40/191 strict wins (20.94%)**,
+  **−0.27686R per fill** and **−₹7,407.78**. The gate fails.
 - [ ] Demonstrate positive portfolio returns after realistic costs and execution.
 - [ ] Demonstrate the requested accuracy, session consistency and call availability
   on fresh evidence.
@@ -45,7 +51,8 @@ dated records. Proposed future production changes in those documents remain defe
 Evidence: [collection checkpoint](aem-history-checkpoint.md),
 [corrected baseline](nse-aem-validation-checkpoint.md),
 [random comparison](aem-random-policy-checkpoint.md), and
-[canonical scorecard](aem-scorecard-checkpoint.md).
+[canonical scorecard](aem-scorecard-checkpoint.md), and
+[baseline gates](aem-baseline-gates-checkpoint.md).
 
 ## 1. Freeze how accuracy will be measured
 
@@ -83,7 +90,8 @@ in every future session cannot be guaranteed by a model or by this roadmap.
   status and data-source versions. Preserve source and experiment fingerprints.
 - [ ] Restore the five SciPy-dependent test modules in an isolated compatible
   research environment while preserving system security and production dependencies.
-  Current runnable verification is **903 passed, two skipped and one deselected**.
+  Current runnable verification is **910 passed**, with the same pre-existing skips
+  and one deselected tuning test.
   Five modules remain collection-blocked by SciPy `_dop`; one tuning test is blocked
   by scikit-learn `_sgd_fast`. Windows Application Control was not weakened.
 
@@ -96,12 +104,13 @@ strategy performance.
 
 - [x] Replay the unchanged AEM contract on the frozen 50-stock cohort. Keep the
   current 0.8% target, 0.6% stop and 90-minute maximum hold fixed for this comparison.
-- [ ] Re-run matched random policies with the same candles, fills, deadlines and
-  costs. Add a control that evaluates stock selection as well as conditional timing.
-- [ ] Replay simultaneous calls under existing position, entry, sector, sizing and
+- [x] Re-run matched random timing policies with the same candles, fills, deadlines
+  and costs. The timing gate fails; a stock-selection control is still required.
+- [x] Replay simultaneous calls under existing position, entry, sector, sizing and
   portfolio-heat limits. Report executable portfolio results alongside event results.
-- [ ] Verify intraday costs against suitable broker evidence and stress spreads,
-  doubled slippage, one-bar delay, missed fills and gap exits at registered settings.
+- [x] Apply the registered modeled-cost, doubled-slippage, one-bar-delay and
+  missed-fill stresses. Suitable broker evidence and explicit gap-exit verification
+  remain required before any production claim.
 - [ ] Classify errors: weak follow-through, late entry, exhausted move, market/sector
   opposition, inadequate liquidity, bad fill or data failure. Retain every failure.
 
@@ -211,6 +220,7 @@ fresh evidence; missed targets remain visible.
 
 - [x] Complete and audit the frozen M1 collection.
 - [x] Build the reproducible broader AEM dataset and executable baseline scorecard.
+- [x] Run matched-random, stress and portfolio gates on that exact frozen baseline.
 - [ ] Register the first bounded accuracy-improvement experiments from its failure analysis.
 
 For each completed item, attach its artifact/run identifier, date, sample size and
