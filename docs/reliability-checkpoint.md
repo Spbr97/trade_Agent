@@ -1,5 +1,12 @@
 # Research checkpoints
 
+## Continued — 24 September 2026
+
+The next isolated validation slice implements the conditional AEM random-policy
+comparison and a pre-evaluation liquidity universe/download plan. See
+[the benchmark checkpoint](aem-random-policy-checkpoint.md) for results and limitations.
+The old pause instructions remain historical, not active. Nothing is promoted live.
+
 ## Resumed — 23 September 2026
 
 The user explicitly resumed agents. The historical pause below is superseded.

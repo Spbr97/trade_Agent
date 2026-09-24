@@ -29,6 +29,13 @@ def main() -> None:
     aem = sub.add_parser("aem-prepare")
     aem.add_argument("--sessions", type=int, default=120)
     aem.add_argument("--as-of", type=date.fromisoformat)
+    benchmark = sub.add_parser("aem-benchmark")
+    benchmark.add_argument("--dataset-id")
+    benchmark.add_argument("--cohorts", type=int, default=500)
+    benchmark.add_argument("--seed", type=int, default=20260923)
+    pilot = sub.add_parser("aem-universe-plan")
+    pilot.add_argument("--dataset-id", required=True)
+    pilot.add_argument("--shortlist-size", type=int, default=50)
     universe = sub.add_parser("nse-screen")
     universe.add_argument("--as-of", type=date.fromisoformat)
     universe.add_argument("--shortlist-size", type=int, default=50)
@@ -41,6 +48,45 @@ def main() -> None:
     forward.add_argument("--watch", action="store_true")
     forward.add_argument("--interval-seconds", type=int, default=900)
     args = parser.parse_args()
+    if args.command == "aem-benchmark":
+        if not 1 <= args.cohorts <= 5000 or not 0 <= args.seed < 2**32:
+            parser.error("cohorts must be 1..5000 and seed must be uint32")
+        from tradedesk_lab.aem_benchmark import run_benchmark
+
+        report = run_benchmark(dataset_id=args.dataset_id, n_cohorts=args.cohorts, seed=args.seed)
+        summary = {
+            key: report.get(key)
+            for key in ("status", "artifact_path", "observed_replay_verified", "grid_rows", "error")
+        }
+        if "comparison" in report:
+            summary["actual"] = report["comparison"]["actual"]
+            summary["comparison"] = report["comparison"]["comparison"]
+        print(json.dumps(summary, indent=2))
+        if report["status"].startswith("blocked_"):
+            raise SystemExit(1)
+        return
+    if args.command == "aem-universe-plan":
+        if not 1 <= args.shortlist_size <= 500:
+            parser.error("shortlist size must be 1..500")
+        from tradedesk_lab.aem_universe_plan import freeze_universe_plan
+
+        report = freeze_universe_plan(
+            dataset_id=args.dataset_id, shortlist_size=args.shortlist_size
+        )
+        preview = {
+            key: report.get(key)
+            for key in ("status", "artifact_path", "summary", "backfill_plan", "error")
+        }
+        if preview["backfill_plan"]:
+            preview["backfill_plan"] = {
+                key: value
+                for key, value in preview["backfill_plan"].items()
+                if key != "request_batches"
+            }
+        print(json.dumps(preview, indent=2))
+        if report["status"].startswith("blocked_"):
+            raise SystemExit(1)
+        return
     if args.command == "nse-screen":
         if args.shortlist_size < 1 or args.backfill_sessions < 1:
             parser.error("shortlist size and backfill sessions must be positive")

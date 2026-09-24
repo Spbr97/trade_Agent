@@ -1,5 +1,7 @@
 # NSE / anticipatory quick-profit research — 23 September 2026
 
+Follow-up: [24 September random-policy comparison and preperiod universe plan](aem-random-policy-checkpoint.md).
+
 Branch: `codex/nse-anticipatory-validation`, based on integrated checkpoint `705895b`.
 The user explicitly resumed agents. This work stays in `tradedesk_lab`, `tests_lab`
 and research documentation. Production source/configuration, dashboard, management,
