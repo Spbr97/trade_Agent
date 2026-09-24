@@ -1,0 +1,178 @@
+{
+  "version": "daily-mean-reversion-exit-search-v1",
+  "created_at": "2026-09-25",
+  "status": "stopped_no_qualifying_geometry",
+  "eligible_for_live": false,
+  "source": {
+    "database": "data/tradedesk.duckdb",
+    "market": "NSE",
+    "from": "2023-09-01",
+    "to": "2026-09-13",
+    "split": "2025-03-01",
+    "maximum_codes": 900,
+    "selection": "Highest training-half mean net R among cells with at least 300 samples",
+    "test_policy": "Score the single training-selected geometry once on the locked test half"
+  },
+  "search_grid": {
+    "stop_atr": [1.0, 1.5, 2.0, 3.0],
+    "target_r": [0.5, 0.75, 1.0, 1.5, 2.0, 3.0],
+    "maximum_hold_sessions": [2, 3, 5, 10],
+    "risk_per_trade": [0.0025, 0.005, 0.01]
+  },
+  "acceptance": {
+    "target_profitable_rate": 0.6,
+    "minimum_test_net_r": 0.0,
+    "requires_both": true
+  },
+  "best_locked_test": {
+    "rule": "rsi2<5 & above ema200",
+    "risk_per_trade": 0.01,
+    "profitable_rate": 0.5012738853503185,
+    "mean_net_r": -0.024323189317278615,
+    "passed": false
+  },
+  "best_locked_test_economics": {
+    "rule": "rsi2<10 & above ema50",
+    "risk_per_trade": 0.01,
+    "profitable_rate": 0.4966917636322154,
+    "mean_net_r": -0.015466727077044055,
+    "passed": false
+  },
+  "runs": [
+    {
+      "rule": "rsi2<10 & above ema50",
+      "risk_per_trade": 0.0025,
+      "stop_atr": 3.0,
+      "target_r": 2.0,
+      "maximum_hold_sessions": 10,
+      "train_n": 5787,
+      "train_mean_net_r": -0.036224889936062425,
+      "test_n": 4383,
+      "test_profitable_rate": 0.4966917636322154,
+      "test_mean_gross_r": 0.039859046799999444,
+      "test_mean_net_r": -0.08705417124731213,
+      "csv_sha256": "03abe88433452eac2a144fa599afbe4d568cdd626540db51f153e3fe813ad189"
+    },
+    {
+      "rule": "rsi2<10 & above ema50",
+      "risk_per_trade": 0.005,
+      "stop_atr": 3.0,
+      "target_r": 2.0,
+      "maximum_hold_sessions": 10,
+      "train_n": 5787,
+      "train_mean_net_r": 0.006007228906550427,
+      "test_n": 4383,
+      "test_profitable_rate": 0.4966917636322154,
+      "test_mean_gross_r": 0.039859046799999444,
+      "test_mean_net_r": -0.04491279670107934,
+      "csv_sha256": "dbc17120ebdbd9e0ff83703fde21dca762c94f6db0a10a85f7dea97745ee868c"
+    },
+    {
+      "rule": "rsi2<10 & above ema50",
+      "risk_per_trade": 0.01,
+      "stop_atr": 3.0,
+      "target_r": 2.0,
+      "maximum_hold_sessions": 10,
+      "train_n": 5787,
+      "train_mean_net_r": 0.034103029310251,
+      "test_n": 4383,
+      "test_profitable_rate": 0.4966917636322154,
+      "test_mean_gross_r": 0.039859046799999444,
+      "test_mean_net_r": -0.015466727077044055,
+      "csv_sha256": "0e878131c2310f5349aa675d8fb7b6a31bfbb12012b86684df16dd3fc8cb618d"
+    },
+    {
+      "rule": "rsi2<5 & above ema200",
+      "risk_per_trade": 0.0025,
+      "stop_atr": 3.0,
+      "target_r": 1.5,
+      "maximum_hold_sessions": 10,
+      "train_n": 6503,
+      "train_mean_net_r": -0.03452059202221424,
+      "test_n": 3140,
+      "test_profitable_rate": 0.5012738853503185,
+      "test_mean_gross_r": 0.030926401338558306,
+      "test_mean_net_r": -0.0948613756632636,
+      "csv_sha256": "e2a6712f47e9ad65c865d9fab68a0bb506ebd5fa7b89db7cfcc6c1360a217430"
+    },
+    {
+      "rule": "rsi2<5 & above ema200",
+      "risk_per_trade": 0.005,
+      "stop_atr": 3.0,
+      "target_r": 1.5,
+      "maximum_hold_sessions": 10,
+      "train_n": 6503,
+      "train_mean_net_r": 0.007205015979169522,
+      "test_n": 3140,
+      "test_profitable_rate": 0.5012738853503185,
+      "test_mean_gross_r": 0.030926401338558306,
+      "test_mean_net_r": -0.05373917360267147,
+      "csv_sha256": "10d0bdc94638f191eb9eda17c79d6fae0bb38330f62f9b56843c9c3c6c278745"
+    },
+    {
+      "rule": "rsi2<5 & above ema200",
+      "risk_per_trade": 0.01,
+      "stop_atr": 3.0,
+      "target_r": 1.5,
+      "maximum_hold_sessions": 10,
+      "train_n": 6503,
+      "train_mean_net_r": 0.03540577731144842,
+      "test_n": 3140,
+      "test_profitable_rate": 0.5012738853503185,
+      "test_mean_gross_r": 0.030926401338558306,
+      "test_mean_net_r": -0.024323189317278615,
+      "csv_sha256": "58f72686c0a2756ceb802d2d4eaefa218c7a5efe5bae88307beb7cba90e4d8ca"
+    },
+    {
+      "rule": "below ema10 & above ema50",
+      "risk_per_trade": 0.0025,
+      "stop_atr": 3.0,
+      "target_r": 2.0,
+      "maximum_hold_sessions": 10,
+      "train_n": 25789,
+      "train_mean_net_r": -0.09339903154036447,
+      "test_n": 19837,
+      "test_profitable_rate": 0.4679134949841206,
+      "test_mean_gross_r": 0.010387725450972992,
+      "test_mean_net_r": -0.11749208404357622,
+      "csv_sha256": "47481979676c11cb31268e1cc3339de287ab5776f58221285d74e8dd2b3f32a9"
+    },
+    {
+      "rule": "below ema10 & above ema50",
+      "risk_per_trade": 0.005,
+      "stop_atr": 3.0,
+      "target_r": 2.0,
+      "maximum_hold_sessions": 10,
+      "train_n": 25789,
+      "train_mean_net_r": -0.05068362874222025,
+      "test_n": 19837,
+      "test_profitable_rate": 0.4679134949841206,
+      "test_mean_gross_r": 0.010387725450972992,
+      "test_mean_net_r": -0.0750438620614633,
+      "csv_sha256": "eb5905c4eda4fbdfa0f6f9bfbfad254d3ef9f7d306d29d6cf0443bb1557e2889"
+    },
+    {
+      "rule": "below ema10 & above ema50",
+      "risk_per_trade": 0.01,
+      "stop_atr": 3.0,
+      "target_r": 2.0,
+      "maximum_hold_sessions": 10,
+      "train_n": 25789,
+      "train_mean_net_r": -0.022305123402070852,
+      "test_n": 19837,
+      "test_profitable_rate": 0.4679134949841206,
+      "test_mean_gross_r": 0.010387725450972992,
+      "test_mean_net_r": -0.04534718727599327,
+      "csv_sha256": "cf371f7a400392d859345db48dd94f1369423dfa6e7738de7af5aa9228482a94"
+    }
+  ],
+  "decision": {
+    "build_gauntlet_runner": false,
+    "register_candidate": false,
+    "reason": "No locked-test run reached 60% profitable trades or positive mean net R."
+  },
+  "definitions": {
+    "profitable_rate": "Fraction of exits with gross R above zero; this is not target-hit accuracy.",
+    "mean_net_r": "Mean gross R less modeled NSE delivery round-trip costs at the stated risk sizing."
+  }
+}

@@ -117,6 +117,15 @@ async def test_accuracy_milestone_exposes_compact_readonly_baseline(tmp_path):
         },
     }
     (target / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    evidence_path = tmp_path / "docs/evidence/daily-mean-reversion-exit-search.json"
+    evidence_path.parent.mkdir(parents=True)
+    evidence = {
+        "status": "stopped_no_qualifying_geometry",
+        "eligible_for_live": False,
+        "runs": [{"rule": "rsi2<5 & above ema200", "test_profitable_rate": 0.5013}],
+        "decision": {"register_candidate": False},
+    }
+    evidence_path.write_text(json.dumps(evidence), encoding="utf-8")
 
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=create_app(tmp_path, output)), base_url="http://test"
@@ -131,6 +140,7 @@ async def test_accuracy_milestone_exposes_compact_readonly_baseline(tmp_path):
         assert len(result["scorecard"]["core"]) == 12
         assert len(result["scorecard"]["promotion_gates"]) == 4
         assert result["scorecard"]["promotion_gates"]["stress_economics"]["status"] == "pending"
+        assert result["mean_reversion_exit_search"] == evidence
         assert result["validation"] is None
         assert result["eligible_for_live"] is False
         assert (await client.post("/api/accuracy-milestone")).status_code == 405
@@ -223,4 +233,5 @@ async def test_accuracy_milestone_uses_only_matching_completed_validation(tmp_pa
     assert result["validation"]["cohorts"] == 25
     assert result["validation"]["minimum_stress_mean_net_r"] == -1.2
     assert result["scorecard"] == validation["scorecard"]
+    assert result["mean_reversion_exit_search"] is None
     assert result["next_gate"] == "accuracy_improvement_experiments"
