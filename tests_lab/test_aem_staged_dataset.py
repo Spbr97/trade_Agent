@@ -71,4 +71,7 @@ def test_staged_dataset_is_isolated_and_fail_closed(monkeypatch, tmp_path):
     assert manifest["resolved_trades"] == 1
     assert manifest["strict_success_rate"] == 1.0
     assert manifest["accuracy_protocol"]["reported_top_k_policies"] == [1, 2, 3]
+    assert len(manifest["accuracy_scorecard"]["core"]) == 12
+    assert len(manifest["accuracy_scorecard"]["promotion_gates"]) == 4
+    assert manifest["accuracy_scorecard"]["all_promotion_gates_pass"] is False
     assert not (tmp_path / "aem/latest.json").exists()
