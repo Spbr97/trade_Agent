@@ -83,7 +83,24 @@ def create_app(root: Path, output: Path) -> FastAPI:
             len(row["missing_or_incomplete_sessions"]) for row in coverage.values()
         )
         diagnostics = manifest["diagnostics"]
-        scorecard = manifest.get("accuracy_scorecard") or build_accuracy_scorecard(manifest)
+        validation = None
+        validation_pointer = output / "aem_staged_validation/latest.json"
+        if validation_pointer.is_file():
+            pointer = json.loads(validation_pointer.read_text(encoding="utf-8"))
+            if pointer.get("dataset_id") == identifier:
+                candidate = Path(pointer["path"])
+                if candidate.is_file():
+                    loaded = json.loads(candidate.read_text(encoding="utf-8"))
+                    if (
+                        loaded.get("dataset_id") == identifier
+                        and loaded.get("status") == "historical_diagnostic_only"
+                    ):
+                        validation = loaded
+        scorecard = (
+            validation["scorecard"]
+            if validation is not None
+            else manifest.get("accuracy_scorecard") or build_accuracy_scorecard(manifest)
+        )
         return {
             "available": True,
             "status": manifest["status"],
@@ -115,6 +132,26 @@ def create_app(root: Path, output: Path) -> FastAPI:
                 ),
             },
             "scorecard": scorecard,
+            "validation": (
+                {
+                    "id": validation["id"],
+                    "cohorts": validation["matched_random"]["comparison"]["comparison"][
+                        "cohort_count"
+                    ],
+                    "random_advantage_r": validation["matched_random"]["comparison"][
+                        "comparison"
+                    ]["actual_minus_null_mean_net_r"],
+                    "minimum_stress_mean_net_r": validation["stress"][
+                        "minimum_mean_net_r"
+                    ],
+                    "portfolio_selected_fills": validation["portfolio"]["selected_fills"],
+                    "portfolio_mean_net_r": validation["portfolio"][
+                        "mean_net_r_after_constraints"
+                    ],
+                }
+                if validation is not None
+                else None
+            ),
             "protocol": {
                 "version": manifest["accuracy_protocol"]["version"],
                 "sha256": manifest["accuracy_protocol_sha256"],
@@ -126,7 +163,16 @@ def create_app(root: Path, output: Path) -> FastAPI:
                 ],
                 "top_k": manifest["accuracy_protocol"]["reported_top_k_policies"],
             },
-            "next_gate": "matched_random_cost_stress_and_portfolio_replay",
+            "next_gate": (
+                "accuracy_improvement_experiments"
+                if validation is not None
+                and not validation["scorecard"]["all_promotion_gates_pass"]
+                else (
+                    "prospective_evidence"
+                    if validation is not None
+                    else "matched_random_cost_stress_and_portfolio_replay"
+                )
+            ),
             "message": (
                 "The broader frozen baseline is below the target and loses after costs; "
                 "it is diagnostic only and must not generate live calls. Every later "

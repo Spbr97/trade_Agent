@@ -35,6 +35,10 @@ def main() -> None:
     benchmark.add_argument("--dataset-id")
     benchmark.add_argument("--cohorts", type=int, default=500)
     benchmark.add_argument("--seed", type=int, default=20260923)
+    staged_validation = sub.add_parser("aem-validate-staged")
+    staged_validation.add_argument("--dataset-id")
+    staged_validation.add_argument("--cohorts", type=int, default=500)
+    staged_validation.add_argument("--seed", type=int, default=20260924)
     pilot = sub.add_parser("aem-universe-plan")
     pilot.add_argument("--dataset-id", required=True)
     pilot.add_argument("--shortlist-size", type=int, default=50)
@@ -107,6 +111,31 @@ def main() -> None:
             summary["actual"] = report["comparison"]["actual"]
             summary["comparison"] = report["comparison"]["comparison"]
         print(json.dumps(summary, indent=2))
+        if report["status"].startswith("blocked_"):
+            raise SystemExit(1)
+        return
+    if args.command == "aem-validate-staged":
+        if not 1 <= args.cohorts <= 5000 or not 0 <= args.seed < 2**32:
+            parser.error("cohorts must be 1..5000 and seed must be uint32")
+        from tradedesk_lab.aem_staged_validation import run_staged_validation
+
+        report = run_staged_validation(
+            dataset_id=args.dataset_id, n_cohorts=args.cohorts, seed=args.seed
+        )
+        preview = {
+            key: report.get(key)
+            for key in (
+                "status",
+                "artifact_path",
+                "dataset_id",
+                "observed_replay_verified",
+                "grid_rows",
+                "error",
+            )
+        }
+        if "scorecard" in report:
+            preview["promotion_gates"] = report["scorecard"]["promotion_gates"]
+        print(json.dumps(preview, indent=2))
         if report["status"].startswith("blocked_"):
             raise SystemExit(1)
         return
