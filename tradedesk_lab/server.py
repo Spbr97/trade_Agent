@@ -101,6 +101,10 @@ def create_app(root: Path, output: Path) -> FastAPI:
             if validation is not None
             else manifest.get("accuracy_scorecard") or build_accuracy_scorecard(manifest)
         )
+        mean_reversion_search = None
+        mean_reversion_path = root / "docs/evidence/daily-mean-reversion-exit-search.json"
+        if mean_reversion_path.is_file():
+            mean_reversion_search = json.loads(mean_reversion_path.read_text(encoding="utf-8"))
         return {
             "available": True,
             "status": manifest["status"],
@@ -122,32 +126,25 @@ def create_app(root: Path, output: Path) -> FastAPI:
                 "candidate_events": manifest["events"],
                 "resolved_trades": manifest["resolved_trades"],
                 "strict_success_rate": manifest["strict_success_rate"],
-                "strict_success_wilson95": diagnostics["overall"][
-                    "strict_success_wilson95"
-                ],
+                "strict_success_wilson95": diagnostics["overall"]["strict_success_wilson95"],
                 "mean_net_r": manifest["mean_net_r"],
                 "session_coverage": diagnostics["session_coverage"],
-                "incomplete_sessions_rejected": manifest["audit"].get(
-                    "incomplete_session", 0
-                ),
+                "incomplete_sessions_rejected": manifest["audit"].get("incomplete_session", 0),
             },
             "scorecard": scorecard,
+            "mean_reversion_exit_search": mean_reversion_search,
             "validation": (
                 {
                     "id": validation["id"],
                     "cohorts": validation["matched_random"]["comparison"]["comparison"][
                         "cohort_count"
                     ],
-                    "random_advantage_r": validation["matched_random"]["comparison"][
-                        "comparison"
-                    ]["actual_minus_null_mean_net_r"],
-                    "minimum_stress_mean_net_r": validation["stress"][
-                        "minimum_mean_net_r"
+                    "random_advantage_r": validation["matched_random"]["comparison"]["comparison"][
+                        "actual_minus_null_mean_net_r"
                     ],
+                    "minimum_stress_mean_net_r": validation["stress"]["minimum_mean_net_r"],
                     "portfolio_selected_fills": validation["portfolio"]["selected_fills"],
-                    "portfolio_mean_net_r": validation["portfolio"][
-                        "mean_net_r_after_constraints"
-                    ],
+                    "portfolio_mean_net_r": validation["portfolio"]["mean_net_r_after_constraints"],
                 }
                 if validation is not None
                 else None
@@ -155,9 +152,7 @@ def create_app(root: Path, output: Path) -> FastAPI:
             "protocol": {
                 "version": manifest["accuracy_protocol"]["version"],
                 "sha256": manifest["accuracy_protocol_sha256"],
-                "target_rate": manifest["accuracy_protocol"][
-                    "minimum_eligibility_observed_rate"
-                ],
+                "target_rate": manifest["accuracy_protocol"]["minimum_eligibility_observed_rate"],
                 "prospective_minimum": manifest["accuracy_protocol"][
                     "minimum_prospective_resolved"
                 ],

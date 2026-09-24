@@ -52,7 +52,8 @@ Evidence: [collection checkpoint](aem-history-checkpoint.md),
 [corrected baseline](nse-aem-validation-checkpoint.md),
 [random comparison](aem-random-policy-checkpoint.md), and
 [canonical scorecard](aem-scorecard-checkpoint.md), and
-[baseline gates](aem-baseline-gates-checkpoint.md).
+[baseline gates](aem-baseline-gates-checkpoint.md). The first bounded challenger is
+recorded in the [daily mean-reversion exit-search checkpoint](daily-mean-reversion-exit-search-checkpoint.md).
 
 ## 1. Freeze how accuracy will be measured
 
@@ -113,6 +114,10 @@ strategy performance.
   remain required before any production claim.
 - [ ] Classify errors: weak follow-through, late entry, exhausted move, market/sector
   opposition, inadequate liquidity, bad fill or data failure. Retain every failure.
+- [x] Test the preregistered three-rule daily mean-reversion exit grid across three
+  risk sizings. The best locked-test profitable-trade rate was **50.13%**, every
+  after-cost result was negative, and the challenger was rejected without changing
+  the canonical baseline or registering a strategy.
 
 Acceptance: a complete baseline scorecard and a documented explanation of where
 errors arise. The 50-stock pilot cannot establish reliability across all NSE stocks.
@@ -128,6 +133,9 @@ errors arise. The 50-stock pilot cannot establish reliability across all NSE sto
   from VWAP and resistance, and execution quality. Version each changed entry policy.
 - [ ] Test quick-profit exit alternatives as separate contracts with identical
   cost/risk reporting. Judge average win/loss, expectancy and drawdown with accuracy.
+- [x] Complete the first bounded quick-profit exit search. None of its nine
+  training-selected runs reached the 60% research target or positive locked-test
+  expectancy, so the plan correctly stopped before gauntlet or candidate registration.
 - [ ] Run one-component-at-a-time comparisons and retain only improvements that
   survive later periods and multiple stocks. App success examples remain hypotheses.
 
@@ -221,7 +229,10 @@ fresh evidence; missed targets remain visible.
 - [x] Complete and audit the frozen M1 collection.
 - [x] Build the reproducible broader AEM dataset and executable baseline scorecard.
 - [x] Run matched-random, stress and portfolio gates on that exact frozen baseline.
-- [ ] Register the first bounded accuracy-improvement experiments from its failure analysis.
+- [x] Register and execute the first bounded exit-geometry experiment; preserve its
+  failed result as evidence rather than promoting a weak or test-selected rule.
+- [ ] Register the next information-quality experiments from the frozen baseline's
+  failure taxonomy and evaluate them on a fresh chronological cohort.
 
 For each completed item, attach its artifact/run identifier, date, sample size and
 pass/fail result. Update this checklist at checkpoints. The 70–80% objective remains
