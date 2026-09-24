@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 from pathlib import Path
+from string import hexdigits
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Query
@@ -48,6 +49,87 @@ def create_app(root: Path, output: Path) -> FastAPI:
             "recent_errors": state.get("recent_errors", []),
         }
 
+    def read_accuracy_milestone() -> dict[str, Any]:
+        latest_path = output / "aem_staged/latest.json"
+        if not latest_path.is_file():
+            return {
+                "available": False,
+                "eligible_for_live": False,
+                "status": "awaiting_frozen_baseline",
+            }
+        latest = json.loads(latest_path.read_text(encoding="utf-8"))
+        identifier = latest.get("id")
+        if (
+            not isinstance(identifier, str)
+            or len(identifier) != 32
+            or any(character not in hexdigits for character in identifier)
+        ):
+            raise ValueError("invalid staged dataset identifier")
+        manifest_path = output / "aem_staged/datasets" / identifier / "manifest.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        if manifest.get("id") != identifier:
+            raise ValueError("staged latest pointer and manifest differ")
+        source = manifest["source"]
+        coverage = source["coverage"]
+        exceptions = {
+            code: row["missing_or_incomplete_sessions"]
+            for code, row in coverage.items()
+            if row["missing_or_incomplete_sessions"]
+        }
+        collected_rows = sum(row["minute"]["rows"] for row in source["symbols"].values())
+        complete_sessions = sum(row["complete_sessions"] for row in coverage.values())
+        total_sessions = complete_sessions + sum(
+            len(row["missing_or_incomplete_sessions"]) for row in coverage.values()
+        )
+        diagnostics = manifest["diagnostics"]
+        return {
+            "available": True,
+            "status": manifest["status"],
+            "eligible_for_live": bool(manifest["eligible_for_live"]),
+            "dataset_id": identifier,
+            "created_at": manifest["created_at"],
+            "collection": {
+                "plan_id": manifest["plan_id"],
+                "requests_recorded": source["requests_recorded"],
+                "collected_rows": collected_rows,
+                "expected_rows": total_sessions * 375,
+                "complete_sessions": complete_sessions,
+                "total_sessions": total_sessions,
+                "exceptions": exceptions,
+            },
+            "baseline": {
+                "symbols": manifest["symbols_with_daily_and_m1"],
+                "evaluation_sessions": manifest["evaluation_sessions"],
+                "candidate_events": manifest["events"],
+                "resolved_trades": manifest["resolved_trades"],
+                "strict_success_rate": manifest["strict_success_rate"],
+                "strict_success_wilson95": diagnostics["overall"][
+                    "strict_success_wilson95"
+                ],
+                "mean_net_r": manifest["mean_net_r"],
+                "session_coverage": diagnostics["session_coverage"],
+                "incomplete_sessions_rejected": manifest["audit"].get(
+                    "incomplete_session", 0
+                ),
+            },
+            "protocol": {
+                "version": manifest["accuracy_protocol"]["version"],
+                "sha256": manifest["accuracy_protocol_sha256"],
+                "target_rate": manifest["accuracy_protocol"][
+                    "minimum_eligibility_observed_rate"
+                ],
+                "prospective_minimum": manifest["accuracy_protocol"][
+                    "minimum_prospective_resolved"
+                ],
+                "top_k": manifest["accuracy_protocol"]["reported_top_k_policies"],
+            },
+            "next_gate": "matched_random_cost_stress_and_portfolio_replay",
+            "message": (
+                "The broader frozen baseline is below the target and loses after costs; "
+                "it is diagnostic only and must not generate live calls."
+            ),
+        }
+
     @app.get("/", response_class=HTMLResponse)
     async def index() -> str:
         return (Path(__file__).parent / "static/index.html").read_text(encoding="utf-8")
@@ -73,6 +155,10 @@ def create_app(root: Path, output: Path) -> FastAPI:
     @app.get("/api/forward")
     async def forward() -> dict[str, Any]:
         return await asyncio.to_thread(read_forward)
+
+    @app.get("/api/accuracy-milestone")
+    async def accuracy_milestone() -> dict[str, Any]:
+        return await asyncio.to_thread(read_accuracy_milestone)
 
     @app.get("/api/research/run/{identifier}")
     async def run(identifier: str) -> dict[str, Any]:
