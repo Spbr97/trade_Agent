@@ -1,5 +1,9 @@
 # Trading Agent Master Roadmap
 
+Current execution checklist: [Accuracy-first checkbox roadmap](accuracy-roadmap.md)
+(24 September 2026), including verified progress, remaining data work and the
+evidence required for the 70–80% accuracy objective. Historical status below is dated.
+
 Prepared 18 September 2026 from `TRADING_AGENT_MASTER_PLAN.md` and a read-only audit
 of the current repository. The user subsequently authorized implementation. Work is
 restricted to the isolated research lab: it does not authorize live execution, agent
