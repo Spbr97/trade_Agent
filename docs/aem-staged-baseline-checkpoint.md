@@ -35,6 +35,16 @@ These figures do not support a 70–80% accuracy claim. The protocol remains fai
 closed: no live eligibility assessment is made until matched-random, stress,
 portfolio, out-of-sample and prospective evidence exists.
 
+The earlier 37.74% result was a different, smaller population: ten stocks that
+already had available M1 history. Only five overlap the frozen 50-stock cohort.
+Those five reproduce exactly in both pipelines at **5/26 strict wins (19.23%)**,
+including identical per-symbol fills and net R. The five old-only stocks contributed
+**35/80 wins (43.75%)**, lifting the old aggregate; the broader cohort outside the
+overlap produced **144/667 wins (21.59%)**. This supports population/availability
+selection as the reason for the decline, not a reconstruction regression on the
+observable overlap. A controlled experiment is still required before attributing
+causality beyond that decomposition.
+
 ## Data foundation
 
 - Collected 2,624,979 of 2,625,000 planned regular-session one-minute bars.
@@ -61,6 +71,9 @@ and positive economics under registered execution-cost stress cases.
 The existing research dashboard now has a read-only **Accuracy roadmap** view. It
 loads compact collection, baseline and protocol data from the frozen manifest. It
 does not change production scanning, ranking, risk, management, alerts or execution.
+Its canonical scorecard is also the framework artifact: every later experiment must
+report accuracy, uncertainty, session consistency, availability and net-R deltas
+against this baseline before it can be described as an improvement.
 
 Focused staged-data, protocol, dataset and dashboard verification passed 18 tests.
 The full runnable repository suite passed **903 tests**, with two skips and one

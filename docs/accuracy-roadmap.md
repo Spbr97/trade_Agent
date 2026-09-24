@@ -7,6 +7,12 @@ working toward 70–80% successful calls within sessions. Prioritize anticipator
 entries and smaller, quicker profits. Call volume is flexible, but useful availability
 must be demonstrated alongside accuracy and returns after costs.
 
+Governing rule: every milestone and experiment must work toward a more accurate,
+better-generalizing prediction baseline. It must identify the frozen comparison
+dataset and report deltas in strict accuracy, Wilson lower bound, session consistency,
+call availability and after-cost net R. Engineering completion alone is not predictive
+improvement. Fewer calls cannot hide losses, unresolved outcomes or worse economics.
+
 `[x]` means the stated work has supporting evidence. `[ ]` means work or evidence is
 still required. Completing an engineering task does not complete an accuracy goal.
 This checklist updates the execution sequence in the earlier
@@ -38,7 +44,8 @@ dated records. Proposed future production changes in those documents remain defe
 
 Evidence: [collection checkpoint](aem-history-checkpoint.md),
 [corrected baseline](nse-aem-validation-checkpoint.md),
-[random comparison](aem-random-policy-checkpoint.md).
+[random comparison](aem-random-policy-checkpoint.md), and
+[canonical scorecard](aem-scorecard-checkpoint.md).
 
 ## 1. Freeze how accuracy will be measured
 

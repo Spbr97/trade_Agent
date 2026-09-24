@@ -11,6 +11,7 @@ from typing import Any
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import HTMLResponse
 
+from tradedesk_lab.aem_scorecard import build_accuracy_scorecard
 from tradedesk_lab.decision import from_entry
 from tradedesk_lab.registry import Registry
 
@@ -82,6 +83,7 @@ def create_app(root: Path, output: Path) -> FastAPI:
             len(row["missing_or_incomplete_sessions"]) for row in coverage.values()
         )
         diagnostics = manifest["diagnostics"]
+        scorecard = manifest.get("accuracy_scorecard") or build_accuracy_scorecard(manifest)
         return {
             "available": True,
             "status": manifest["status"],
@@ -112,6 +114,7 @@ def create_app(root: Path, output: Path) -> FastAPI:
                     "incomplete_session", 0
                 ),
             },
+            "scorecard": scorecard,
             "protocol": {
                 "version": manifest["accuracy_protocol"]["version"],
                 "sha256": manifest["accuracy_protocol_sha256"],
@@ -126,7 +129,9 @@ def create_app(root: Path, output: Path) -> FastAPI:
             "next_gate": "matched_random_cost_stress_and_portfolio_replay",
             "message": (
                 "The broader frozen baseline is below the target and loses after costs; "
-                "it is diagnostic only and must not generate live calls."
+                "it is diagnostic only and must not generate live calls. Every later "
+                "milestone must report accuracy, uncertainty, availability and net-R "
+                "deltas against this frozen baseline."
             ),
         }
 

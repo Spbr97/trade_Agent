@@ -79,6 +79,10 @@ async def test_accuracy_milestone_exposes_compact_readonly_baseline(tmp_path):
             "version": "aem-accuracy-v1",
             "minimum_eligibility_observed_rate": 0.8,
             "minimum_prospective_resolved": 100,
+            "minimum_prospective_active_sessions": 30,
+            "minimum_prospective_observed_rate": 0.8,
+            "minimum_prospective_wilson95_lower": 0.7,
+            "minimum_random_advantage_r": 0.1,
             "reported_top_k_policies": [1, 2, 3],
         },
         "accuracy_protocol_sha256": "protocol-hash",
@@ -94,8 +98,24 @@ async def test_accuracy_milestone_exposes_compact_readonly_baseline(tmp_path):
         },
         "audit": {"incomplete_session": 1},
         "diagnostics": {
-            "overall": {"strict_success_wilson95": {"lower": 0.2, "upper": 0.9}},
-            "session_coverage": {"evaluation_sessions": 2, "active_sessions": 1},
+            "overall": {
+                "trade_decisions": 4,
+                "resolved_trades": 3,
+                "unfilled_decisions": 1,
+                "unresolved_decisions": 0,
+                "strict_successes": 2,
+                "strict_success_rate": 2 / 3,
+                "strict_success_wilson95": {"lower": 0.2, "upper": 0.9},
+                "mean_net_r": 0.1,
+            },
+            "session_coverage": {
+                "evaluation_sessions": 2,
+                "active_sessions": 1,
+                "fully_resolved_active_sessions": 1,
+                "zero_trade_decision_sessions": 1,
+                "active_sessions_at_least_70pct": 1.0,
+                "active_sessions_at_least_80pct": 1.0,
+            },
         },
     }
     (target / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
@@ -110,5 +130,8 @@ async def test_accuracy_milestone_exposes_compact_readonly_baseline(tmp_path):
         assert result["collection"]["expected_rows"] == 750
         assert result["collection"]["exceptions"] == {"NSE_1": ["2026-09-02"]}
         assert result["baseline"]["strict_success_rate"] == pytest.approx(2 / 3)
+        assert len(result["scorecard"]["core"]) == 12
+        assert len(result["scorecard"]["promotion_gates"]) == 4
+        assert result["scorecard"]["promotion_gates"]["stress_economics"]["status"] == "pending"
         assert result["eligible_for_live"] is False
         assert (await client.post("/api/accuracy-milestone")).status_code == 405

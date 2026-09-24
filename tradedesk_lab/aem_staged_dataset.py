@@ -20,6 +20,7 @@ from tradedesk_lab.aem_accuracy_protocol import (
 from tradedesk_lab.aem_contract import DEFAULT_AEM_CONTRACT, AemContract
 from tradedesk_lab.aem_dataset import AemDataset, build_events
 from tradedesk_lab.aem_report import summarize_aem
+from tradedesk_lab.aem_scorecard import build_accuracy_scorecard
 from tradedesk_lab.aem_staged_data import read_staged_aem_source
 from tradedesk_lab.artifacts import OUTPUT, ROOT, digest, write_json
 
@@ -74,6 +75,7 @@ def prepare_staged_aem(
         "tradedesk_lab/aem_features.py",
         "tradedesk_lab/aem_labels.py",
         "tradedesk_lab/aem_report.py",
+        "tradedesk_lab/aem_scorecard.py",
         "tradedesk_lab/aem_staged_data.py",
         "tradedesk_lab/aem_staged_dataset.py",
         "tradedesk_lab/mcb_features.py",
@@ -132,6 +134,7 @@ def prepare_staged_aem(
             "No order placement or production-call path is enabled by this artifact.",
         ],
     }
+    manifest["accuracy_scorecard"] = build_accuracy_scorecard(manifest)
     target.mkdir(parents=True, exist_ok=False)
     joblib.dump(
         AemDataset(events=events, manifest=manifest, contract=contract),
