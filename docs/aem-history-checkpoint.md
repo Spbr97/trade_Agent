@@ -5,6 +5,10 @@ strategy promotion, new trading signal, or demonstrated improvement in accuracy.
 Production code, dashboard, management code, configuration, scheduled tasks and
 broker credentials are unchanged. No order endpoints are used.
 
+Completion update: the frozen plan is now exhausted with **2,624,979 valid bars**
+and **6,999/7,000 complete stock-sessions** across 272 recorded requests. The
+earlier 346,875-bar figures below preserve the first resumable-collector checkpoint.
+
 ## Implemented
 
 `python -m tradedesk_lab aem-collect` consumes the frozen preperiod universe plan
@@ -73,6 +77,19 @@ sparse-slot RVOL calculations, or explicitly declare a changed history contract.
 This development cohort still has current-metadata survivorship/revision limitations
 and is not representative of every NSE liquidity band.
 
+## Completion update
+
+Subsequent guarded segments finished the request plan. The final report is
+`runs/900e05e92c85481dabe10f3a82775a15/report.json` with status
+`frozen_requests_exhausted`: 2,624,979 valid bars, 6,999 complete sessions, one
+incomplete session, zero invalid rows and no pending requests. A repeat request for
+the only gap—VEDL on 30 April 2026—again returned data only from 09:36 through 15:29.
+The opening 21 minutes remain absent, so the stage retains 354 bars and downstream
+reconstruction rejects the session instead of fabricating it.
+
+The isolated join and broader baseline are recorded in
+[the staged baseline checkpoint](aem-staged-baseline-checkpoint.md).
+
 ## Verification and commands
 
 - Final runnable lab regression suite: **398 passed, 1 skipped**. The skip is a
@@ -99,8 +116,6 @@ A blocked report exits nonzero. If a process crashes, the collector lock remains
 verify that its recorded owner has exited before manually recovering that exact lock.
 Do not remove a live owner's lock or reset state to hide an interrupted request.
 
-Next: finish the frozen collection, audit remaining gaps and data vintage, build the
-isolated evaluation join, then re-run AEM and its causal matched-random comparison
-with portfolio/execution/cost checks. The prior 37.7% strict-win development result
-is unchanged; the desired 70–80% session success rate has not been demonstrated.
-No merge, push, dashboard change or unattended collector was created here.
+Next: run the causal matched-random comparison, registered cost/fill stresses and
+portfolio constraints on the frozen broader dataset. Its 21.50% strict-win result
+confirms that the desired 70–80% session success rate has not been demonstrated.

@@ -16,8 +16,9 @@ dated records. Proposed future production changes in those documents remain defe
 
 ## Current position
 
-- [x] Preserve the production code, existing setups, dashboard and management code;
-  conduct this research in the separate lab and branch.
+- [x] Preserve production call, risk and management behavior; conduct strategy work
+  in the separate lab and branch. The dashboard addition is read-only and exposes
+  research evidence without changing call eligibility.
 - [x] Implement causal AEM anticipatory-entry and quick-profit research, with a
   separate MCB breakout research track.
 - [x] Establish the corrected AEM development baseline: **40/106 strict wins
@@ -26,8 +27,11 @@ dated records. Proposed future production changes in those documents remain defe
   by **+0.18038R per attempt**, while both still lose after modeled costs.
 - [x] Screen the 2,664 locally stored NSE cash EQ stocks and freeze a 50-stock pilot
   using liquidity observed before the evaluation period.
-- [x] Build and verify resumable M1 collection: **346,875 valid bars**, **925/7,000
-  complete stock-sessions**, ten requests recorded. Latest code checkpoint: `ba3fd69`.
+- [x] Complete the resumable M1 collection: **2,624,979 valid bars**, **6,999/7,000
+  complete stock-sessions**, 272 requests recorded. The only exception is VEDL on
+  30 April 2026, whose reproducible 21-bar opening gap is retained and rejected.
+- [x] Replay the unchanged AEM contract on the frozen 50-stock cohort: **149/693
+  strict wins (21.50%)**, **−0.27471R per resolved fill**. The baseline fails.
 - [ ] Demonstrate positive portfolio returns after realistic costs and execution.
 - [ ] Demonstrate the requested accuracy, session consistency and call availability
   on fresh evidence.
@@ -40,15 +44,15 @@ Evidence: [collection checkpoint](aem-history-checkpoint.md),
 
 - [x] Define strict success for the current AEM contract: an executable fill followed
   by the declared target before the stop/deadline, with positive net P&L after costs.
-- [ ] Freeze the comparison scorecard and research protocol before the next model
+- [x] Freeze the comparison scorecard and research protocol before the next model
   race: same-session AEM is primary; swing and MCB results remain separately labeled.
-- [ ] Report issued calls, actual fills, wins, filled losses/timeouts, unfilled
+- [x] Report issued calls, actual fills, wins, filled losses/timeouts, unfilled
   attempts, unresolved outcomes and zero-call days. Positive time exits remain a
   separate metric; unresolved fills prevent a clean final accuracy assessment.
-- [ ] Publish both pooled strict accuracy and each session's wins/fills, plus the
+- [x] Publish both pooled strict accuracy and each session's wins/fills, plus the
   fraction of active sessions reaching 70% and 80%, losing streaks and worst periods.
   Show active-session coverage over every eligible calendar session.
-- [ ] Freeze useful-availability and session-consistency acceptance criteria before
+- [x] Freeze useful-availability and session-consistency acceptance criteria before
   prospective testing. Compare qualifying top-one, top-two and top-three policies
   within existing limits; report the full accuracy-versus-availability tradeoff.
 
@@ -61,18 +65,20 @@ in every future session cannot be guaranteed by a model or by this roadmap.
 
 ## 2. Complete and verify the data foundation — next work
 
-- [ ] Resume the frozen collection: **261 request batches remain unattempted** and
-  **6,075 stock-sessions remain incomplete** at this checkpoint.
-- [ ] Verify exact regular-session slots; investigate missing history, special
+- [x] Finish the frozen collection; all planned request batches are exhausted and
+  only one of 7,000 stock-sessions remains incomplete.
+- [x] Verify exact regular-session slots; investigate missing history, special
   sessions and conflicting data. Record every exclusion and its effect on coverage.
-- [ ] Build the isolated daily/index/minute-data join. Preserve earlier M1 history
+- [x] Build the isolated daily/index/minute-data join. Preserve earlier M1 history
   needed by indicators and relative volume, or explicitly register a changed history
   contract and re-establish its baseline.
 - [ ] Verify feature availability times, adjustments, benchmark dates, trading
   status and data-source versions. Preserve source and experiment fingerprints.
 - [ ] Restore the five SciPy-dependent test modules in an isolated compatible
   research environment while preserving system security and production dependencies.
-  Current runnable verification is 398 passed and one skipped, not a full-suite pass.
+  Current runnable verification is **903 passed, two skipped and one deselected**.
+  Five modules remain collection-blocked by SciPy `_dop`; one tuning test is blocked
+  by scikit-learn `_sgd_fast`. Windows Application Control was not weakened.
 
 Acceptance: a reproducible, auditable evaluation dataset with no unexplained gaps in
 consumed signal/label windows. Exceptions cannot silently change the frozen cohort
@@ -81,7 +87,7 @@ strategy performance.
 
 ## 3. Establish a broader, executable baseline
 
-- [ ] Replay the unchanged AEM contract on the frozen 50-stock cohort. Keep the
+- [x] Replay the unchanged AEM contract on the frozen 50-stock cohort. Keep the
   current 0.8% target, 0.6% stop and 90-minute maximum hold fixed for this comparison.
 - [ ] Re-run matched random policies with the same candles, fills, deadlines and
   costs. Add a control that evaluates stock selection as well as conditional timing.
@@ -196,8 +202,8 @@ fresh evidence; missed targets remain visible.
 
 ## Next three deliverables
 
-- [ ] Complete and audit the frozen M1 collection.
-- [ ] Build the reproducible broader AEM dataset and executable baseline scorecard.
+- [x] Complete and audit the frozen M1 collection.
+- [x] Build the reproducible broader AEM dataset and executable baseline scorecard.
 - [ ] Register the first bounded accuracy-improvement experiments from its failure analysis.
 
 For each completed item, attach its artifact/run identifier, date, sample size and

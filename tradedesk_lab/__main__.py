@@ -29,6 +29,8 @@ def main() -> None:
     aem = sub.add_parser("aem-prepare")
     aem.add_argument("--sessions", type=int, default=120)
     aem.add_argument("--as-of", type=date.fromisoformat)
+    staged = sub.add_parser("aem-prepare-staged")
+    staged.add_argument("--plan-id", required=True)
     benchmark = sub.add_parser("aem-benchmark")
     benchmark.add_argument("--dataset-id")
     benchmark.add_argument("--cohorts", type=int, default=500)
@@ -199,6 +201,21 @@ def main() -> None:
                     key: value
                     for key, value in data.manifest.items()
                     if key not in {"source", "dependency_sha256", "diagnostics"}
+                },
+                indent=2,
+            )
+        )
+        return
+    if args.command == "aem-prepare-staged":
+        from tradedesk_lab.aem_staged_dataset import prepare_staged_aem
+
+        data = prepare_staged_aem(plan_id=args.plan_id)
+        print(
+            json.dumps(
+                {
+                    key: value
+                    for key, value in data.manifest.items()
+                    if key not in {"source", "dependency_sha256", "diagnostics", "contract"}
                 },
                 indent=2,
             )
