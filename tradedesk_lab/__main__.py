@@ -36,6 +36,14 @@ def main() -> None:
     pilot = sub.add_parser("aem-universe-plan")
     pilot.add_argument("--dataset-id", required=True)
     pilot.add_argument("--shortlist-size", type=int, default=50)
+    collector = sub.add_parser("aem-collect")
+    collector.add_argument("--plan-id", required=True)
+    collector.add_argument(
+        "--max-requests",
+        type=int,
+        default=0,
+        help="0 prepares offline; 1..100 attempts bounded historical GETs",
+    )
     universe = sub.add_parser("nse-screen")
     universe.add_argument("--as-of", type=date.fromisoformat)
     universe.add_argument("--shortlist-size", type=int, default=50)
@@ -48,6 +56,41 @@ def main() -> None:
     forward.add_argument("--watch", action="store_true")
     forward.add_argument("--interval-seconds", type=int, default=900)
     args = parser.parse_args()
+    if args.command == "aem-collect":
+        if not 0 <= args.max_requests <= 100:
+            parser.error("max requests must be 0..100")
+        from tradedesk_lab.aem_history import collect_history
+
+        report = collect_history(plan_id=args.plan_id, max_requests=args.max_requests)
+        preview = {
+            key: report.get(key)
+            for key in (
+                "status",
+                "artifact_path",
+                "requests_this_run",
+                "requests_recorded_all_runs",
+                "unconfirmed_prior_attempts",
+                "preflight",
+                "error_type",
+            )
+        }
+        if preview["preflight"]:
+            guard = preview["preflight"]
+            preview["preflight"] = {
+                "allowed": guard["allowed"],
+                "reasons": guard["reasons"],
+                "checked_at": guard.get("checked_at"),
+                "blocking_processes": [row for row in guard["processes"] if row["blocks"]],
+                "blocking_tasks": [row for row in guard["tasks"] if row["blocks"]],
+            }
+        if "coverage" in report:
+            preview["coverage"] = {
+                key: value for key, value in report["coverage"].items() if key != "by_code"
+            }
+        print(json.dumps(preview, indent=2))
+        if report["status"].startswith("blocked_"):
+            raise SystemExit(1)
+        return
     if args.command == "aem-benchmark":
         if not 1 <= args.cohorts <= 5000 or not 0 <= args.seed < 2**32:
             parser.error("cohorts must be 1..5000 and seed must be uint32")
