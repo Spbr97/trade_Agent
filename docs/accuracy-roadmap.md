@@ -1,6 +1,6 @@
 # Accuracy-first checkbox roadmap
 
-Updated: 25 September 2026. Working branch: `codex/aem-baseline-gates`.
+Updated: 25 September 2026. Working branch: `codex/aem-market-sector-context`.
 
 Primary objective: maintain and improve the reliability of executable NSE calls,
 working toward 70–80% successful calls within sessions. Prioritize anticipatory
@@ -59,6 +59,9 @@ Evidence: [collection checkpoint](aem-history-checkpoint.md),
 recorded in the [daily mean-reversion exit-search checkpoint](daily-mean-reversion-exit-search-checkpoint.md),
 and the first causal selector is recorded in the
 [information-quality checkpoint](aem-information-quality-checkpoint.md).
+Market/sector input readiness is recorded separately in the
+[context readiness checkpoint](aem-market-sector-context-checkpoint.md); it has not
+changed the baseline.
 
 ## 1. Freeze how accuracy will be measured
 
@@ -92,11 +95,18 @@ in every future session cannot be guaranteed by a model or by this roadmap.
 - [x] Build the isolated daily/index/minute-data join. Preserve earlier M1 history
   needed by indicators and relative volume, or explicitly register a changed history
   contract and re-establish its baseline.
+- [x] Freeze the three-index, 120-session context acquisition plan and implement a
+  resumable isolated collector with preflight, request caps and fail-closed storage.
+- [ ] Collect and verify the 135,000 planned index M1 bars outside the protected
+  market window. Current coverage is **0/360 index-sessions**; the attempted run was
+  blocked before any request, so this is not an accuracy improvement.
+- [ ] Obtain point-in-time historical sector membership, or preregister a narrower
+  context hypothesis that cannot leak current membership into historical evaluation.
 - [ ] Verify feature availability times, adjustments, benchmark dates, trading
   status and data-source versions. Preserve source and experiment fingerprints.
 - [ ] Restore the five SciPy-dependent test modules in an isolated compatible
   research environment while preserving system security and production dependencies.
-  Current runnable verification is **910 passed**, with the same pre-existing skips
+  Current runnable verification is **915 passed**, with two pre-existing skips
   and one deselected tuning test.
   Five modules remain collection-blocked by SciPy `_dop`; one tuning test is blocked
   by scikit-learn `_sgd_fast`. Windows Application Control was not weakened.
@@ -138,6 +148,8 @@ errors arise. The 50-stock pilot cannot establish reliability across all NSE sto
 - [x] Test the available causal subset—same-time volume, remaining room, extension,
   VWAP context and impulse-body quality. None earned promotion; benchmark/sector
   alignment still requires new point-in-time inputs.
+- [ ] Freeze and evaluate market/sector context on later unconsumed sessions or a
+  prospective shadow cohort after acquisition and integrity checks are complete.
 - [ ] Test anticipatory impulse versus confirmed pullback/retest entry, distance
   from VWAP and resistance, and execution quality. Version each changed entry policy.
 - [ ] Test quick-profit exit alternatives as separate contracts with identical
@@ -245,6 +257,8 @@ fresh evidence; missed targets remain visible.
   failure taxonomy and evaluate one selected rule on the later chronological cohort.
 - [ ] Add point-in-time intraday benchmark and sector context, then freeze a new
   bounded trial set for later unconsumed sessions or prospective shadow evidence.
+  The collection plan and safe collector are complete, but data coverage is 0/360
+  index-sessions and historical point-in-time sector membership remains unresolved.
 
 For each completed item, attach its artifact/run identifier, date, sample size and
 pass/fail result. Update this checklist at checkpoints. The 70–80% objective remains
