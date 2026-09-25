@@ -1,0 +1,62 @@
+{
+  "version": "aem-v2-milestone-1-v1",
+  "status": "causal_engine_implemented_not_evaluated",
+  "milestone": 1,
+  "eligible_for_live": false,
+  "baseline_improved": false,
+  "opportunity_engine_implemented": true,
+  "outcome_engine_implemented": true,
+  "selector_implemented": false,
+  "algorithm_evaluated": false,
+  "strategy_contract_sha256": "87d416c314bd6376307834805f500f385484de59db3407796da7d931813976cb",
+  "event_contract_sha256": "317602ae4992b076edb93df9473f5f8639d36a4090b992a5c97538362b7d497e",
+  "implementation_sha256": "e8bce5317174c8391ac044f6d10221161eda0b23e92ed8067849a2e0c252656c",
+  "tests_sha256": "e6b450f98e44bfb899ec65fa3ae0de94863db5d186eb66a1093c473e30705b3f",
+  "entry_modes": [
+    "anticipatory_impulse",
+    "confirmed_pullback",
+    "breakout_retest"
+  ],
+  "geometries": [
+    "quick_35_30_25",
+    "quick_45_35_40",
+    "quick_60_45_60"
+  ],
+  "ordering": {
+    "signal_bars": "completed_m1_only",
+    "prediction_before_entry": true,
+    "entry_begins": "first_bar_open_at_or_after_decision_time",
+    "entry_valid_minutes": 3,
+    "target_stop_begin_after_fill": true,
+    "same_bar_ambiguity": "adverse_stop_first",
+    "missing_data": "unresolved_fail_closed",
+    "late_signals": "rejected_after_11_00_ist"
+  },
+  "execution": {
+    "tick_size": 0.05,
+    "maximum_chase_pct": 0.0015,
+    "gap_fills_repriced": true,
+    "entry_and_exit_slippage": true,
+    "nse_intraday_cost_model": true,
+    "strict_success_requires_target_and_positive_net_pnl": true,
+    "profitable_timeouts_are_not_strict_wins": true
+  },
+  "adversarial_tests": [
+    "future_bar_isolation",
+    "post_outcome_window_isolation",
+    "gap_and_chase_rejection",
+    "same_bar_target_stop_ambiguity",
+    "missing_entry_and_outcome_bars",
+    "post_deadline_signal_rejection",
+    "cost_negative_target_touch",
+    "entry_expiry",
+    "contract_fingerprint_mismatch"
+  ],
+  "decision": {
+    "register_candidate": false,
+    "change_canonical_baseline": false,
+    "change_live_behavior": false,
+    "reason": "Milestone 1 implements causal opportunity and outcome mechanics only. No selector, model, dataset evaluation, accuracy result or baseline improvement exists yet."
+  },
+  "next_milestone": "causal_feature_and_integrity_layer"
+}

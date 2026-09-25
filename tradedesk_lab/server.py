@@ -119,6 +119,10 @@ def create_app(root: Path, output: Path) -> FastAPI:
         aem_v2_path = root / "docs/evidence/aem-v2-protocol.json"
         if aem_v2_path.is_file():
             aem_v2_protocol = json.loads(aem_v2_path.read_text(encoding="utf-8"))
+        aem_v2_engine = None
+        aem_v2_engine_path = root / "docs/evidence/aem-v2-engine.json"
+        if aem_v2_engine_path.is_file():
+            aem_v2_engine = json.loads(aem_v2_engine_path.read_text(encoding="utf-8"))
         return {
             "available": True,
             "status": manifest["status"],
@@ -150,6 +154,7 @@ def create_app(root: Path, output: Path) -> FastAPI:
             "information_quality_experiment": information_quality_experiment,
             "market_sector_context_readiness": market_sector_context_readiness,
             "aem_v2_protocol": aem_v2_protocol,
+            "aem_v2_engine": aem_v2_engine,
             "validation": (
                 {
                     "id": validation["id"],

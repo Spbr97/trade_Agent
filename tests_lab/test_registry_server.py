@@ -149,6 +149,17 @@ async def test_accuracy_milestone_exposes_compact_readonly_baseline(tmp_path):
         "algorithm_implemented": False,
     }
     aem_v2_path.write_text(json.dumps(aem_v2), encoding="utf-8")
+    aem_v2_engine_path = tmp_path / "docs/evidence/aem-v2-engine.json"
+    aem_v2_engine = {
+        "status": "causal_engine_implemented_not_evaluated",
+        "milestone": 1,
+        "baseline_improved": False,
+        "opportunity_engine_implemented": True,
+        "outcome_engine_implemented": True,
+        "selector_implemented": False,
+        "algorithm_evaluated": False,
+    }
+    aem_v2_engine_path.write_text(json.dumps(aem_v2_engine), encoding="utf-8")
 
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=create_app(tmp_path, output)), base_url="http://test"
@@ -167,6 +178,7 @@ async def test_accuracy_milestone_exposes_compact_readonly_baseline(tmp_path):
         assert result["information_quality_experiment"] == experiment
         assert result["market_sector_context_readiness"] == context
         assert result["aem_v2_protocol"] == aem_v2
+        assert result["aem_v2_engine"] == aem_v2_engine
         assert result["validation"] is None
         assert result["eligible_for_live"] is False
         assert (await client.post("/api/accuracy-milestone")).status_code == 405
@@ -263,4 +275,5 @@ async def test_accuracy_milestone_uses_only_matching_completed_validation(tmp_pa
     assert result["information_quality_experiment"] is None
     assert result["market_sector_context_readiness"] is None
     assert result["aem_v2_protocol"] is None
+    assert result["aem_v2_engine"] is None
     assert result["next_gate"] == "accuracy_improvement_experiments"
