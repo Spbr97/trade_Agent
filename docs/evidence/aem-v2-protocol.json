@@ -1,0 +1,90 @@
+{
+  "id": "b13c8567f6434a3e96c94206df121653",
+  "created_at": "2026-09-26T01:09:13.704792+05:30",
+  "version": "aem-v2-milestone-0-v1",
+  "status": "protocol_frozen_not_evaluated",
+  "milestone": 0,
+  "eligible_for_live": false,
+  "baseline_improved": false,
+  "algorithm_implemented": false,
+  "plan_sha256": "54c08dccffb72782f5ab1676b7b8833b74cde2da610037e5b2d0d9cf3ca61490",
+  "implementation_sha256": "ae28ac6e335fd6f4953f28c9334c9d5b52669f18b619fe45e5d23da9ed763efb",
+  "contract_sha256": "87d416c314bd6376307834805f500f385484de59db3407796da7d931813976cb",
+  "protocol_sha256": "0b699dba2a177d4d4b51f63796e8b4ad58d0dbdf5fb7abb2b986313ed1f9a299",
+  "bundle_sha256": "097ccb416ab54f60815c3abedbc73f86b9e308e201f72f274e9fa906a617da26",
+  "canonical_baseline": {
+    "dataset_id": "ec539cf66bea4c18ba994506f85a52d6",
+    "resolved_fills": 693,
+    "strict_wins": 149,
+    "strict_success_rate": 0.215007215007215,
+    "wilson95_lower": 0.18603500195342146,
+    "mean_net_r": -0.2747079541350378
+  },
+  "entry_modes": [
+    "anticipatory_impulse",
+    "confirmed_pullback",
+    "breakout_retest"
+  ],
+  "feature_registry": {
+    "count": 34,
+    "available_at": "decision_time",
+    "forbids_outcome_and_execution_result_fields": true,
+    "groups": {
+      "time_opening": 4,
+      "impulse": 7,
+      "breakout_state": 4,
+      "vwap": 3,
+      "participation": 3,
+      "cross_sectional": 3,
+      "remaining_room": 3,
+      "execution": 5,
+      "regime": 2
+    }
+  },
+  "geometries": [
+    {
+      "id": "quick_35_30_25",
+      "target_pct": 0.0035,
+      "stop_pct": 0.003,
+      "maximum_hold_minutes": 25,
+      "gross_reward_risk": 1.1666666666666667
+    },
+    {
+      "id": "quick_45_35_40",
+      "target_pct": 0.0045,
+      "stop_pct": 0.0035,
+      "maximum_hold_minutes": 40,
+      "gross_reward_risk": 1.2857142857142858
+    },
+    {
+      "id": "quick_60_45_60",
+      "target_pct": 0.006,
+      "stop_pct": 0.0045,
+      "maximum_hold_minutes": 60,
+      "gross_reward_risk": 1.3333333333333333
+    }
+  ],
+  "research_gates": {
+    "minimum_strict_success_rate": 0.5,
+    "minimum_wilson95_lower": 0.4,
+    "minimum_resolved_selected_fills": 100,
+    "minimum_active_sessions": 30,
+    "minimum_active_session_coverage": 0.4,
+    "maximum_unresolved_selected_calls": 0,
+    "minimum_mean_net_r": 0.0,
+    "minimum_random_advantage_r": 0.1,
+    "initial_pipeline_trial_budget": 24
+  },
+  "production_compatibility": {
+    "compatible": false,
+    "production_minimum_net_reward_risk": 2.0,
+    "reason": "The frozen quick-profit research geometries do not satisfy the production 2.0 net reward-to-risk gate."
+  },
+  "decision": {
+    "register_candidate": false,
+    "change_canonical_baseline": false,
+    "change_live_behavior": false,
+    "reason": "Milestone 0 freezes the research protocol but contains no event, model, outcome or accuracy result."
+  },
+  "next_milestone": "causal_event_and_outcome_engine"
+}

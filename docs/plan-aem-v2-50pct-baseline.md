@@ -1,11 +1,13 @@
 # Plan: AEM v2 custom algorithm for a credible 50%+ research baseline
 
-Date: 25 September 2026
+Prepared: 25 September 2026
+
+Last updated: 26 September 2026
 
 Working branch: `codex/aem-v2-accuracy-first`
 
-Status: **design only — no strategy implementation or production change is authorized
-by this document**
+Status: **Milestone 0 protocol implemented and frozen; event detection, scoring and
+strategy evaluation are not yet implemented. No production change is authorized.**
 
 ## 1. Objective
 
@@ -395,9 +397,9 @@ or execution hypothesis—not another search over the same consumed answers.
 
 ### Milestone 0 — freeze this protocol
 
-- [ ] Review and approve the 50% definition, sample floor and availability floor.
-- [ ] Freeze the initial feature registry, entry modes, geometry grid and trial budget.
-- [ ] Create machine-readable contract and protocol fingerprints.
+- [x] Review and approve the 50% definition, sample floor and availability floor.
+- [x] Freeze the initial feature registry, entry modes, geometry grid and trial budget.
+- [x] Create machine-readable contract and protocol fingerprints.
 
 ### Milestone 1 — causal event and outcome engine
 

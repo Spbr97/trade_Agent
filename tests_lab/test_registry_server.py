@@ -141,6 +141,14 @@ async def test_accuracy_milestone_exposes_compact_readonly_baseline(tmp_path):
         "coverage": {"complete_code_sessions": 0, "total_code_sessions": 360},
     }
     context_path.write_text(json.dumps(context), encoding="utf-8")
+    aem_v2_path = tmp_path / "docs/evidence/aem-v2-protocol.json"
+    aem_v2 = {
+        "status": "protocol_frozen_not_evaluated",
+        "milestone": 0,
+        "baseline_improved": False,
+        "algorithm_implemented": False,
+    }
+    aem_v2_path.write_text(json.dumps(aem_v2), encoding="utf-8")
 
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=create_app(tmp_path, output)), base_url="http://test"
@@ -158,6 +166,7 @@ async def test_accuracy_milestone_exposes_compact_readonly_baseline(tmp_path):
         assert result["mean_reversion_exit_search"] == evidence
         assert result["information_quality_experiment"] == experiment
         assert result["market_sector_context_readiness"] == context
+        assert result["aem_v2_protocol"] == aem_v2
         assert result["validation"] is None
         assert result["eligible_for_live"] is False
         assert (await client.post("/api/accuracy-milestone")).status_code == 405
@@ -253,4 +262,5 @@ async def test_accuracy_milestone_uses_only_matching_completed_validation(tmp_pa
     assert result["mean_reversion_exit_search"] is None
     assert result["information_quality_experiment"] is None
     assert result["market_sector_context_readiness"] is None
+    assert result["aem_v2_protocol"] is None
     assert result["next_gate"] == "accuracy_improvement_experiments"

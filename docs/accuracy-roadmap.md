@@ -1,6 +1,6 @@
 # Accuracy-first checkbox roadmap
 
-Updated: 25 September 2026. Working branch: `codex/aem-market-sector-context`.
+Updated: 26 September 2026. Working branch: `codex/aem-v2-accuracy-first`.
 
 Primary objective: maintain and improve the reliability of executable NSE calls,
 working toward 70–80% successful calls within sessions. Prioritize anticipatory
@@ -47,6 +47,9 @@ dated records. Proposed future production changes in those documents remain defe
 - [x] Run the first bounded causal information-quality selector. The development
   winner failed on the later 40-session holdout: **13/100 strict wins (13.00%)**,
   **7.76% Wilson lower bound** and **−0.46624R/fill**. It was rejected.
+- [x] Freeze the custom AEM v2 Precision Ladder Milestone-0 protocol: three entry
+  modes, 34 causal decision-time features, three quick-profit geometries and the
+  50%/100-fill/30-session gates. This is a protocol, not an accuracy improvement.
 - [ ] Demonstrate positive portfolio returns after realistic costs and execution.
 - [ ] Demonstrate the requested accuracy, session consistency and call availability
   on fresh evidence.
@@ -62,6 +65,9 @@ and the first causal selector is recorded in the
 Market/sector input readiness is recorded separately in the
 [context readiness checkpoint](aem-market-sector-context-checkpoint.md); it has not
 changed the baseline.
+The custom-algorithm protocol is recorded in the
+[AEM v2 Milestone-0 checkpoint](aem-v2-protocol-checkpoint.md); it contains no model
+or performance result.
 
 ## 1. Freeze how accuracy will be measured
 
@@ -106,7 +112,7 @@ in every future session cannot be guaranteed by a model or by this roadmap.
   status and data-source versions. Preserve source and experiment fingerprints.
 - [ ] Restore the five SciPy-dependent test modules in an isolated compatible
   research environment while preserving system security and production dependencies.
-  Current runnable verification is **915 passed**, with two pre-existing skips
+  Current runnable verification is **921 passed**, with two pre-existing skips
   and one deselected tuning test.
   Five modules remain collection-blocked by SciPy `_dop`; one tuning test is blocked
   by scikit-learn `_sgd_fast`. Windows Application Control was not weakened.
@@ -258,7 +264,12 @@ fresh evidence; missed targets remain visible.
 - [ ] Add point-in-time intraday benchmark and sector context, then freeze a new
   bounded trial set for later unconsumed sessions or prospective shadow evidence.
   The collection plan and safe collector are complete, but data coverage is 0/360
-  index-sessions and historical point-in-time sector membership remains unresolved.
+  index-sessions and historical point-in-time sector membership remains unresolved;
+  this acquisition track is currently parked.
+- [x] Freeze the AEM v2 custom-algorithm contract, feature registry, entry modes,
+  geometry grid, trial budget and evidence gates with immutable fingerprints.
+- [ ] Build Milestone 1: the causal event and outcome engine with conservative fills,
+  costs, deadlines and target/stop ordering before training a selector.
 
 For each completed item, attach its artifact/run identifier, date, sample size and
 pass/fail result. Update this checklist at checkpoints. The 70–80% objective remains
