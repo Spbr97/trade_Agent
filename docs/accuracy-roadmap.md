@@ -44,6 +44,9 @@ dated records. Proposed future production changes in those documents remain defe
   **18.90% strict success** and **−0.44255R per fill**. The gate fails.
 - [x] Run the portfolio-constrained replay: **40/191 strict wins (20.94%)**,
   **−0.27686R per fill** and **−₹7,407.78**. The gate fails.
+- [x] Run the first bounded causal information-quality selector. The development
+  winner failed on the later 40-session holdout: **13/100 strict wins (13.00%)**,
+  **7.76% Wilson lower bound** and **−0.46624R/fill**. It was rejected.
 - [ ] Demonstrate positive portfolio returns after realistic costs and execution.
 - [ ] Demonstrate the requested accuracy, session consistency and call availability
   on fresh evidence.
@@ -53,7 +56,9 @@ Evidence: [collection checkpoint](aem-history-checkpoint.md),
 [random comparison](aem-random-policy-checkpoint.md), and
 [canonical scorecard](aem-scorecard-checkpoint.md), and
 [baseline gates](aem-baseline-gates-checkpoint.md). The first bounded challenger is
-recorded in the [daily mean-reversion exit-search checkpoint](daily-mean-reversion-exit-search-checkpoint.md).
+recorded in the [daily mean-reversion exit-search checkpoint](daily-mean-reversion-exit-search-checkpoint.md),
+and the first causal selector is recorded in the
+[information-quality checkpoint](aem-information-quality-checkpoint.md).
 
 ## 1. Freeze how accuracy will be measured
 
@@ -112,8 +117,9 @@ strategy performance.
 - [x] Apply the registered modeled-cost, doubled-slippage, one-bar-delay and
   missed-fill stresses. Suitable broker evidence and explicit gap-exit verification
   remain required before any production claim.
-- [ ] Classify errors: weak follow-through, late entry, exhausted move, market/sector
-  opposition, inadequate liquidity, bad fill or data failure. Retain every failure.
+- [x] Classify observable errors: weak impulse, exhausted move, insufficient room,
+  weak same-time volume, liquidity and cost drag. Intraday market/sector context is
+  explicitly unavailable and remains a data task. Retain every failure.
 - [x] Test the preregistered three-rule daily mean-reversion exit grid across three
   risk sizings. The best locked-test profitable-trade rate was **50.13%**, every
   after-cost result was negative, and the challenger was rejected without changing
@@ -124,11 +130,14 @@ errors arise. The 50-stock pilot cannot establish reliability across all NSE sto
 
 ## 4. Improve the information used to select calls
 
-- [ ] Register a bounded hypothesis list and trial budget; start from the prior
-  plan's maximum of 24 pipeline specifications per track and log all nested trials.
+- [x] Register and execute 11 causal selector specifications, below the prior maximum
+  of 24. Log every development result and open one chronological holdout once.
 - [ ] Test market/sector alignment, relative strength, same-time volume, opening
   structure, volatility, trend age and remaining room for the target using only
   information available when the signal would have been issued.
+- [x] Test the available causal subset—same-time volume, remaining room, extension,
+  VWAP context and impulse-body quality. None earned promotion; benchmark/sector
+  alignment still requires new point-in-time inputs.
 - [ ] Test anticipatory impulse versus confirmed pullback/retest entry, distance
   from VWAP and resistance, and execution quality. Version each changed entry policy.
 - [ ] Test quick-profit exit alternatives as separate contracts with identical
@@ -136,8 +145,9 @@ errors arise. The 50-stock pilot cannot establish reliability across all NSE sto
 - [x] Complete the first bounded quick-profit exit search. None of its nine
   training-selected runs reached the 60% research target or positive locked-test
   expectancy, so the plan correctly stopped before gauntlet or candidate registration.
-- [ ] Run one-component-at-a-time comparisons and retain only improvements that
-  survive later periods and multiple stocks. App success examples remain hypotheses.
+- [x] Run one-component-at-a-time comparisons and a single registered bundle. The
+  selected impulse-body filter did not survive the later period and was rejected.
+  App success examples remain hypotheses.
 
 Acceptance: reproducible improvements over the frozen baseline with credible
 after-cost economics. If the proposed information does not help, revise the
@@ -231,8 +241,10 @@ fresh evidence; missed targets remain visible.
 - [x] Run matched-random, stress and portfolio gates on that exact frozen baseline.
 - [x] Register and execute the first bounded exit-geometry experiment; preserve its
   failed result as evidence rather than promoting a weak or test-selected rule.
-- [ ] Register the next information-quality experiments from the frozen baseline's
-  failure taxonomy and evaluate them on a fresh chronological cohort.
+- [x] Register the first information-quality experiments from the frozen baseline's
+  failure taxonomy and evaluate one selected rule on the later chronological cohort.
+- [ ] Add point-in-time intraday benchmark and sector context, then freeze a new
+  bounded trial set for later unconsumed sessions or prospective shadow evidence.
 
 For each completed item, attach its artifact/run identifier, date, sample size and
 pass/fail result. Update this checklist at checkpoints. The 70–80% objective remains
