@@ -6,8 +6,9 @@ Last updated: 26 September 2026
 
 Working branch: `codex/aem-v2-accuracy-first`
 
-Status: **Milestone 0 protocol implemented and frozen; event detection, scoring and
-strategy evaluation are not yet implemented. No production change is authorized.**
+Status: **Milestones 0–1 implemented: the protocol and causal event/outcome engine are
+frozen. Feature scoring, selection and strategy evaluation are not yet implemented.
+No production change is authorized.**
 
 ## 1. Objective
 
@@ -403,12 +404,12 @@ or execution hypothesis—not another search over the same consumed answers.
 
 ### Milestone 1 — causal event and outcome engine
 
-- [ ] Build AEM v2 opportunity reconstruction directly from isolated M1 data.
-- [ ] Implement anticipatory impulse, confirmed pullback and breakout-retest event
+- [x] Build AEM v2 opportunity reconstruction directly from isolated M1 data.
+- [x] Implement anticipatory impulse, confirmed pullback and breakout-retest event
   ordering with completed bars only.
-- [ ] Implement conservative fills, costs, target/stop/deadline ordering and ambiguity
+- [x] Implement conservative fills, costs, target/stop/deadline ordering and ambiguity
   handling for every registered quick-profit contract.
-- [ ] Add failing-case tests for gaps, chase, same-bar ambiguity, missing bars,
+- [x] Add failing-case tests for gaps, chase, same-bar ambiguity, missing bars,
   post-deadline signals and cost-negative target hits.
 
 ### Milestone 2 — feature and integrity layer

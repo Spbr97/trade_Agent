@@ -50,6 +50,9 @@ dated records. Proposed future production changes in those documents remain defe
 - [x] Freeze the custom AEM v2 Precision Ladder Milestone-0 protocol: three entry
   modes, 34 causal decision-time features, three quick-profit geometries and the
   50%/100-fill/30-session gates. This is a protocol, not an accuracy improvement.
+- [x] Implement the AEM v2 Milestone-1 causal event/outcome engine for all three modes
+  and quick-profit geometries. Conservative gap/chase, ambiguity, deadline, costs and
+  missing-data tests pass. No selector has run and no accuracy improvement is claimed.
 - [ ] Demonstrate positive portfolio returns after realistic costs and execution.
 - [ ] Demonstrate the requested accuracy, session consistency and call availability
   on fresh evidence.
@@ -67,7 +70,9 @@ Market/sector input readiness is recorded separately in the
 changed the baseline.
 The custom-algorithm protocol is recorded in the
 [AEM v2 Milestone-0 checkpoint](aem-v2-protocol-checkpoint.md); it contains no model
-or performance result.
+or performance result. The research-only mechanics are recorded in the
+[AEM v2 Milestone-1 checkpoint](aem-v2-engine-checkpoint.md); they also contain no
+model or performance result.
 
 ## 1. Freeze how accuracy will be measured
 
@@ -112,7 +117,7 @@ in every future session cannot be guaranteed by a model or by this roadmap.
   status and data-source versions. Preserve source and experiment fingerprints.
 - [ ] Restore the five SciPy-dependent test modules in an isolated compatible
   research environment while preserving system security and production dependencies.
-  Current runnable verification is **921 passed**, with two pre-existing skips
+  Current runnable verification is **930 passed**, with two pre-existing skips
   and one deselected tuning test.
   Five modules remain collection-blocked by SciPy `_dop`; one tuning test is blocked
   by scikit-learn `_sgd_fast`. Windows Application Control was not weakened.
