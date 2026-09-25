@@ -1,0 +1,49 @@
+{
+  "version": "aem-market-sector-context-readiness-v1",
+  "created_at": "2026-09-25T10:17:53.170678+05:30",
+  "dataset_id": "ec539cf66bea4c18ba994506f85a52d6",
+  "plan_sha256": "03015d2dc834fbb023b900253afeb1812e55895ff2708af4650582a929766dff",
+  "dataset_manifest_sha256": "2433d79af86b6a18b32a013fe57de5957be78b04cbeefd18c29bdcde259d3b07",
+  "instrument_source_sha256": "f22be58d1116194ef7d68f7afecfba8bd2523a428b747cab435537b9d15e2df3",
+  "status": "blocked_preflight",
+  "eligible_for_live": false,
+  "context_ready": false,
+  "baseline_improved": false,
+  "symbols": {
+    "NIFTY 50": "NSE_40000001",
+    "BANK NIFTY": "NSE_40000003",
+    "Nifty Financial": "NSE_40000100"
+  },
+  "coverage": {
+    "codes": 3,
+    "evaluation_sessions": 120,
+    "expected_rows": 135000,
+    "collected_rows": 0,
+    "complete_code_sessions": 0,
+    "total_code_sessions": 360,
+    "missing_code_sessions": 360
+  },
+  "collection": {
+    "offline_run_id": "b837ccb6301042e09dd0e31123ca6ab7",
+    "offline_status": "prepared_offline",
+    "attempted_run_id": "7e30983067ab426db6ecb88dc1305a54",
+    "attempted_status": "blocked_preflight",
+    "blocked_reasons": [
+      "protected_weekday_market_window"
+    ],
+    "requests_made": 0,
+    "requests_recorded_all_runs": 0
+  },
+  "decision": {
+    "register_candidate": false,
+    "change_canonical_baseline": false,
+    "change_live_behavior": false,
+    "reason": "Context acquisition is incomplete and no frozen accuracy experiment has been run."
+  },
+  "limitations": [
+    "This checkpoint prepares isolated data acquisition; it does not improve measured accuracy.",
+    "Current sector membership metadata is not historical point-in-time membership.",
+    "The protected weekday market-window guard blocked collection before any remote request.",
+    "A later frozen experiment or prospective cohort must establish any accuracy improvement."
+  ]
+}

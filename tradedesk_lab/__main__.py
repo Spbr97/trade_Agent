@@ -41,6 +41,9 @@ def main() -> None:
     staged_validation.add_argument("--seed", type=int, default=20260924)
     accuracy_experiment = sub.add_parser("aem-accuracy-experiment")
     accuracy_experiment.add_argument("--dataset-id")
+    context = sub.add_parser("aem-context-collect")
+    context.add_argument("--dataset-id", required=True)
+    context.add_argument("--max-requests", type=int, default=0)
     pilot = sub.add_parser("aem-universe-plan")
     pilot.add_argument("--dataset-id", required=True)
     pilot.add_argument("--shortlist-size", type=int, default=50)
@@ -164,6 +167,38 @@ def main() -> None:
                 indent=2,
             )
         )
+        return
+    if args.command == "aem-context-collect":
+        if not 0 <= args.max_requests <= 100:
+            parser.error("max requests must be 0..100")
+        from tradedesk_lab.aem_context_history import collect_context_history
+
+        report = collect_context_history(dataset_id=args.dataset_id, max_requests=args.max_requests)
+        coverage = report["coverage"]
+        print(
+            json.dumps(
+                {
+                    "id": report["id"],
+                    "status": report["status"],
+                    "dataset_id": report["dataset_id"],
+                    "requests_this_run": report["requests_this_run"],
+                    "requests_recorded_all_runs": report["requests_recorded_all_runs"],
+                    "coverage": {
+                        key: coverage[key]
+                        for key in (
+                            "total_rows",
+                            "expected_rows",
+                            "complete_sessions",
+                            "missing_sessions",
+                        )
+                    },
+                    "context_ready": report["context_ready"],
+                },
+                indent=2,
+            )
+        )
+        if report["status"].startswith("blocked_"):
+            raise SystemExit(1)
         return
     if args.command == "aem-universe-plan":
         if not 1 <= args.shortlist_size <= 500:
