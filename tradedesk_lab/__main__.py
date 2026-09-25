@@ -41,6 +41,7 @@ def main() -> None:
     staged_validation.add_argument("--seed", type=int, default=20260924)
     accuracy_experiment = sub.add_parser("aem-accuracy-experiment")
     accuracy_experiment.add_argument("--dataset-id")
+    sub.add_parser("aem-v2-freeze-protocol")
     context = sub.add_parser("aem-context-collect")
     context.add_argument("--dataset-id", required=True)
     context.add_argument("--max-requests", type=int, default=0)
@@ -162,6 +163,35 @@ def main() -> None:
                         "holdout_deltas",
                         "promotion_checks",
                         "passed",
+                    )
+                },
+                indent=2,
+            )
+        )
+        return
+    if args.command == "aem-v2-freeze-protocol":
+        from tradedesk_lab.aem_v2_contract import freeze_aem_v2_protocol
+
+        report = freeze_aem_v2_protocol()
+        print(
+            json.dumps(
+                {
+                    key: report[key]
+                    for key in (
+                        "id",
+                        "status",
+                        "milestone",
+                        "artifact_path",
+                        "eligible_for_live",
+                        "baseline_improved",
+                        "algorithm_implemented",
+                        "contract_sha256",
+                        "protocol_sha256",
+                        "bundle_sha256",
+                        "feature_count",
+                        "geometry_count",
+                        "entry_mode_count",
+                        "next_milestone",
                     )
                 },
                 indent=2,
