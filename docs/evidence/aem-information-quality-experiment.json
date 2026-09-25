@@ -1,0 +1,124 @@
+{
+  "id": "31dcf458fb974a2c9ac5b5c2faa8515a",
+  "created_at": "2026-09-25T02:39:33.349993+00:00",
+  "version": "aem-information-quality-v1",
+  "status": "historical_diagnostic_only",
+  "eligible_for_live": false,
+  "passed": false,
+  "dataset_id": "ec539cf66bea4c18ba994506f85a52d6",
+  "source_manifest_sha256": "2433d79af86b6a18b32a013fe57de5957be78b04cbeefd18c29bdcde259d3b07",
+  "source_events_csv_sha256": "008b5c9dbbaa5d57c91fc382c1bded34e4cff98e4bb97d71570bbaccc6d27aeb",
+  "experiment_code_sha256": "bdfafebcc9a7bc5db1c9493eb29e37a5e4d8a540cc176cabc0f19cc46eb57651",
+  "evidence_class": "chronological_holdout_from_previously_inspected_baseline",
+  "split": {
+    "development_sessions": 80,
+    "development_from": "2026-03-25",
+    "development_through": "2026-07-23",
+    "holdout_sessions": 40,
+    "holdout_from": "2026-07-24",
+    "holdout_through": "2026-09-18",
+    "holdout_opened_once": true
+  },
+  "selection_policy": {
+    "trial_count": 11,
+    "minimum_development_resolved": 150,
+    "minimum_development_active_sessions": 30,
+    "objective_order": [
+      "wilson95_lower",
+      "mean_net_r",
+      "active_session_coverage"
+    ],
+    "outcome_fields_forbidden": true
+  },
+  "development_trials": [
+    {"id": "room_1p2", "resolved": 355, "strict_rate": 0.24225352112676057, "wilson95_lower": 0.20059735416184699, "mean_net_r": -0.23287847579972312},
+    {"id": "room_1p6", "resolved": 266, "strict_rate": 0.23308270676691728, "wilson95_lower": 0.18629405655504203, "mean_net_r": -0.2466519991627711},
+    {"id": "rvol_0p8", "resolved": 299, "strict_rate": 0.25418060200668896, "wilson95_lower": 0.20816219875715508, "mean_net_r": -0.2713927264560579},
+    {"id": "rvol_1p2", "resolved": 231, "strict_rate": 0.24242424242424243, "wilson95_lower": 0.19166562970443202, "mean_net_r": -0.323332144380649},
+    {"id": "positive_vwap_slope", "resolved": 449, "strict_rate": 0.25389755011135856, "wilson95_lower": 0.21584392041033593, "mean_net_r": -0.22360533094408014},
+    {"id": "above_vwap", "resolved": 449, "strict_rate": 0.25389755011135856, "wilson95_lower": 0.21584392041033593, "mean_net_r": -0.22360533094408014},
+    {"id": "extension_le_1p0", "resolved": 190, "strict_rate": 0.24210526315789474, "wilson95_lower": 0.18669796052669496, "mean_net_r": -0.22794298878869573},
+    {"id": "extension_le_1p5", "resolved": 307, "strict_rate": 0.24104234527687296, "wilson95_lower": 0.1965868358486309, "mean_net_r": -0.24516870908040733},
+    {"id": "body_nonnegative", "resolved": 199, "strict_rate": 0.2814070351758794, "wilson95_lower": 0.22352444471892696, "mean_net_r": -0.19964983817559365},
+    {"id": "body_0p3", "resolved": 159, "strict_rate": 0.2830188679245283, "wilson95_lower": 0.21876098327504243, "mean_net_r": -0.19635565474870004},
+    {"id": "quality_bundle", "resolved": 156, "strict_rate": 0.24358974358974358, "wilson95_lower": 0.18292290613728768, "mean_net_r": -0.263820145325184}
+  ],
+  "selected_specification": {
+    "id": "body_nonnegative",
+    "conditions": [["intraday_body_ratio", ">=", 0.0]],
+    "development": {
+      "calls_issued": 211,
+      "resolved_trades": 199,
+      "strict_successes": 56,
+      "strict_success_rate": 0.2814070351758794,
+      "wilson95_lower": 0.22352444471892696,
+      "mean_net_r": -0.19964983817559365,
+      "active_sessions": 72,
+      "active_session_coverage": 0.9
+    }
+  },
+  "holdout_baseline": {
+    "calls_issued": 282,
+    "resolved_trades": 244,
+    "strict_successes": 35,
+    "strict_success_rate": 0.14344262295081966,
+    "wilson95_lower": 0.10498122474526855,
+    "mean_net_r": -0.36874515828561144,
+    "active_sessions": 39,
+    "active_session_coverage": 0.975,
+    "sessions_at_least_70pct": 0.0,
+    "sessions_at_least_80pct": 0.0
+  },
+  "holdout_challenger": {
+    "calls_issued": 104,
+    "resolved_trades": 100,
+    "strict_successes": 13,
+    "strict_success_rate": 0.13,
+    "wilson95_lower": 0.0775716742724051,
+    "mean_net_r": -0.46623557967231144,
+    "active_sessions": 38,
+    "active_session_coverage": 0.95,
+    "sessions_at_least_70pct": 0.05263157894736842,
+    "sessions_at_least_80pct": 0.05263157894736842
+  },
+  "holdout_deltas": {
+    "strict_success_rate": -0.01344262295081966,
+    "wilson95_lower": -0.027409550472863448,
+    "mean_net_r": -0.0974904213867,
+    "active_session_coverage": -0.025000000000000022,
+    "sessions_at_least_70pct": 0.05263157894736842,
+    "sessions_at_least_80pct": 0.05263157894736842
+  },
+  "failure_taxonomy": {
+    "resolved_strict_failures": 335,
+    "primary_counts": {
+      "insufficient_remaining_room": 66,
+      "extended_daily_move": 69,
+      "weak_same_time_volume": 82,
+      "weak_vwap_context": 0,
+      "weak_impulse_body": 89,
+      "lower_development_liquidity": 16,
+      "cost_drag": 2,
+      "unclassified_by_registered_taxonomy": 11
+    },
+    "missing_context": [
+      "intraday benchmark alignment",
+      "intraday sector alignment",
+      "historical point-in-time sector membership"
+    ]
+  },
+  "promotion_checks": {
+    "minimum_holdout_resolved": true,
+    "minimum_holdout_active_sessions": true,
+    "no_unresolved_decisions": true,
+    "strict_accuracy_improves_5pp": false,
+    "wilson_lower_improves": false,
+    "positive_after_cost_mean_net_r": false,
+    "at_least_half_session_coverage": true
+  },
+  "decision": {
+    "register_candidate": false,
+    "change_live_behavior": false,
+    "reason": "The selected causal filter reduced locked-holdout accuracy, Wilson lower bound, and after-cost mean net R."
+  }
+}

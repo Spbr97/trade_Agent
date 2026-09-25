@@ -39,6 +39,8 @@ def main() -> None:
     staged_validation.add_argument("--dataset-id")
     staged_validation.add_argument("--cohorts", type=int, default=500)
     staged_validation.add_argument("--seed", type=int, default=20260924)
+    accuracy_experiment = sub.add_parser("aem-accuracy-experiment")
+    accuracy_experiment.add_argument("--dataset-id")
     pilot = sub.add_parser("aem-universe-plan")
     pilot.add_argument("--dataset-id", required=True)
     pilot.add_argument("--shortlist-size", type=int, default=50)
@@ -138,6 +140,30 @@ def main() -> None:
         print(json.dumps(preview, indent=2))
         if report["status"].startswith("blocked_"):
             raise SystemExit(1)
+        return
+    if args.command == "aem-accuracy-experiment":
+        from tradedesk_lab.aem_accuracy_experiment import run_accuracy_experiment
+
+        report = run_accuracy_experiment(dataset_id=args.dataset_id)
+        print(
+            json.dumps(
+                {
+                    key: report.get(key)
+                    for key in (
+                        "id",
+                        "status",
+                        "dataset_id",
+                        "selected_specification",
+                        "holdout_baseline",
+                        "holdout_challenger",
+                        "holdout_deltas",
+                        "promotion_checks",
+                        "passed",
+                    )
+                },
+                indent=2,
+            )
+        )
         return
     if args.command == "aem-universe-plan":
         if not 1 <= args.shortlist_size <= 500:

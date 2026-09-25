@@ -105,6 +105,12 @@ def create_app(root: Path, output: Path) -> FastAPI:
         mean_reversion_path = root / "docs/evidence/daily-mean-reversion-exit-search.json"
         if mean_reversion_path.is_file():
             mean_reversion_search = json.loads(mean_reversion_path.read_text(encoding="utf-8"))
+        information_quality_experiment = None
+        information_quality_path = root / "docs/evidence/aem-information-quality-experiment.json"
+        if information_quality_path.is_file():
+            information_quality_experiment = json.loads(
+                information_quality_path.read_text(encoding="utf-8")
+            )
         return {
             "available": True,
             "status": manifest["status"],
@@ -133,6 +139,7 @@ def create_app(root: Path, output: Path) -> FastAPI:
             },
             "scorecard": scorecard,
             "mean_reversion_exit_search": mean_reversion_search,
+            "information_quality_experiment": information_quality_experiment,
             "validation": (
                 {
                     "id": validation["id"],
