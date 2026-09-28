@@ -53,9 +53,42 @@ dated records. Proposed future production changes in those documents remain defe
 - [x] Implement the AEM v2 Milestone-1 causal event/outcome engine for all three modes
   and quick-profit geometries. Conservative gap/chase, ambiguity, deadline, costs and
   missing-data tests pass. No selector has run and no accuracy improvement is claimed.
-- [ ] Demonstrate positive portfolio returns after realistic costs and execution.
+- [x] Complete the AEM v2 Milestone-2 feature and integrity layer: 34 decision-time
+  features, cross-sectional breadth/relative-strength, and a universe integrity audit
+  against the real frozen 50-stock cohort - **5,999/6,000 symbol-sessions included
+  (99.983%)**, the one exclusion being the known VEDL 2026-04-30 incomplete-M1
+  exception. No selector has run and no accuracy improvement is claimed.
+- [x] Implement the AEM v2 Milestone-3 Precision Ladder selector mechanics: evidence
+  contributions with sparse-regime shrinkage, a hard veto layer, fold-local
+  out-of-fold calibration, absolute thresholding, per-session ranking, symbol
+  deduplication and a logistic control. Proven leak-free by a reproducible
+  independent-refit test. Not run against real data; no accuracy improvement claimed.
+- [x] Build the AEM v2 Milestone-4 development-dataset assembly (opportunities ×
+  features × per-geometry outcomes over the frozen included universe), fixing a real
+  tz-backend bug this surfaced in the Milestone-2 feature module along the way. Real run
+  complete 27 September: 5,999 symbol-sessions, 66,668 opportunities, 177,351 resolved
+  rows.
+- [x] Build the AEM v2 Milestone-4 pipeline race (Stage 2): 24 registered
+  specifications (4 entry-mode groupings x 3 geometries x 2 models), a nested
+  chronological walk-forward evaluation reusing `validation.walk_forward` and
+  Milestone 3's own OOF calibration, and the frozen development gates. Real run complete
+  27 September, after finding and fixing two hard-veto bugs the first real attempt
+  surfaced (99.997% of rows vetoed - see the pipeline-race checkpoint). Corrected result:
+  **no registered specification clears the development gate on real data.** AEM v1
+  remains the canonical baseline (21.50% strict success).
+- [x] Build the AEM v2 Milestone-4 mandatory execution-stress replay
+  (`aem_v2_stress_gates.py`): re-resolves a nominated `(spec_id, top_k)`'s real,
+  selected fills through the real Milestone-1 outcome engine under cost inflation
+  (1.25x/1.5x), doubled slippage, a one-minute execution delay and an adversarial
+  best-10%-never-fills case, reusing AEM v1's own stress precedent
+  (`aem_staged_validation.py`) rather than a new methodology. Verified against a real,
+  reconstructed opportunity fixture. No specification was ever nominated (the real
+  pipeline race qualified none), so this has nothing real to evaluate - the honest
+  completion of this item, not a gap.
+- [ ] Demonstrate positive portfolio returns after realistic costs and execution. Not
+  reached - no AEM v2 candidate cleared the development gate to test this against.
 - [ ] Demonstrate the requested accuracy, session consistency and call availability
-  on fresh evidence.
+  on fresh evidence. Not reached, for the same reason.
 
 Evidence: [collection checkpoint](aem-history-checkpoint.md),
 [corrected baseline](nse-aem-validation-checkpoint.md),
@@ -72,7 +105,30 @@ The custom-algorithm protocol is recorded in the
 [AEM v2 Milestone-0 checkpoint](aem-v2-protocol-checkpoint.md); it contains no model
 or performance result. The research-only mechanics are recorded in the
 [AEM v2 Milestone-1 checkpoint](aem-v2-engine-checkpoint.md); they also contain no
-model or performance result.
+model or performance result. The causal feature registry (the first half of
+Milestone 2) is recorded in the
+[AEM v2 Milestone-2 feature checkpoint](aem-v2-features-checkpoint.md); the universe
+integrity audit and frozen development dataset that complete Milestone 2 are recorded
+in the
+[AEM v2 Milestone-2 universe-audit checkpoint](aem-v2-universe-audit-checkpoint.md).
+Neither contains a model or performance result. The Precision Ladder selector
+mechanics are recorded in the
+[AEM v2 Milestone-3 checkpoint](aem-v2-precision-ladder-checkpoint.md), which also
+carries forward the full list of known gaps across Milestones 3-4; it contains no
+model or performance result either. The Milestone-4 development-dataset assembly (code,
+tests, and the tz-bug fix it surfaced) is recorded in the
+[AEM v2 Milestone-4 dataset checkpoint](aem-v2-development-dataset-checkpoint.md); its
+real run completed 27 September (177,351 resolved rows). The Milestone-4 pipeline race
+(Stage 2) is recorded in the
+[AEM v2 Milestone-4 pipeline-race checkpoint](aem-v2-pipeline-race-checkpoint.md), whose
+"Real run, 27 September 2026" section is the first place in this entire AEM v2 effort
+with an actual accuracy result: two hard-veto bugs found and fixed, then a real,
+non-degenerate run showing no registered specification clears the development gate - AEM
+v1 remains the canonical baseline. The mandatory execution-stress replay is recorded in
+the
+[AEM v2 Milestone-4 stress-gates checkpoint](aem-v2-stress-gates-checkpoint.md); it is
+verified against a real, reconstructed opportunity fixture but has nothing to evaluate,
+since no specification was nominated.
 
 ## 1. Freeze how accuracy will be measured
 
@@ -273,8 +329,19 @@ fresh evidence; missed targets remain visible.
   this acquisition track is currently parked.
 - [x] Freeze the AEM v2 custom-algorithm contract, feature registry, entry modes,
   geometry grid, trial budget and evidence gates with immutable fingerprints.
-- [ ] Build Milestone 1: the causal event and outcome engine with conservative fills,
+- [x] Build Milestone 1: the causal event and outcome engine with conservative fills,
   costs, deadlines and target/stop ordering before training a selector.
+- [x] Complete Milestone 2: the causal feature registry, the universe integrity audit
+  (5,999/6,000 symbol-sessions included on the real frozen cohort) and the frozen
+  development dataset are all done.
+- [x] Build Milestone 3: the Precision Ladder selector mechanics (evidence
+  contributions, hard vetoes, fold-local calibration, thresholding, ranking,
+  deduplication, logistic control) are implemented and proven leak-free. Not yet run
+  against real data.
+- [ ] Complete Milestone 4: the development-dataset assembly (Stage 1) is built and
+  tested; its real run against the full 50-stock cohort is in progress. The bounded
+  pipeline race and walk-forward evaluation (Stage 2) are built and proven on synthetic
+  data but not yet run against real data, and the mandatory stress gates are deferred.
 
 For each completed item, attach its artifact/run identifier, date, sample size and
 pass/fail result. Update this checklist at checkpoints. The 70–80% objective remains

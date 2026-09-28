@@ -123,6 +123,40 @@ def create_app(root: Path, output: Path) -> FastAPI:
         aem_v2_engine_path = root / "docs/evidence/aem-v2-engine.json"
         if aem_v2_engine_path.is_file():
             aem_v2_engine = json.loads(aem_v2_engine_path.read_text(encoding="utf-8"))
+        aem_v2_features = None
+        aem_v2_features_path = root / "docs/evidence/aem-v2-features.json"
+        if aem_v2_features_path.is_file():
+            aem_v2_features = json.loads(aem_v2_features_path.read_text(encoding="utf-8"))
+        aem_v2_precision_ladder = None
+        aem_v2_precision_ladder_path = root / "docs/evidence/aem-v2-precision-ladder.json"
+        if aem_v2_precision_ladder_path.is_file():
+            aem_v2_precision_ladder = json.loads(
+                aem_v2_precision_ladder_path.read_text(encoding="utf-8")
+            )
+        aem_v2_universe_audit = None
+        aem_v2_universe_audit_path = root / "docs/evidence/aem-v2-universe-audit.json"
+        if aem_v2_universe_audit_path.is_file():
+            aem_v2_universe_audit = json.loads(
+                aem_v2_universe_audit_path.read_text(encoding="utf-8")
+            )
+        aem_v2_development_dataset = None
+        aem_v2_development_dataset_path = root / "docs/evidence/aem-v2-development-dataset.json"
+        if aem_v2_development_dataset_path.is_file():
+            aem_v2_development_dataset = json.loads(
+                aem_v2_development_dataset_path.read_text(encoding="utf-8")
+            )
+        aem_v2_pipeline_race = None
+        aem_v2_pipeline_race_path = root / "docs/evidence/aem-v2-pipeline-race.json"
+        if aem_v2_pipeline_race_path.is_file():
+            aem_v2_pipeline_race = json.loads(
+                aem_v2_pipeline_race_path.read_text(encoding="utf-8")
+            )
+        aem_v2_stress_gates = None
+        aem_v2_stress_gates_path = root / "docs/evidence/aem-v2-stress-gates.json"
+        if aem_v2_stress_gates_path.is_file():
+            aem_v2_stress_gates = json.loads(
+                aem_v2_stress_gates_path.read_text(encoding="utf-8")
+            )
         return {
             "available": True,
             "status": manifest["status"],
@@ -155,6 +189,12 @@ def create_app(root: Path, output: Path) -> FastAPI:
             "market_sector_context_readiness": market_sector_context_readiness,
             "aem_v2_protocol": aem_v2_protocol,
             "aem_v2_engine": aem_v2_engine,
+            "aem_v2_features": aem_v2_features,
+            "aem_v2_precision_ladder": aem_v2_precision_ladder,
+            "aem_v2_universe_audit": aem_v2_universe_audit,
+            "aem_v2_development_dataset": aem_v2_development_dataset,
+            "aem_v2_pipeline_race": aem_v2_pipeline_race,
+            "aem_v2_stress_gates": aem_v2_stress_gates,
             "validation": (
                 {
                     "id": validation["id"],

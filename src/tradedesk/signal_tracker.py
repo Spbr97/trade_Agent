@@ -34,7 +34,7 @@ from tradedesk.data.candle_store import CandleStore
 from tradedesk.engine.signals import Signal
 from tradedesk.markets import Market
 from tradedesk.prediction.labeling import triple_barrier
-from tradedesk.scan.evening_scan import Watchlist, build_watchlist
+from tradedesk.scan.evening_scan import RETIRED_REASON_PREFIX, Watchlist, build_watchlist
 
 
 @dataclass
@@ -70,6 +70,10 @@ class TrackedSignal:
     # log_new_signals(source="live"); backfill_watchlists() passes "backfill" explicitly too,
     # so this default only ever matters for data that predates the field.
     source: str = "backfill"
+    # True when the setup was retired on this market by an approved self-review item: the
+    # call is still logged and graded (so the loop keeps learning, and can see a recovery)
+    # but it is not a call the agent stands behind.
+    shadow: bool = False
 
 
 def load_log(log_path: Path) -> dict[str, TrackedSignal]:
@@ -226,7 +230,8 @@ def render_dashboard_html(market: str, rows: dict[str, TrackedSignal]) -> str:
             outcome_cell = f'<td class="{cls}">{r.outcome} ({r_mult})</td>'
         return (
             "<tr>"
-            f"<td>{r.armed_on}</td><td>{r.symbol}</td><td>{r.setup}</td><td>{r.grade}</td>"
+            f"<td>{r.armed_on}</td><td>{r.symbol}</td>"
+            f"<td>{r.setup}{' (shadow)' if r.shadow else ''}</td><td>{r.grade}</td>"
             f"<td>{fmt_price(r.entry)}</td><td>{fmt_price(r.stop)}</td>"
             f"<td>{fmt_price(r.t1)}</td><td>{fmt_price(r.t2)}</td>"
             f"<td>{tradeable}</td>" + outcome_cell + "</tr>"
@@ -302,6 +307,7 @@ def log_new_signals(
             entry=sig.trigger, stop=sig.stop, t1=sig.t1, t2=sig.t2,
             net_rr_t1=e.net_rr_t1, net_rr_t2=e.net_rr_t2, rejected_for=list(e.rejected_for),
             probability=e.probability, logged_at=datetime.now(IST).isoformat(), source=source,
+            shadow=any(r.startswith(RETIRED_REASON_PREFIX) for r in e.rejected_for),
         )  # fmt: skip
         rows[sig.id] = row
         new_rows.append(row)

@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 from fractions import Fraction
 from pathlib import Path
 
 import pytest
 
 from tests.data.synth import daily, sessions
-from tradedesk.broker.indstocks.models import IST, IndexInstrument, Instrument, Interval
+from tradedesk.broker.indstocks.models import IST, Candle, IndexInstrument, Instrument, Interval
 from tradedesk.data.candle_store import CandleStore
 from tradedesk.data.models import ActionKind, CorporateAction, ResultsEvent
 
@@ -62,6 +62,35 @@ def test_load_window_and_index_timezone(store: CandleStore) -> None:
     assert store.last_ts("NSE_3045", Interval.D1).date() == days[-1]
     assert store.last_ts("NSE_X", Interval.D1) is None
     assert store.codes(Interval.D1) == ["NSE_3045"]
+
+
+def test_last_closed_ts_skips_a_bar_whose_own_period_has_not_elapsed(store: CandleStore) -> None:
+    """Real bug, found 2026-09-27: CoinDCX (unlike INDstocks, which only ever serves data
+    after the exchange's real close) continuously updates the currently-forming daily bar,
+    so `last_ts()` alone can hand back a moving target rather than a settled close.
+    `last_closed_ts()` must skip a bar until its own [ts, ts+period) window has fully
+    elapsed, and fall back to the previous bar when the latest one is still forming."""
+    day1_open = datetime(2026, 1, 5, 0, 0, tzinfo=IST)
+    day2_open = day1_open + timedelta(days=1)
+    store.upsert_candles([
+        Candle(scrip_code="NSE_3045", interval=Interval.D1, ts=day1_open,
+               open=100.0, high=101.0, low=99.0, close=100.5, volume=10),
+        Candle(scrip_code="NSE_3045", interval=Interval.D1, ts=day2_open,
+               open=100.5, high=102.0, low=100.0, close=101.5, volume=10),
+    ])  # fmt: skip
+
+    # Queried mid-way through day2's own 24h window: day2's bar hasn't closed yet, so the
+    # latest CLOSED bar is still day1's.
+    still_forming_now = day2_open + timedelta(hours=12)
+    assert store.last_closed_ts("NSE_3045", Interval.D1, now=still_forming_now) == day1_open
+
+    # Queried after day2's window has fully elapsed: day2 is now the latest closed bar.
+    fully_closed_now = day2_open + timedelta(hours=24, minutes=1)
+    assert store.last_closed_ts("NSE_3045", Interval.D1, now=fully_closed_now) == day2_open
+
+    # No bar has closed yet at all (queried right at day1's own open).
+    assert store.last_closed_ts("NSE_3045", Interval.D1, now=day1_open) is None
+    assert store.last_closed_ts("NSE_X", Interval.D1, now=fully_closed_now) is None
 
 
 def test_instrument_mapping(store: CandleStore) -> None:

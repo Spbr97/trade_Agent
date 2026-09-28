@@ -403,25 +403,132 @@ def create_app(
 
     @app.get("/api/review")
     async def api_review_list() -> JSONResponse:
-        """Pending/decided review-queue items (review_queue.py) - proposals from `tradedesk
-        review week`, waiting for a human decision. Never auto-applied; see the module
-        docstring for why that's a hard rule, not a missing feature."""
+        """Pending/decided review-queue items (review_queue.py). Most producers (`tradedesk
+        review week`, drift checks, signal-tracker failure flags) are never auto-applied -
+        see review_queue.py's own docstring for why that stays a hard rule. A self-review
+        item (`proposal_ref` set) is different by explicit user request: approving it
+        applies it immediately (see `/api/review/decide`) - `applied` here reports whether
+        that has actually happened yet for a decided item."""
+        from tradedesk.proposals import safe_filename
         from tradedesk.review_queue import load_queue
+        from tradedesk.self_review.apply import APPLIED_DIR
 
         items = sorted(load_queue().values(), key=lambda i: i.created_at, reverse=True)
-        return JSONResponse([vars(i) for i in items])
+        rows = []
+        for i in items:
+            row = vars(i).copy()
+            if i.proposal_ref:
+                row["applied"] = (APPLIED_DIR / f"{safe_filename(i.id)}.json").is_file()
+            rows.append(row)
+        return JSONResponse(rows)
 
     @app.post("/api/review/decide")
     async def api_review_decide(item_id: str, status: str) -> JSONResponse:
-        from tradedesk.review_queue import decide
+        """For every producer except self-review, this is still pure bookkeeping - it only
+        flips `status`/`decided_at`, exactly as review_queue.py's own docstring promises.
 
-        try:
+        For a self-review item (`proposal_ref` set), the user explicitly asked that
+        "approve" mean something, not just bookkeeping: approving immediately calls
+        `self_review/apply.py::apply()`, which re-checks `status == "approved"` and the
+        proposal's own hash before writing anything - so this is still gated, just no
+        longer a separate manual step. Rejecting still only stamps the cooldown
+        (`decide_with_cooldown`) and applies nothing. If apply() itself refuses (e.g. a
+        missing pre-generated source, or a git failure), the decision already happened -
+        it is not silently rolled back - and the response reports `apply_error` so the
+        dashboard can show a decided-but-not-applied state rather than hiding it."""
+        from tradedesk.review_queue import decide, load_queue
+        from tradedesk.self_review import apply as self_review_apply
+        from tradedesk.self_review.decision_packet import decide_with_cooldown
+
+        if status not in ("approved", "rejected"):
+            return JSONResponse({"error": "status must be approved or rejected"}, status_code=400)
+        existing = load_queue().get(item_id)
+        if existing is None:
+            return JSONResponse({"error": f"no review item {item_id!r}"}, status_code=404)
+
+        if not existing.proposal_ref:
             item = decide(item_id, status)
-        except ValueError as exc:
-            return JSONResponse({"error": str(exc)}, status_code=400)
+            return JSONResponse(vars(item)) if item else JSONResponse(
+                {"error": f"no review item {item_id!r}"}, status_code=404
+            )
+
+        item = decide_with_cooldown(item_id, status)
         if item is None:
             return JSONResponse({"error": f"no review item {item_id!r}"}, status_code=404)
-        return JSONResponse(vars(item))
+        if status == "rejected":
+            return JSONResponse(vars(item))
+        try:
+            result = self_review_apply.apply(
+                item_id, root=self_review_apply.ROOT, lab_output=self_review_apply.OUTPUT
+            )
+        except self_review_apply.ApplyRefused as exc:
+            return JSONResponse({"item": vars(item), "apply_error": str(exc)}, status_code=409)
+        return JSONResponse(
+            {
+                "item": vars(item),
+                "applied": {
+                    "git_commit_sha": result.git_commit_sha,
+                    "files_changed": result.files_changed,
+                    "applied_at": result.applied_at,
+                },
+            }
+        )
+
+    @app.get("/api/review/replacement-search")
+    async def api_replacement_search() -> JSONResponse:
+        """The latest replacement-search report per market (self_review/
+        replacement_search.py): what it tested, the best candidates so far and what it
+        tries next - the research that keeps running whether or not an item is pending."""
+        import json
+
+        from tradedesk.self_review.replacement_search import SEARCH_DIR
+
+        out = []
+        for market in ("nse", "bse", "crypto"):
+            reports = sorted((SEARCH_DIR / market).glob("*.json"))
+            if not reports:
+                continue
+            data = json.loads(reports[-1].read_text(encoding="utf-8"))
+            out.append(
+                {
+                    "market": market,
+                    "generated": reports[-1].stem,
+                    "status": data.get("status"),
+                    "summary": data.get("summary"),
+                    "space_size": data.get("space_size"),
+                    "tested_total": data.get("tested_total"),
+                    "untested_remaining": data.get("untested_remaining"),
+                    "baseline_net_r": data.get("baseline_net_r"),
+                    "baseline_hit_rate": data.get("baseline_hit_rate"),
+                    "leaderboard": (data.get("leaderboard") or [])[:10],
+                }
+            )
+        return JSONResponse(out)
+
+    @app.get("/api/review/{item_id}/gauntlet")
+    async def api_review_gauntlet(item_id: str) -> JSONResponse:
+        """The full validation behind a self-review proposal - the gauntlet report, not
+        just the one-line summary `ReviewItem.proposal` shows."""
+        from dataclasses import asdict
+
+        from tradedesk.proposals import load_proposal
+        from tradedesk.review_queue import load_queue
+
+        item = load_queue().get(item_id)
+        if item is None:
+            return JSONResponse({"error": f"no review item {item_id!r}"}, status_code=404)
+        if not item.proposal_ref:
+            return JSONResponse({"error": "this item has no linked proposal"}, status_code=404)
+        proposal = load_proposal(Path(item.proposal_ref))
+        return JSONResponse(
+            {
+                "kind": proposal.kind.value,
+                "payload": asdict(proposal.payload),
+                "gauntlet_report": proposal.gauntlet_report,
+                "evidence_summary": proposal.evidence_summary,
+                "cooldown_until": proposal.cooldown_until,
+            }
+        )
 
     @app.get("/chart")
     async def chart(path: str) -> Any:

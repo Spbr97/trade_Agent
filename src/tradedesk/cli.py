@@ -624,7 +624,10 @@ def _live_rebuild_watchlist(settings: Settings, market: str, root: Path, journal
         else:
             ref = _reference_code(store, root)
             vix = store.index_code(settings.universe.volatility_index)
-        cfg = scan_config(settings, day, None, market=mkt, fallback_to_all_if_none_enabled=False)
+        cfg = scan_config(
+            settings, day, None, market=mkt,
+            fallback_to_all_if_none_enabled=False, include_retired=True,
+        )  # fmt: skip
         cfg.vix_code = vix
         if market == "nse":
             cfg.sector_of, cfg.sector_codes = _sector_config(store, root)
@@ -1432,20 +1435,65 @@ def paper_update(
 
 @app.command()
 def review(
-    what: str = typer.Argument("week", help="week"),
+    what: str = typer.Argument("week", help="week | rolling-check | self-review-run"),
     on: str | None = typer.Option(None, "--date", help="Any date in the week; default today"),
     out_dir: Path = typer.Option(Path("data/reviews"), "--out-dir"),
     journal: Path = JOURNAL_OPTION,
     root: Path = ROOT_OPTION,
+    market: str = typer.Option(
+        "nse", "--market", help="nse | bse | crypto (rolling-check/self-review-run only)"
+    ),
+    max_codes: int = typer.Option(
+        150, "--max-codes", help="self-review-run only: universe size for the real backtest"
+    ),
+    search_minutes: float = typer.Option(
+        20.0, "--search-minutes", help="self-review-run only: replacement-search time budget"
+    ),
 ) -> None:
-    """Weekly coach: Claude reads the journal and paper book and names one change."""
+    """Weekly coach (`week`): Claude reads the journal and paper book and names one change.
+    `rolling-check`: the self-review loop's sustained-failure monitor - see
+    `rolling_failure_monitor.py`'s own docstring for what "sustained" means.
+    `self-review-run`: the full daily job - runs `rolling-check` and, for anything it
+    flags, generates and submits a real, gauntlet-validated proposal (never applies or
+    approves anything - see `self_review/orchestrate.py`'s own docstring)."""
     from tradedesk.broker.indstocks.models import IST
     from tradedesk.claude import ClaudeAdvisor
     from tradedesk.claude.weekly_review import run_weekly_review
     from tradedesk.journal import Journal
 
+    if what == "rolling-check":
+        from tradedesk.rolling_failure_monitor import run_daily_check
+
+        failures = run_daily_check(market)
+        if not failures:
+            typer.echo(f"{market}: no sustained or single-window failures today")
+            return
+        for failure in failures:
+            typer.echo(f"[{failure.severity.value}] {failure.detail}")
+        return
+    if what == "self-review-run":
+        from tradedesk.self_review.orchestrate import run_self_review
+
+        result = run_self_review(
+            market, root=root, max_codes=max_codes, search_time_budget_s=search_minutes * 60
+        )
+        if result.search is not None:
+            typer.echo(result.search.summary())
+            for r in result.search.tested_this_run:
+                verdict = "PASS" if r.passed else "fail"
+                net = f"{r.net_r:+.3f}R" if r.net_r is not None else "n/a"
+                typer.echo(f"  [{verdict}] {r.name}: net {net}, {r.n_trades} trades")
+            typer.echo(f"search report: {result.search.report_path}")
+        if not result.items:
+            typer.echo(f"{market}: no new proposal submitted this run")
+            return
+        for item in result.items:
+            typer.echo(f"submitted [{item.id}] {item.title}")
+        return
     if what != "week":
-        raise typer.BadParameter("only `review week` exists")
+        raise typer.BadParameter(
+            "only `review week`, `review rolling-check` or `review self-review-run` exists"
+        )
     settings = load_config(root)
     if settings.claude.mode == "off":
         raise typer.BadParameter("config/claude.yaml mode is off; set notify or veto")
@@ -1778,13 +1826,23 @@ def scan(
             ref = _reference_code(store, root)
             vix = store.index_code(settings.universe.volatility_index)
         if on == "today":
-            last = store.last_ts(ref, Interval.D1)
+            # last_closed_ts, not last_ts: crypto's feed continuously updates the
+            # currently-forming UTC day's bar rather than only publishing it once closed -
+            # using last_ts() here would arm signals off a not-yet-final close. No-op for
+            # NSE/BSE, whose candles are only ever loaded after the real session close.
+            last = store.last_closed_ts(ref, Interval.D1)
             if last is None:
                 raise typer.BadParameter("no benchmark candles stored; run `tradedesk data load`")
             day = last.date()
         else:
             day = datetime.strptime(on, "%Y-%m-%d").date()
-        cfg = scan_config(settings, day, kinds, market=mkt, fallback_to_all_if_none_enabled=False)
+        # include_retired: a setup retired on this market still scans, but build_watchlist
+        # rejects it ("retired by self-review ...") so it never alerts - the trackers read
+        # this watchlist and keep shadow-tracking it instead of it going dark.
+        cfg = scan_config(
+            settings, day, kinds, market=mkt,
+            fallback_to_all_if_none_enabled=False, include_retired=True,
+        )  # fmt: skip
         if not cfg.setups:
             typer.echo(
                 "no setups enabled in config/setups.yaml and no --setup given; nothing to "

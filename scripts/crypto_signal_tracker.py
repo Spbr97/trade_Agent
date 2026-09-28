@@ -81,13 +81,17 @@ def main() -> None:
 
         asyncio.run(refresh())
 
-        today = store.last_ts(WATCHLIST[0], Interval.D1)
+        # last_closed_ts, not last_ts: CoinDCX continuously updates the currently-forming
+        # UTC day's bar rather than only publishing it once closed (confirmed 2026-09-27 -
+        # see CandleStore.last_closed_ts's own docstring), so evaluating against last_ts()
+        # here would arm signals off a not-yet-final close.
+        today = store.last_closed_ts(WATCHLIST[0], Interval.D1)
         if today is None:
-            print("no data for the watchlist; aborting")
+            print("no fully-closed bar for the watchlist yet; aborting")
             return
         day = today.date()
 
-        cfg = scan_config(settings, day, market=market)
+        cfg = scan_config(settings, day, market=market, include_retired=True)
         md = prepare_market(store, WATCHLIST, WATCHLIST[0], cfg)
         wl = build_watchlist(md, cfg, settings, day, market=market)
 

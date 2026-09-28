@@ -25,6 +25,16 @@ from tradedesk.data.models import ActionKind, CorporateAction, ResultsEvent
 
 CANDLE_COLUMNS = ["open", "high", "low", "close", "volume"]
 
+# Fixed bar length in seconds, for `last_closed_ts()` - every interval this project actually
+# uses has one; 1MO (calendar month) does not and is deliberately left out so a caller gets a
+# loud KeyError rather than a silently wrong answer if it's ever needed there.
+_INTERVAL_SECONDS: dict[Interval, int] = {
+    Interval.M1: 60, Interval.M2: 120, Interval.M3: 180, Interval.M4: 240, Interval.M5: 300,
+    Interval.M10: 600, Interval.M15: 900, Interval.M30: 1800,
+    Interval.H1: 3600, Interval.H2: 7200, Interval.H3: 10800, Interval.H4: 14400,
+    Interval.D1: 86400, Interval.W1: 604800,
+}  # fmt: skip
+
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS candles (
     scrip_code VARCHAR NOT NULL,
@@ -144,6 +154,30 @@ class CandleStore:
         row = self.con.execute(
             "SELECT max(ts) FROM candles WHERE scrip_code = ? AND interval = ?",
             [scrip_code, interval.value],
+        ).fetchone()
+        if row is None or row[0] is None:
+            return None
+        return datetime.fromtimestamp(int(row[0]), tz=IST)
+
+    def last_closed_ts(
+        self, scrip_code: str, interval: Interval, *, now: datetime | None = None
+    ) -> datetime | None:
+        """Like `last_ts()`, but only returns a bar whose own period has fully elapsed -
+        matters for a feed that keeps updating the currently-forming bar rather than only
+        publishing it once closed. Confirmed 2026-09-27 for CoinDCX's crypto daily candles:
+        the row for "today" already carries real intraday OHLC/volume well before the UTC
+        day actually ends, so `last_ts()` alone can hand a caller a moving target instead of
+        a settled close - exactly the kind of stale-vs-fresh confusion `crypto_signal_tracker.py`
+        and `cli.py::scan`'s "which day to evaluate as of" logic must not use for ARMING a
+        new signal (using a not-yet-final close to compute trigger/stop/target geometry).
+        NSE/BSE candles are only ever loaded after the exchange's real session close, so
+        their own bars are already closed by the time they're stored here - this is a
+        harmless no-op for them, not a market-specific branch."""
+        now = now or datetime.now(IST)
+        period = _INTERVAL_SECONDS[interval]
+        row = self.con.execute(
+            "SELECT max(ts) FROM candles WHERE scrip_code = ? AND interval = ? AND ts + ? <= ?",
+            [scrip_code, interval.value, period, _epoch(now)],
         ).fetchone()
         if row is None or row[0] is None:
             return None

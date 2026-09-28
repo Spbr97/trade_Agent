@@ -222,6 +222,18 @@ class SetupConfig(BaseModel):
 
     model_config = ConfigDict(extra="allow", frozen=True)
     enabled: bool = False
+    # One setups.yaml serves every market, so a self-review retirement on one market must
+    # not switch a setup off everywhere: `retired_markets` removes it from that market's
+    # active roster only (it keeps being shadow-tracked there), `markets` (empty = all)
+    # limits a setup validated on one market to that market.
+    retired_markets: list[str] = Field(default_factory=list)
+    markets: list[str] = Field(default_factory=list)
+
+    def runs_on(self, market: str) -> bool:
+        return self.enabled and (not self.markets or market in self.markets)
+
+    def active_on(self, market: str) -> bool:
+        return self.runs_on(market) and market not in self.retired_markets
 
 
 class EntryRules(Strict):

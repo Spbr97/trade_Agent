@@ -1,0 +1,34 @@
+{
+  "version": "aem-v2-milestone-4-stress-gates-v1",
+  "status": "code_implemented_and_tested_real_run_pending",
+  "milestone": 4,
+  "eligible_for_live": false,
+  "baseline_improved": false,
+  "algorithm_evaluated": false,
+  "stress_gates_implemented": true,
+  "real_run_completed": false,
+  "strategy_contract_sha256": "87d416c314bd6376307834805f500f385484de59db3407796da7d931813976cb",
+  "implementation_sha256": "43435747ece72d447a60e2b20e281b2adf5b16705d49fa4d8167ca2014f4a895",
+  "tests_sha256": "72b5352fbe756799def116787d29bdf8eb12141e126c75e6024fc73df7e70a44",
+  "mandatory_stress_cases": [
+    "base_costs",
+    "costs_1p25x",
+    "costs_1p50x",
+    "slippage_2x",
+    "one_bar_delay",
+    "adverse_missed_fills"
+  ],
+  "description": "The mandatory execution-stress replay explicitly deferred by the pipeline race checkpoint (docs/evidence/aem-v2-pipeline-race.json). Given a nominated (spec_id, top_k) that clears every development gate, re-resolves exactly the real fills that policy selected - via aem_v2_pipeline_race.selected_fills_for_spec's deterministic replay of the same nested walk-forward selection - under all six registered stress cases, reusing the real Milestone-1 opportunity/outcome engine (aem_v2_events.resolve_opportunity) with a harsher cost model, doubled slippage, a one-minute execution delay, or (for the adversarial case) the best-net-R 10% of fills converted to never-filled. This mirrors AEM v1's own precedent (aem_staged_validation.py) rather than inventing a new stress methodology.",
+  "gate": "The same bar AEM v1's own scorecard uses (aem_scorecard.py's stress_economics gate): the worst-case mean net R across every registered stress case must remain strictly positive. Clearing this gate is still only a nomination - Milestone 5's independent locked evaluation on unconsumed data comes next.",
+  "not_yet_implemented": [
+    "any real accuracy result - this requires a specification to first clear every development gate in the real pipeline race, which requires Milestone 4 Stage 1's real dataset-assembly run to finish",
+    "Milestone 5's independent locked evaluation on unconsumed data"
+  ],
+  "decision": {
+    "register_candidate": false,
+    "change_canonical_baseline": false,
+    "change_live_behavior": false,
+    "reason": "This evidence file pins the stress-gate replay code and its tests. No specification has been nominated yet (the real pipeline race has not run against real data), so no stress result exists and no live or baseline change follows."
+  },
+  "next_step": "once_a_real_specification_clears_every_development_gate_run_freeze_stress_gates_against_its_selected_fills"
+}

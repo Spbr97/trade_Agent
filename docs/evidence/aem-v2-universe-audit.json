@@ -1,0 +1,347 @@
+{
+  "id": "154c62bc439347a2ae68c3e1bb7d915d",
+  "created_at": "2026-09-26T08:38:13.198053+00:00",
+  "version": "aem-v2-milestone-2-universe-audit-v1",
+  "status": "universe_audit_complete",
+  "milestone": 2,
+  "eligible_for_live": false,
+  "baseline_improved": false,
+  "algorithm_evaluated": false,
+  "source_dataset_id": "ec539cf66bea4c18ba994506f85a52d6",
+  "source_sha256": "b07440d8a07686fe3b7d0f0071119c81ce5f04255a9428dc61470cfda85f83cf",
+  "contract_sha256": "0d55608af3d55441e5ea64725efb394473c44251df0c3a4e458459b4b9a5aa08",
+  "plan_id": "1145cab2055949899159d8589d4f04f4",
+  "audit_parameters": {
+    "minimum_daily_history_sessions": 60,
+    "median_turnover_lookback_sessions": 20,
+    "minimum_median_turnover_inr": 5000000.0
+  },
+  "universe_symbols": 50,
+  "evaluation_sessions": 120,
+  "total_code_sessions": 6000,
+  "included_code_sessions": 5999,
+  "excluded_code_sessions": 1,
+  "active_session_coverage": 0.9998333333333334,
+  "exclusion_reason_counts": {
+    "incomplete_m1_session": 1
+  },
+  "per_code_summary": {
+    "NSE_10604": {
+      "total_sessions": 120,
+      "included_sessions": 120,
+      "excluded_sessions": 0,
+      "corporate_action_hits": []
+    },
+    "NSE_10999": {
+      "total_sessions": 120,
+      "included_sessions": 120,
+      "excluded_sessions": 0,
+      "corporate_action_hits": []
+    },
+    "NSE_11006": {
+      "total_sessions": 120,
+      "included_sessions": 120,
+      "excluded_sessions": 0,
+      "corporate_action_hits": []
+    },
+    "NSE_11195": {
+      "total_sessions": 120,
+      "included_sessions": 120,
+      "excluded_sessions": 0,
+      "corporate_action_hits": []
+    },
+    "NSE_11483": {
+      "total_sessions": 120,
+      "included_sessions": 120,
+      "excluded_sessions": 0,
+      "corporate_action_hits": []
+    },
+    "NSE_11532": {
+      "total_sessions": 120,
+      "included_sessions": 120,
+      "excluded_sessions": 0,
+      "corporate_action_hits": []
+    },
+    "NSE_11536": {
+      "total_sessions": 120,
+      "included_sessions": 120,
+      "excluded_sessions": 0,
+      "corporate_action_hits": []
+    },
+    "NSE_11630": {
+      "total_sessions": 120,
+      "included_sessions": 120,
+      "excluded_sessions": 0,
+      "corporate_action_hits": []
+    },
+    "NSE_12092": {
+      "total_sessions": 120,
+      "included_sessions": 120,
+      "excluded_sessions": 0,
+      "corporate_action_hits": []
+    },
+    "NSE_1333": {
+      "total_sessions": 120,
+      "included_sessions": 120,
+      "excluded_sessions": 0,
+      "corporate_action_hits": []
+    },
+    "NSE_1363": {
+      "total_sessions": 120,
+      "included_sessions": 120,
+      "excluded_sessions": 0,
+      "corporate_action_hits": []
+    },
+    "NSE_1394": {
+      "total_sessions": 120,
+      "included_sessions": 120,
+      "excluded_sessions": 0,
+      "corporate_action_hits": []
+    },
+    "NSE_14366": {
+      "total_sessions": 120,
+      "included_sessions": 120,
+      "excluded_sessions": 0,
+      "corporate_action_hits": []
+    },
+    "NSE_14428": {
+      "total_sessions": 120,
+      "included_sessions": 120,
+      "excluded_sessions": 0,
+      "corporate_action_hits": []
+    },
+    "NSE_14977": {
+      "total_sessions": 120,
+      "included_sessions": 120,
+      "excluded_sessions": 0,
+      "corporate_action_hits": []
+    },
+    "NSE_15083": {
+      "total_sessions": 120,
+      "included_sessions": 120,
+      "excluded_sessions": 0,
+      "corporate_action_hits": []
+    },
+    "NSE_1594": {
+      "total_sessions": 120,
+      "included_sessions": 120,
+      "excluded_sessions": 0,
+      "corporate_action_hits": []
+    },
+    "NSE_1624": {
+      "total_sessions": 120,
+      "included_sessions": 120,
+      "excluded_sessions": 0,
+      "corporate_action_hits": []
+    },
+    "NSE_1660": {
+      "total_sessions": 120,
+      "included_sessions": 120,
+      "excluded_sessions": 0,
+      "corporate_action_hits": []
+    },
+    "NSE_17433": {
+      "total_sessions": 120,
+      "included_sessions": 120,
+      "excluded_sessions": 0,
+      "corporate_action_hits": []
+    },
+    "NSE_17939": {
+      "total_sessions": 120,
+      "included_sessions": 120,
+      "excluded_sessions": 0,
+      "corporate_action_hits": []
+    },
+    "NSE_1901": {
+      "total_sessions": 120,
+      "included_sessions": 120,
+      "excluded_sessions": 0,
+      "corporate_action_hits": []
+    },
+    "NSE_1922": {
+      "total_sessions": 120,
+      "included_sessions": 120,
+      "excluded_sessions": 0,
+      "corporate_action_hits": []
+    },
+    "NSE_19585": {
+      "total_sessions": 120,
+      "included_sessions": 120,
+      "excluded_sessions": 0,
+      "corporate_action_hits": []
+    },
+    "NSE_2031": {
+      "total_sessions": 120,
+      "included_sessions": 120,
+      "excluded_sessions": 0,
+      "corporate_action_hits": []
+    },
+    "NSE_20374": {
+      "total_sessions": 120,
+      "included_sessions": 120,
+      "excluded_sessions": 0,
+      "corporate_action_hits": []
+    },
+    "NSE_21131": {
+      "total_sessions": 120,
+      "included_sessions": 120,
+      "excluded_sessions": 0,
+      "corporate_action_hits": []
+    },
+    "NSE_21690": {
+      "total_sessions": 120,
+      "included_sessions": 120,
+      "excluded_sessions": 0,
+      "corporate_action_hits": []
+    },
+    "NSE_2303": {
+      "total_sessions": 120,
+      "included_sessions": 120,
+      "excluded_sessions": 0,
+      "corporate_action_hits": []
+    },
+    "NSE_2475": {
+      "total_sessions": 120,
+      "included_sessions": 120,
+      "excluded_sessions": 0,
+      "corporate_action_hits": []
+    },
+    "NSE_25907": {
+      "total_sessions": 120,
+      "included_sessions": 120,
+      "excluded_sessions": 0,
+      "corporate_action_hits": []
+    },
+    "NSE_2885": {
+      "total_sessions": 120,
+      "included_sessions": 120,
+      "excluded_sessions": 0,
+      "corporate_action_hits": []
+    },
+    "NSE_3045": {
+      "total_sessions": 120,
+      "included_sessions": 120,
+      "excluded_sessions": 0,
+      "corporate_action_hits": []
+    },
+    "NSE_3063": {
+      "total_sessions": 120,
+      "included_sessions": 119,
+      "excluded_sessions": 1,
+      "corporate_action_hits": []
+    },
+    "NSE_31181": {
+      "total_sessions": 120,
+      "included_sessions": 120,
+      "excluded_sessions": 0,
+      "corporate_action_hits": []
+    },
+    "NSE_317": {
+      "total_sessions": 120,
+      "included_sessions": 120,
+      "excluded_sessions": 0,
+      "corporate_action_hits": []
+    },
+    "NSE_3351": {
+      "total_sessions": 120,
+      "included_sessions": 120,
+      "excluded_sessions": 0,
+      "corporate_action_hits": []
+    },
+    "NSE_3499": {
+      "total_sessions": 120,
+      "included_sessions": 120,
+      "excluded_sessions": 0,
+      "corporate_action_hits": []
+    },
+    "NSE_383": {
+      "total_sessions": 120,
+      "included_sessions": 120,
+      "excluded_sessions": 0,
+      "corporate_action_hits": []
+    },
+    "NSE_4306": {
+      "total_sessions": 120,
+      "included_sessions": 120,
+      "excluded_sessions": 0,
+      "corporate_action_hits": []
+    },
+    "NSE_4963": {
+      "total_sessions": 120,
+      "included_sessions": 120,
+      "excluded_sessions": 0,
+      "corporate_action_hits": []
+    },
+    "NSE_509": {
+      "total_sessions": 120,
+      "included_sessions": 120,
+      "excluded_sessions": 0,
+      "corporate_action_hits": []
+    },
+    "NSE_5097": {
+      "total_sessions": 120,
+      "included_sessions": 120,
+      "excluded_sessions": 0,
+      "corporate_action_hits": []
+    },
+    "NSE_526": {
+      "total_sessions": 120,
+      "included_sessions": 120,
+      "excluded_sessions": 0,
+      "corporate_action_hits": []
+    },
+    "NSE_5900": {
+      "total_sessions": 120,
+      "included_sessions": 120,
+      "excluded_sessions": 0,
+      "corporate_action_hits": []
+    },
+    "NSE_6364": {
+      "total_sessions": 120,
+      "included_sessions": 120,
+      "excluded_sessions": 0,
+      "corporate_action_hits": []
+    },
+    "NSE_759782": {
+      "total_sessions": 120,
+      "included_sessions": 120,
+      "excluded_sessions": 0,
+      "corporate_action_hits": []
+    },
+    "NSE_8080": {
+      "total_sessions": 120,
+      "included_sessions": 120,
+      "excluded_sessions": 0,
+      "corporate_action_hits": []
+    },
+    "NSE_910": {
+      "total_sessions": 120,
+      "included_sessions": 120,
+      "excluded_sessions": 0,
+      "corporate_action_hits": []
+    },
+    "NSE_9590": {
+      "total_sessions": 120,
+      "included_sessions": 120,
+      "excluded_sessions": 0,
+      "corporate_action_hits": []
+    }
+  },
+  "excluded_events": [
+    {
+      "scrip_code": "NSE_3063",
+      "session": "2026-04-30",
+      "reasons": [
+        "incomplete_m1_session"
+      ]
+    }
+  ],
+  "implementation_sha256": "db6aca940c5da28daf1ee8de8d0053af29fb61d6a41f5e2ed64d4dd7567f75ba",
+  "tests_sha256": "5448884571450bbdaafa94ee489112cf575da5e3bf61c78baa3adb6cf0f250dd",
+  "decision": {
+    "register_candidate": false,
+    "change_canonical_baseline": false,
+    "change_live_behavior": false,
+    "reason": "This audit only decides which (symbol, session) pairs are eligible for Milestone 4's development experiment. It computes no opportunity, feature, prediction or outcome, and makes no accuracy claim."
+  }
+}

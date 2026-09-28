@@ -48,10 +48,34 @@ silently collide with it and exit 0 without running). Dashboard: one FastAPI app
 `127.0.0.1:8765` (Calls/Report-Research/Learning-Review tabs, a market dropdown per tab,
 plus Lookup); the research lab is mounted at `/lab` under the same origin/port.
 
-**Scope limits, by design, not oversight**: paper trading, the live risk manager and the
-review-queue's self-analysis loop are NSE-only (crypto/BSE have no measured edge or no paper
-book to grade against yet). Crypto/BSE calls are research/paper-only. Full spec and milestone
-list: PLAN.md.
+**Scope limits, by design, not oversight**: paper trading and the live risk manager remain
+NSE-only (crypto/BSE have no paper book to grade against). Crypto/BSE calls are
+research/paper-only. The review-queue's self-analysis loop (`rolling_failure_monitor.py` ->
+`self_review/orchestrate.py` -> `config_tuning.py`/`retire_replace.py`/`detector_authoring.py`
+-> the harness gauntlet -> one human approval -> `apply()`) was NSE-only through 2026-09-26;
+from 2026-09-27 it covers all three markets - crypto first (explicit user decision: the
+loop's own validation path never depended on a paper book, only on the harness gauntlet's
+backtest-based rigor, already market-generic), then BSE the same day on the same reasoning
+(it runs the identical daily engine as NSE/crypto, so the earlier crypto exception applied
+equally to it). Scheduled daily for NSE and crypto (`tradedesk-nse-*`/`tradedesk-crypto-*`
+rolling-check/self-review-run tasks - crypto's run twice daily, 00:00/12:00 IST plus 20
+minutes, matching its 24/7 data; NSE's run once, after `tradedesk-after-close`); BSE is
+eligible but not yet scheduled - run-on-request only for now.
+**Retirement is per-market and never leaves a market with nothing being worked on**
+(2026-09-29): `config/setups.yaml` serves every market, so an approved retirement adds the
+market to that setup's `retired_markets` (never flips `enabled`, which would also switch it
+off on the other markets); the setup keeps scanning there but `build_watchlist` rejects it
+("retired by self-review on <market>"), so it never alerts yet is still logged
+(`TrackedSignal.shadow`) and graded. Every self-review run with a flagged or retired setup
+also runs `self_review/replacement_search.py`: improvement variants of those setups (their
+own pattern + new trend/indicator filters and exits) and a grammar of new methods
+(`tradedesk_lab/candidates/rules.py`: breakouts, momentum/MA/MACD crosses, squeezes, volume
+thrusts, mean reversion), continuing from where the last run stopped and re-testing old
+results on fresh data after 14 days. A candidate becomes a NEW_DETECTOR proposal only if it
+clears the full gauntlet, +0.10R over random, a Bonferroni-adjusted random-benchmark p-value
+and beats the retired setups' own forward result - the bar is never lowered to produce a
+winner. The Review tab's "Replacement research" panel shows the plan and leaderboard.
+Full spec and milestone list: PLAN.md.
 
 ## Hard rules
 - NEVER call or implement order placement, modification or cancellation unless the task explicitly says "Milestone M12".

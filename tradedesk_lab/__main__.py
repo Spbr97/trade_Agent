@@ -42,6 +42,23 @@ def main() -> None:
     accuracy_experiment = sub.add_parser("aem-accuracy-experiment")
     accuracy_experiment.add_argument("--dataset-id")
     sub.add_parser("aem-v2-freeze-protocol")
+    universe_audit = sub.add_parser("aem-v2-universe-audit")
+    universe_audit.add_argument("--dataset-id")
+    development_dataset = sub.add_parser("aem-v2-development-dataset")
+    development_dataset.add_argument("--audit-id")
+    pipeline_race = sub.add_parser("aem-v2-pipeline-race")
+    pipeline_race.add_argument("--dataset-run-id")
+    pipeline_race.add_argument("--splits", type=int, default=3)
+    pipeline_race.add_argument("--embargo", type=int, default=10)
+    pipeline_race.add_argument("--seed", type=int, default=20260101)
+    stress_gates = sub.add_parser("aem-v2-stress-gates")
+    stress_gates.add_argument("--spec-id", required=True)
+    stress_gates.add_argument("--top-k", type=int, required=True)
+    stress_gates.add_argument("--dataset-run-id")
+    stress_gates.add_argument("--audit-id")
+    stress_gates.add_argument("--splits", type=int, default=3)
+    stress_gates.add_argument("--embargo", type=int, default=10)
+    stress_gates.add_argument("--seed", type=int, default=20260101)
     context = sub.add_parser("aem-context-collect")
     context.add_argument("--dataset-id", required=True)
     context.add_argument("--max-requests", type=int, default=0)
@@ -192,6 +209,123 @@ def main() -> None:
                         "geometry_count",
                         "entry_mode_count",
                         "next_milestone",
+                    )
+                },
+                indent=2,
+            )
+        )
+        return
+    if args.command == "aem-v2-universe-audit":
+        from tradedesk_lab.aem_v2_universe_audit import run_universe_audit
+
+        report = run_universe_audit(dataset_id=args.dataset_id)
+        print(
+            json.dumps(
+                {
+                    key: report[key]
+                    for key in (
+                        "id",
+                        "status",
+                        "milestone",
+                        "source_dataset_id",
+                        "universe_symbols",
+                        "evaluation_sessions",
+                        "total_code_sessions",
+                        "included_code_sessions",
+                        "excluded_code_sessions",
+                        "active_session_coverage",
+                        "exclusion_reason_counts",
+                    )
+                },
+                indent=2,
+            )
+        )
+        return
+    if args.command == "aem-v2-development-dataset":
+        from tradedesk_lab.aem_v2_development_experiment import freeze_development_dataset
+
+        report = freeze_development_dataset(audit_id=args.audit_id)
+        print(
+            json.dumps(
+                {
+                    key: report[key]
+                    for key in (
+                        "id",
+                        "status",
+                        "milestone",
+                        "source_dataset_id",
+                        "universe_audit_id",
+                        "included_code_sessions",
+                        "opportunities_found",
+                        "resolved_rows",
+                        "excluded_events",
+                        "label_rate",
+                        "mode_counts",
+                        "geometry_counts",
+                        "exclusion_reason_counts",
+                    )
+                },
+                indent=2,
+            )
+        )
+        return
+    if args.command == "aem-v2-pipeline-race":
+        from tradedesk_lab.aem_v2_pipeline_race import freeze_pipeline_race
+
+        report = freeze_pipeline_race(
+            dataset_run_id=args.dataset_run_id,
+            splits=args.splits,
+            embargo=args.embargo,
+            seed=args.seed,
+        )
+        print(
+            json.dumps(
+                {
+                    key: report[key]
+                    for key in (
+                        "id",
+                        "status",
+                        "milestone",
+                        "development_dataset_run_id",
+                        "development_dataset_rows",
+                        "trial_budget",
+                        "qualified_candidates",
+                        "stress_gates_evaluated",
+                        "baseline_wilson95_lower",
+                        "decision",
+                    )
+                },
+                indent=2,
+            )
+        )
+        return
+
+    if args.command == "aem-v2-stress-gates":
+        from tradedesk_lab.aem_v2_stress_gates import freeze_stress_gates
+
+        report = freeze_stress_gates(
+            spec_id=args.spec_id,
+            top_k=args.top_k,
+            dataset_run_id=args.dataset_run_id,
+            audit_id=args.audit_id,
+            splits=args.splits,
+            embargo=args.embargo,
+            seed=args.seed,
+        )
+        print(
+            json.dumps(
+                {
+                    key: report[key]
+                    for key in (
+                        "id",
+                        "status",
+                        "milestone",
+                        "spec_id",
+                        "top_k",
+                        "selected_fills",
+                        "minimum_mean_net_r",
+                        "passed",
+                        "decision",
                     )
                 },
                 indent=2,

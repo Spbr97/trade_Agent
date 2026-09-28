@@ -124,6 +124,7 @@ def scan_config(
     market: Market | None = None,
     *,
     fallback_to_all_if_none_enabled: bool = True,
+    include_retired: bool = False,
 ) -> BacktestConfig:
     """`market` defaults to NSE (nse_market(settings)) so every existing caller - the CLI,
     mcp_server.py, run_evening_scan's own default - is unaffected; pass crypto_market(settings)
@@ -142,12 +143,20 @@ def scan_config(
     reasonable default when you're the one choosing to run the research tool) - the live
     `scan` CLI command below is the one place this is now explicitly set `False`."""
     market = market or nse_market(settings)
+    # `include_retired`: the per-market signal trackers keep scanning a setup retired on
+    # their market so it stays shadow-tracked (learning continues, it just stops being a
+    # call) - see SetupConfig.retired_markets.
     kinds = (
         list(setups)
         if setups
-        else [SetupKind(k) for k, v in settings.setups.setups.items() if v.enabled]
+        else [
+            SetupKind(k)
+            for k, v in settings.setups.setups.items()
+            if (v.runs_on(market.name) if include_retired else v.active_on(market.name))
+        ]
     )
-    if not kinds and fallback_to_all_if_none_enabled:
+    nothing_enabled = not any(v.enabled for v in settings.setups.setups.values())
+    if not kinds and fallback_to_all_if_none_enabled and nothing_enabled:
         kinds = list(SetupKind)
     return BacktestConfig(
         setups=kinds,
@@ -200,6 +209,9 @@ def _eligibility_policy(settings: Settings) -> EligibilityPolicy:
         min_expectancy_r=e.min_expectancy_r,
         must_beat_random_by_r=e.must_beat_random_by_r,
     )
+
+
+RETIRED_REASON_PREFIX = "retired by self-review on"
 
 
 def build_watchlist(
@@ -295,6 +307,9 @@ def build_watchlist(
         # NO-TRADE output with its reasons is a successful outcome, not a failure
         # (SDD section 17).
         rejected.extend(score.no_trade_reasons)
+        setup_cfg = settings.setups.setups.get(sig.setup.value)
+        if setup_cfg is not None and market.name in setup_cfg.retired_markets:
+            rejected.append(f"{RETIRED_REASON_PREFIX} {market.name} (shadow-tracked only)")
         entries.append(
             WatchlistEntry(
                 signal=sig,

@@ -103,7 +103,10 @@ def analyze_symbol(
             if ref is None:
                 return {"error": "benchmark not in instruments table; run data sync-instruments"}
             vix = store.index_code(settings.universe.volatility_index)
-        last = store.last_ts(code, Interval.D1)
+        # last_closed_ts, not last_ts: crypto's feed continuously updates the currently-
+        # forming UTC day's bar rather than only publishing it once closed - see
+        # CandleStore.last_closed_ts's own docstring. No-op for NSE/BSE.
+        last = store.last_closed_ts(code, Interval.D1)
         if last is None:
             return {"error": f"no daily candles for {code}", "market": market}
         day: date = datetime.strptime(on, "%Y-%m-%d").date() if on else last.date()

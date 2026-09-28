@@ -25,6 +25,7 @@ rather than to be believed.
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 from typing import Any
@@ -307,25 +308,51 @@ TARGETS = [0.5, 0.75, 1.0, 1.5, 2.0, 3.0]
 HOLDS = [2, 3, 5, 10]
 
 
-@app.command()
-def optimize(
-    db: Path = typer.Option(Path("data/tradedesk.duckdb"), "--db"),
-    root: Path = typer.Option(Path("."), "--root"),
-    rule: str = typer.Option("rsi2<10 & above ema50", "--rule"),
-    start: str = typer.Option("2023-09-01", "--from"),
-    end: str = typer.Option("2026-09-13", "--to"),
-    split: str = typer.Option("2025-03-01", "--split"),
-    risk_pct: float = typer.Option(0.005, "--risk-pct", help="risk per trade, fraction"),
-    max_codes: int = typer.Option(900, "--max-codes"),
-    out: Path = typer.Option(Path("data/reports/entry_optimize.csv"), "--out"),
-) -> None:
-    """Geometry search for one entry rule, honestly split.
+@dataclass(frozen=True)
+class OptimizeResult:
+    """Everything `optimize()`'s CLI printed, structured for a programmatic caller (the
+    self-review loop's config-tuning path, `self_review/config_tuning.py`) instead of only a
+    human reading stdout. `train_table` and `best`/`test_*` carry the exact same numbers the
+    CLI already reports - this is a pure extraction, not a behavior change."""
 
-    The grid is scored on the TRAIN half only; the single best cell by net expectancy is
-    then scored ONCE on the held-out test half. Searching 96 cells will always produce a
-    flattering in-sample winner - the test column is the only one that means anything, and
-    it is looked at exactly once, which is the same discipline train.py's final_test_frac
-    reservation enforces for the model."""
+    rule: str
+    risk_pct: float
+    cells_simulated: int
+    csv_path: Path
+    train_table: pd.DataFrame  # aggregated, n>=300, sorted by net desc (may be empty)
+    best_stop_atr: float | None
+    best_target_r: float | None
+    best_hold: int | None
+    train_n: int | None
+    train_gross_r: float | None
+    train_net_r: float | None
+    test_n: int
+    test_gross_r: float | None
+    test_net_r: float | None
+    test_win_rate: float | None
+
+
+def optimize_rule(
+    rule: str,
+    *,
+    db: Path = Path("data/tradedesk.duckdb"),
+    root: Path = Path("."),
+    start: str = "2023-09-01",
+    end: str = "2026-09-13",
+    split: str = "2025-03-01",
+    risk_pct: float = 0.005,
+    max_codes: int = 900,
+    out: Path = Path("data/reports/entry_optimize.csv"),
+    echo: Callable[[str], None] = lambda _msg: None,
+) -> OptimizeResult:
+    """Geometry search for one entry rule, honestly split - the reusable core `optimize()`'s
+    CLI command wraps. The grid is scored on the TRAIN half only; the single best cell by net
+    expectancy is then scored ONCE on the held-out test half. Searching 96 cells will always
+    produce a flattering in-sample winner - the test column is the only one that means
+    anything, and it is looked at exactly once, the same discipline train.py's
+    final_test_frac reservation enforces for the model. `echo` defaults to silent so a
+    programmatic caller isn't forced to see CLI-shaped progress text; the CLI passes
+    `typer.echo`."""
     from datetime import datetime
     from decimal import Decimal
 
@@ -335,7 +362,7 @@ def optimize(
     from tradedesk.models import TradeType
 
     if rule not in RULES:
-        raise typer.BadParameter(f"unknown rule; choose from: {list(RULES)}")
+        raise ValueError(f"unknown rule; choose from: {list(RULES)}")
     settings = load_config(root)
     cm = EquityCostModel(settings.risk.costs)
     risk_rupees = float(settings.risk.trading_capital) * risk_pct
@@ -349,10 +376,10 @@ def optimize(
     recs: list[dict[str, Any]] = []
     with CandleStore(db) as store:
         codes = store.codes(Interval.D1)[:max_codes]
-        typer.echo(f"optimizing '{rule}' over {len(codes)} codes, risk/trade {risk_pct:.2%}")
+        echo(f"optimizing '{rule}' over {len(codes)} codes, risk/trade {risk_pct:.2%}")
         for n_done, code in enumerate(codes, 1):
             if n_done % 300 == 0:
-                typer.echo(f"  {n_done}/{len(codes)}")
+                echo(f"  {n_done}/{len(codes)}")
             raw = store.load(code, Interval.D1)
             if raw is None or len(raw) < 260:
                 continue
@@ -413,34 +440,74 @@ def optimize(
         gross=("gross_r", "mean"), net=("net_r", "mean"),
     ).reset_index()  # fmt: skip
     agg = agg[agg.n >= 300].sort_values("net", ascending=False)
-    typer.echo(f"\n{len(df)} cells simulated -> {out}")
-    typer.echo(f"\nTRAIN half, top 12 geometries for '{rule}':")
-    typer.echo(agg.head(12).to_string(index=False, float_format=lambda x: f"{x:.4f}"))
+    echo(f"\n{len(df)} cells simulated -> {out}")
+    echo(f"\nTRAIN half, top 12 geometries for '{rule}':")
+    echo(agg.head(12).to_string(index=False, float_format=lambda x: f"{x:.4f}"))
 
     if agg.empty:
-        typer.echo("\nno cell had enough samples")
-        return
+        echo("\nno cell had enough samples")
+        return OptimizeResult(
+            rule=rule, risk_pct=risk_pct, cells_simulated=len(df), csv_path=out,
+            train_table=agg, best_stop_atr=None, best_target_r=None, best_hold=None,
+            train_n=None, train_gross_r=None, train_net_r=None,
+            test_n=0, test_gross_r=None, test_net_r=None, test_win_rate=None,
+        )  # fmt: skip
     best = agg.iloc[0]
     te = df[
         (df.half == "test") & (df.stop_atr == best.stop_atr)
         & (df.target_r == best.target_r) & (df.hold == best.hold)
     ]  # fmt: skip
-    typer.echo(
+    echo(
         f"\n=== LOCKED TEST, scored once: stop {best.stop_atr}xATR, target {best.target_r}R, "
         f"hold {best.hold} ==="
     )
     if te.empty:
-        typer.echo("no test samples for that cell")
-        return
-    typer.echo(
+        echo("no test samples for that cell")
+        return OptimizeResult(
+            rule=rule, risk_pct=risk_pct, cells_simulated=len(df), csv_path=out,
+            train_table=agg, best_stop_atr=float(best.stop_atr),
+            best_target_r=float(best.target_r), best_hold=int(best.hold),
+            train_n=int(best.n), train_gross_r=float(best.gross), train_net_r=float(best.net),
+            test_n=0, test_gross_r=None, test_net_r=None, test_win_rate=None,
+        )  # fmt: skip
+    echo(
         f"  train: n={int(best.n):>6} gross={best.gross:+.4f} net={best.net:+.4f}\n"
         f"  TEST : n={len(te):>6} gross={te.gross_r.mean():+.4f} net={te.net_r.mean():+.4f} "
         f"win_rate={(te.gross_r > 0).mean():.4f}"
     )
-    typer.echo(
+    echo(
         "\nnet is after real NSE round-trip costs at the given --risk-pct. A positive TEST"
         "\nnet is the only thing here that would justify building a setup on this rule."
     )
+    return OptimizeResult(
+        rule=rule, risk_pct=risk_pct, cells_simulated=len(df), csv_path=out,
+        train_table=agg, best_stop_atr=float(best.stop_atr), best_target_r=float(best.target_r),
+        best_hold=int(best.hold), train_n=int(best.n), train_gross_r=float(best.gross),
+        train_net_r=float(best.net), test_n=len(te), test_gross_r=float(te.gross_r.mean()),
+        test_net_r=float(te.net_r.mean()), test_win_rate=float((te.gross_r > 0).mean()),
+    )  # fmt: skip
+
+
+@app.command()
+def optimize(
+    db: Path = typer.Option(Path("data/tradedesk.duckdb"), "--db"),
+    root: Path = typer.Option(Path("."), "--root"),
+    rule: str = typer.Option("rsi2<10 & above ema50", "--rule"),
+    start: str = typer.Option("2023-09-01", "--from"),
+    end: str = typer.Option("2026-09-13", "--to"),
+    split: str = typer.Option("2025-03-01", "--split"),
+    risk_pct: float = typer.Option(0.005, "--risk-pct", help="risk per trade, fraction"),
+    max_codes: int = typer.Option(900, "--max-codes"),
+    out: Path = typer.Option(Path("data/reports/entry_optimize.csv"), "--out"),
+) -> None:
+    """Thin CLI wrapper around `optimize_rule()` - see that function's docstring for the
+    method. Behavior is unchanged from before this was extracted."""
+    if rule not in RULES:
+        raise typer.BadParameter(f"unknown rule; choose from: {list(RULES)}")
+    optimize_rule(
+        rule, db=db, root=root, start=start, end=end, split=split, risk_pct=risk_pct,
+        max_codes=max_codes, out=out, echo=typer.echo,
+    )  # fmt: skip
 
 
 @app.command()

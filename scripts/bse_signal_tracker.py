@@ -7,33 +7,36 @@ mostly just "point the same machinery at a different exchange prefix and watchli
 The generic log/resolve/render/flag machinery lives in tradedesk/signal_tracker.py.
 
 Run daily after the BSE close (mirrors tradedesk-after-close's NSE timing - 16:00 IST,
-after the 15:30 close). Log: data/reports/bse_signal_tracking.jsonl.
+after the 15:30 close), AFTER `tradedesk scan --market bse` (so today's watchlist file
+exists at data/watchlists/bse/).
 
-Starts from an EMPTY log: unlike crypto (which had real history from day one), this only
-has calls from the day it first runs onward, so expect "0 resolved yet" for the first
-~10 sessions (config/risk.yaml's max_hold_sessions).
+Rewritten 2026-09-27 (explicit request: BSE should track its full universe, "not just 5/10
+stocks", same as NSE): this used to hardcode a 5-stock WATCHLIST and rebuild it itself via a
+second, redundant full history refresh + build_watchlist() call - a second, separate universe
+from the one the full-universe `tradedesk scan --market bse` evening scan and
+`tradedesk live --market bse` live session already use, and a second full-universe candle
+refresh (thousands of INDstocks calls) on top of whatever `data load --market bse` already
+did that same run. Now mirrors scripts/nse_signal_tracker.py exactly: it does NOT rebuild a
+watchlist from scratch - it just loads the newest saved data/watchlists/bse/<date>.json (same
+"newest saved watchlist" discovery `tradedesk live --market bse` uses) rather than
+re-scanning or re-fetching anything, so every candidate the full-universe evening scan
+evaluated - not a hardcoded handful - gets logged and resolved forward.
+
+Log: data/reports/bse_signal_tracking.jsonl. Starts from an EMPTY log (forward-only, like
+NSE's) - the old 5-stock history in that log predates this rewrite and stays as-is; nothing
+here re-tags or discards it.
 """
 
 from __future__ import annotations
 
-import asyncio
 import sys
-from datetime import datetime
+from datetime import date
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-import httpx
-
-from tradedesk.backtest.runner import prepare_market
-from tradedesk.broker.indstocks import IndstocksClient, TokenProvider
-from tradedesk.broker.indstocks.models import IST, Interval
-from tradedesk.broker.indstocks.rest import BASE_URL
-from tradedesk.config import load_config
 from tradedesk.data.candle_store import CandleStore
-from tradedesk.data.history_loader import default_start, load_history
-from tradedesk.markets import bse_market
-from tradedesk.scan import build_watchlist, scan_config
+from tradedesk.scan import load_watchlist
 from tradedesk.signal_tracker import (
     flag_setup_failures,
     load_log,
@@ -50,46 +53,23 @@ DB = Path("data/bse.duckdb")
 LOG = Path("data/reports/bse_signal_tracking.jsonl")
 SESSIONS_DIR = Path("data/reports/bse_sessions")
 DASHBOARD = Path("data/reports/bse_dashboard.html")
-# Liquid, well-known Group A large caps (also NSE-dual-listed, chosen for known liquidity
-# rather than BSE-exclusive names, which skew thin - see bse_cash_equities()'s docstring).
-WATCHLIST = [
-    "BSE_500325", "BSE_500180", "BSE_532540", "BSE_500209", "BSE_500112",
-]  # RELIANCE, HDFCBANK, TCS, INFY, SBIN  # fmt: skip
+WATCHLIST_DIR = Path("data/watchlists/bse")
 MAX_HOLD = 10  # sessions; matches config/risk.yaml's default
 
 
 def main() -> None:
-    settings = load_config(".")
-    market = bse_market(settings)
+    candidates = sorted(WATCHLIST_DIR.glob("*.json"))
+    if not candidates:
+        print(
+            f"no watchlist found in {WATCHLIST_DIR}; "
+            "run `tradedesk scan --market bse` first; aborting"
+        )
+        return
+    watchlist_path = candidates[-1]
+    wl = load_watchlist(watchlist_path)
+    day: date = wl.on
+
     with CandleStore(DB) as store:
-        ref = store.index_code(market.benchmark_name, exch="BSE")
-        if ref is None:
-            print(f"benchmark {market.benchmark_name!r} not in instruments table; aborting")
-            return
-        targets = [*WATCHLIST, ref]
-        start = default_start(Interval.D1, datetime.now(IST))
-
-        async def refresh() -> None:
-            http = httpx.AsyncClient(base_url=BASE_URL, timeout=30.0)
-            client = IndstocksClient(TokenProvider(http=http))
-            try:
-                await load_history(client, store, targets, Interval.D1, start=start)
-            finally:
-                await client.aclose()
-
-        asyncio.run(refresh())
-
-        today = store.last_ts(WATCHLIST[0], Interval.D1)
-        if today is None:
-            print("no data for the watchlist; aborting")
-            return
-        day = today.date()
-
-        cfg = scan_config(settings, day, market=market)
-        codes = [c for c in WATCHLIST if c != ref]
-        md = prepare_market(store, codes, ref, cfg)
-        wl = build_watchlist(md, cfg, settings, day, market=market)
-
         rows = load_log(LOG)
         new_rows = log_new_signals(wl, rows)
         newly_resolved = resolve_outcomes(store, rows, MAX_HOLD)
@@ -99,9 +79,9 @@ def main() -> None:
         report_path = save_session_report(day, report, SESSIONS_DIR)
         flagged = flag_setup_failures("bse", rows)
         print(
-            f"{day}: {len(wl.entries)} signals detected "
-            f"({len(wl.active)} would be tradeable, {len(new_rows)} new today), "
-            f"{len(newly_resolved)} newly resolved"
+            f"{day}: {len(wl.entries)} candidates evaluated "
+            f"({len(wl.active)} would be tradeable, {len(new_rows)} new today from "
+            f"{watchlist_path.name}), {len(newly_resolved)} newly resolved"
         )
         print(scoreboard(rows))
         print(f"session report: {report_path}")

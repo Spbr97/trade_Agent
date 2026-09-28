@@ -68,6 +68,22 @@
   .perf-strip { max-width:1100px; margin:10px auto 0; padding:0 16px; }
   .perf-strip .cards { grid-template-columns: repeat(auto-fit, minmax(140px,1fr)); }
   .perf-strip .value { font-size:16px; }
+
+  /* ---- decluttering: info tooltips instead of always-on explanatory sentences, and
+     collapsed-by-default filter rows (native <details>, no JS needed to show/hide) ---- */
+  .info-ic { display:inline-flex; align-items:center; justify-content:center; width:15px; height:15px; border-radius:50%; border:1px solid var(--line); color:var(--dim); font-size:10px; font-style:normal; font-weight:400; text-transform:none; letter-spacing:normal; cursor:help; margin-left:4px; vertical-align:middle; }
+  .info-ic:hover { color:var(--fg); border-color:var(--dim); }
+  details.filters { background:var(--card); border:1px solid var(--line); border-radius:8px; }
+  details.filters summary { list-style:none; cursor:pointer; padding:8px 12px; color:var(--dim); font-size:12px; text-transform:uppercase; letter-spacing:.05em; display:flex; align-items:center; gap:8px; }
+  details.filters summary::-webkit-details-marker { display:none; }
+  details.filters summary::before { content:'▸'; font-size:10px; }
+  details.filters[open] summary::before { content:'▾'; }
+  details.filters summary .muted { text-transform:none; letter-spacing:normal; font-size:12px; margin-left:auto; }
+  details.filters .perf-controls { border:none; border-top:1px solid var(--line); border-radius:0 0 8px 8px; }
+  .banner-summary { display:flex; align-items:center; gap:10px; cursor:pointer; }
+  .banner-summary::before { content:'▸'; font-size:11px; color:var(--dim); }
+  #status-banner[open] .banner-summary::before { content:'▾'; }
+  #status-banner .banner-full { margin-top:8px; padding-top:8px; border-top:1px solid var(--line); }
 </style>
 </head>
 <body>
@@ -89,7 +105,10 @@
   <button class="tab-btn" data-tab="learningreview">Learning<span id="review-badge" class="badge" hidden></span></button>
 </nav>
 
-<div id="status-banner" class="banner"></div>
+<details id="status-banner" class="banner">
+  <summary class="banner-summary">Live NSE alerts: <b>off</b> - no live setup has cleared the evidence gate <span class="muted" style="margin-left:auto; text-transform:none;">details</span></summary>
+  <div class="banner-full">The three built-in setups (base_breakout / trend_pullback / nr7_breakout) have not cleared the evidence gate (measured worse than random entry timing), so no live buy alert will fire. The <b>Research</b> view tracks forward, out-of-sample candidate ideas that cannot alert on their own - if one ever clears the same evidence bar, it shows up automatically in <b>Review</b> for you to look at.</div>
+</details>
 
 <div class="perf-strip" id="perf-strip">
   <div class="cards">
@@ -129,38 +148,40 @@
   </section>
 
   <div id="tab-today-inner" class="subtab">
-    <section class="perf-controls">
-      <div class="group">
-        <label for="today-filter-setup">Setup</label>
-        <select id="today-filter-setup"><option value="">All</option></select>
+    <details class="filters">
+      <summary>Filters <span class="muted" id="today-filter-count"></span></summary>
+      <div class="perf-controls">
+        <div class="group">
+          <label for="today-filter-setup">Setup</label>
+          <select id="today-filter-setup"><option value="">All</option></select>
+        </div>
+        <div class="group">
+          <label for="today-filter-grade">Grade</label>
+          <select id="today-filter-grade"><option value="">All</option></select>
+        </div>
+        <div class="group">
+          <label for="today-filter-status">Status</label>
+          <select id="today-filter-status"><option value="">All</option></select>
+        </div>
+        <div class="group">
+          <label for="today-filter-tradeable">Tradeable</label>
+          <select id="today-filter-tradeable">
+            <option value="">All</option>
+            <option value="yes">Yes</option>
+            <option value="no">No (rejected)</option>
+          </select>
+        </div>
+        <div class="group">
+          <label for="today-filter-prob">Model p</label>
+          <select id="today-filter-prob">
+            <option value="">All</option>
+            <option value="0.5">&gt;= 50%</option>
+            <option value="0.6">&gt;= 60%</option>
+            <option value="0.7">&gt;= 70%</option>
+          </select>
+        </div>
       </div>
-      <div class="group">
-        <label for="today-filter-grade">Grade</label>
-        <select id="today-filter-grade"><option value="">All</option></select>
-      </div>
-      <div class="group">
-        <label for="today-filter-status">Status</label>
-        <select id="today-filter-status"><option value="">All</option></select>
-      </div>
-      <div class="group">
-        <label for="today-filter-tradeable">Tradeable</label>
-        <select id="today-filter-tradeable">
-          <option value="">All</option>
-          <option value="yes">Yes</option>
-          <option value="no">No (rejected)</option>
-        </select>
-      </div>
-      <div class="group">
-        <label for="today-filter-prob">Model p</label>
-        <select id="today-filter-prob">
-          <option value="">All</option>
-          <option value="0.5">&gt;= 50%</option>
-          <option value="0.6">&gt;= 60%</option>
-          <option value="0.7">&gt;= 70%</option>
-        </select>
-      </div>
-      <span class="muted" id="today-filter-count"></span>
-    </section>
+    </details>
     <section><h2><span id="today-calls-heading">Today's calls (NSE)</span></h2><table id="calls"></table></section>
     <section><h2>Open positions</h2><table id="positions"></table></section>
   </div>
@@ -177,39 +198,41 @@
     </section>
 
     <div id="bse-view-live">
-      <section class="perf-controls">
-        <div class="group">
-          <label for="bsetoday-filter-setup">Setup</label>
-          <select id="bsetoday-filter-setup"><option value="">All</option></select>
+      <details class="filters">
+        <summary>Filters <span class="muted" id="bsetoday-filter-count"></span></summary>
+        <div class="perf-controls">
+          <div class="group">
+            <label for="bsetoday-filter-setup">Setup</label>
+            <select id="bsetoday-filter-setup"><option value="">All</option></select>
+          </div>
+          <div class="group">
+            <label for="bsetoday-filter-grade">Grade</label>
+            <select id="bsetoday-filter-grade"><option value="">All</option></select>
+          </div>
+          <div class="group">
+            <label for="bsetoday-filter-status">Status</label>
+            <select id="bsetoday-filter-status"><option value="">All</option></select>
+          </div>
+          <div class="group">
+            <label for="bsetoday-filter-tradeable">Tradeable</label>
+            <select id="bsetoday-filter-tradeable">
+              <option value="">All</option>
+              <option value="yes">Yes</option>
+              <option value="no">No (rejected)</option>
+            </select>
+          </div>
+          <div class="group">
+            <label for="bsetoday-filter-prob">Model p</label>
+            <select id="bsetoday-filter-prob">
+              <option value="">All</option>
+              <option value="0.5">&gt;= 50%</option>
+              <option value="0.6">&gt;= 60%</option>
+              <option value="0.7">&gt;= 70%</option>
+            </select>
+          </div>
         </div>
-        <div class="group">
-          <label for="bsetoday-filter-grade">Grade</label>
-          <select id="bsetoday-filter-grade"><option value="">All</option></select>
-        </div>
-        <div class="group">
-          <label for="bsetoday-filter-status">Status</label>
-          <select id="bsetoday-filter-status"><option value="">All</option></select>
-        </div>
-        <div class="group">
-          <label for="bsetoday-filter-tradeable">Tradeable</label>
-          <select id="bsetoday-filter-tradeable">
-            <option value="">All</option>
-            <option value="yes">Yes</option>
-            <option value="no">No (rejected)</option>
-          </select>
-        </div>
-        <div class="group">
-          <label for="bsetoday-filter-prob">Model p</label>
-          <select id="bsetoday-filter-prob">
-            <option value="">All</option>
-            <option value="0.5">&gt;= 50%</option>
-            <option value="0.6">&gt;= 60%</option>
-            <option value="0.7">&gt;= 70%</option>
-          </select>
-        </div>
-        <span class="muted" id="bsetoday-filter-count"></span>
-      </section>
-      <section><h2><span id="bsetoday-calls-heading">Today's calls (BSE)</span> <span class="muted" style="text-transform:none;">- full-universe live session, same as NSE's Calls tab; triggers are journaled but there's no BSE paper book to grade them yet</span></h2><table id="bsetoday-calls"></table></section>
+      </details>
+      <section><h2><span id="bsetoday-calls-heading">Today's calls (BSE)</span> <span class="info-ic" title="full-universe live session, same as NSE's Calls tab; triggers are journaled but there's no BSE paper book to grade them yet">ⓘ</span></h2><table id="bsetoday-calls"></table></section>
       <section><h2>Open positions (BSE)</h2><table id="bsetoday-positions"></table></section>
     </div>
 
@@ -222,53 +245,55 @@
             <option value="passfail">Pass/Fail</option>
           </select>
         </div>
-        <span class="muted">5-stock tracker watchlist, own dataset, not pooled with NSE/crypto</span>
+        <span class="info-ic" title="full-universe tracker (same watchlist as the evening scan), own dataset, not pooled with NSE/crypto">ⓘ</span>
       </section>
 
         <div id="bse-live-ongoing">
-          <section class="perf-controls">
-            <div class="group">
-              <label for="bse-ongoing-filter-symbol">Stock</label>
-              <select id="bse-ongoing-filter-symbol"><option value="">All</option></select>
+          <details class="filters">
+            <summary>Filters <span class="muted" id="bse-ongoing-filter-count"></span></summary>
+            <div class="perf-controls">
+              <div class="group">
+                <label for="bse-ongoing-filter-symbol">Stock</label>
+                <select id="bse-ongoing-filter-symbol"><option value="">All</option></select>
+              </div>
+              <div class="group">
+                <label for="bse-ongoing-filter-setup">Setup</label>
+                <select id="bse-ongoing-filter-setup"><option value="">All</option></select>
+              </div>
+              <div class="group">
+                <label for="bse-ongoing-filter-status">Result</label>
+                <select id="bse-ongoing-filter-status">
+                  <option value="">All</option>
+                  <option value="pending">Pending</option>
+                </select>
+              </div>
+              <div class="group">
+                <label for="bse-ongoing-filter-resolved">Show</label>
+                <select id="bse-ongoing-filter-resolved">
+                  <option value="">All calls</option>
+                  <option value="resolved">Resolved only</option>
+                </select>
+              </div>
+              <div class="group">
+                <label for="bse-ongoing-filter-rows">Rows</label>
+                <select id="bse-ongoing-filter-rows">
+                  <option value="25">25</option>
+                  <option value="50" selected>50</option>
+                  <option value="100">100</option>
+                  <option value="all">All</option>
+                </select>
+              </div>
             </div>
-            <div class="group">
-              <label for="bse-ongoing-filter-setup">Setup</label>
-              <select id="bse-ongoing-filter-setup"><option value="">All</option></select>
-            </div>
-            <div class="group">
-              <label for="bse-ongoing-filter-status">Result</label>
-              <select id="bse-ongoing-filter-status">
-                <option value="">All</option>
-                <option value="pending">Pending</option>
-              </select>
-            </div>
-            <div class="group">
-              <label for="bse-ongoing-filter-resolved">Show</label>
-              <select id="bse-ongoing-filter-resolved">
-                <option value="">All calls</option>
-                <option value="resolved">Resolved only</option>
-              </select>
-            </div>
-            <div class="group">
-              <label for="bse-ongoing-filter-rows">Rows</label>
-              <select id="bse-ongoing-filter-rows">
-                <option value="25">25</option>
-                <option value="50" selected>50</option>
-                <option value="100">100</option>
-                <option value="all">All</option>
-              </select>
-            </div>
-            <span class="muted" id="bse-ongoing-filter-count"></span>
-          </section>
+          </details>
           <section>
-            <h2>Ongoing <span class="muted" style="text-transform:none;">- calls the current agent has made that haven't resolved yet</span></h2>
+            <h2>Ongoing <span class="info-ic" title="calls the current agent has made that haven't resolved yet">ⓘ</span></h2>
             <table id="bse-ongoing-calls"></table>
           </section>
         </div>
 
         <div id="bse-live-passfail" hidden>
           <section>
-            <h2>Pass/Fail <span class="muted" style="text-transform:none;">- current agent's performance since Live/Past tagging shipped 2026-09-13</span></h2>
+            <h2>Pass/Fail <span class="info-ic" title="current agent's performance since Live/Past tagging shipped 2026-09-13">ⓘ</span></h2>
             <div class="cards" id="bse-live-scoreboard">
               <div class="card"><div class="label">Resolved</div><div class="value" id="bse-live-resolved">-</div></div>
               <div class="card"><div class="label">Hit rate</div><div class="value" id="bse-live-hitrate">-</div></div>
@@ -276,43 +301,45 @@
               <div class="card"><div class="label">Still open</div><div class="value" id="bse-live-open">-</div></div>
             </div>
           </section>
-          <section class="perf-controls">
-            <div class="group">
-              <label for="bse-passfail-filter-symbol">Stock</label>
-              <select id="bse-passfail-filter-symbol"><option value="">All</option></select>
+          <details class="filters">
+            <summary>Filters <span class="muted" id="bse-passfail-filter-count"></span></summary>
+            <div class="perf-controls">
+              <div class="group">
+                <label for="bse-passfail-filter-symbol">Stock</label>
+                <select id="bse-passfail-filter-symbol"><option value="">All</option></select>
+              </div>
+              <div class="group">
+                <label for="bse-passfail-filter-setup">Setup</label>
+                <select id="bse-passfail-filter-setup"><option value="">All</option></select>
+              </div>
+              <div class="group">
+                <label for="bse-passfail-filter-status">Result</label>
+                <select id="bse-passfail-filter-status">
+                  <option value="">All</option>
+                  <option value="target">Hit (target)</option>
+                  <option value="stop">Not hit (stop)</option>
+                  <option value="gap_stop">Not hit (gap stop)</option>
+                  <option value="timeout">Not hit (timed out)</option>
+                </select>
+              </div>
+              <div class="group">
+                <label for="bse-passfail-filter-resolved">Show</label>
+                <select id="bse-passfail-filter-resolved">
+                  <option value="">All calls</option>
+                  <option value="resolved">Resolved only</option>
+                </select>
+              </div>
+              <div class="group">
+                <label for="bse-passfail-filter-rows">Rows</label>
+                <select id="bse-passfail-filter-rows">
+                  <option value="25">25</option>
+                  <option value="50" selected>50</option>
+                  <option value="100">100</option>
+                  <option value="all">All</option>
+                </select>
+              </div>
             </div>
-            <div class="group">
-              <label for="bse-passfail-filter-setup">Setup</label>
-              <select id="bse-passfail-filter-setup"><option value="">All</option></select>
-            </div>
-            <div class="group">
-              <label for="bse-passfail-filter-status">Result</label>
-              <select id="bse-passfail-filter-status">
-                <option value="">All</option>
-                <option value="target">Hit (target)</option>
-                <option value="stop">Not hit (stop)</option>
-                <option value="gap_stop">Not hit (gap stop)</option>
-                <option value="timeout">Not hit (timed out)</option>
-              </select>
-            </div>
-            <div class="group">
-              <label for="bse-passfail-filter-resolved">Show</label>
-              <select id="bse-passfail-filter-resolved">
-                <option value="">All calls</option>
-                <option value="resolved">Resolved only</option>
-              </select>
-            </div>
-            <div class="group">
-              <label for="bse-passfail-filter-rows">Rows</label>
-              <select id="bse-passfail-filter-rows">
-                <option value="25">25</option>
-                <option value="50" selected>50</option>
-                <option value="100">100</option>
-                <option value="all">All</option>
-              </select>
-            </div>
-            <span class="muted" id="bse-passfail-filter-count"></span>
-          </section>
+          </details>
           <section>
             <h2>Resolved calls</h2>
             <table id="bse-passfail-calls"></table>
@@ -320,7 +347,7 @@
         </div>
 
       <section>
-        <h2>Backfill P&amp;L <span class="muted" style="text-transform:none;">- historical replay, summarised over a timeframe rather than browsable row by row</span>
+        <h2>Backfill P&amp;L <span class="info-ic" title="historical replay, summarised over a timeframe rather than browsable row by row">ⓘ</span>
           <span style="margin-left:auto; display:flex; align-items:center; gap:6px;">
             <label for="bse-backfill-days" class="muted" style="text-transform:none; font-size:12px;">over</label>
             <select id="bse-backfill-days">
@@ -340,7 +367,7 @@
       </section>
 
       <section>
-        <h2>Stock confidence <span class="muted" style="text-transform:none;">- live agent calls only, not backfill. Wilson lower-bound confidence, not raw win rate</span></h2>
+        <h2>Stock confidence <span class="info-ic" title="live agent calls only, not backfill. Wilson lower-bound confidence, not raw win rate">ⓘ</span></h2>
         <table id="bse-symbol-confidence"></table>
       </section>
     </div>
@@ -356,53 +383,55 @@
         <option value="passfail">Pass/Fail</option>
       </select>
     </div>
-    <span class="muted">research/paper only, own dataset, not pooled with NSE</span>
+    <span class="info-ic" title="research/paper only, own dataset, not pooled with NSE">ⓘ</span>
   </section>
 
   <div id="crypto-live-ongoing">
-      <section class="perf-controls">
-        <div class="group">
-          <label for="crypto-ongoing-filter-symbol">Coin</label>
-          <select id="crypto-ongoing-filter-symbol"><option value="">All</option></select>
+      <details class="filters">
+        <summary>Filters <span class="muted" id="crypto-ongoing-filter-count"></span></summary>
+        <div class="perf-controls">
+          <div class="group">
+            <label for="crypto-ongoing-filter-symbol">Coin</label>
+            <select id="crypto-ongoing-filter-symbol"><option value="">All</option></select>
+          </div>
+          <div class="group">
+            <label for="crypto-ongoing-filter-setup">Setup</label>
+            <select id="crypto-ongoing-filter-setup"><option value="">All</option></select>
+          </div>
+          <div class="group">
+            <label for="crypto-ongoing-filter-status">Result</label>
+            <select id="crypto-ongoing-filter-status">
+              <option value="">All</option>
+              <option value="pending">Pending</option>
+            </select>
+          </div>
+          <div class="group">
+            <label for="crypto-ongoing-filter-resolved">Show</label>
+            <select id="crypto-ongoing-filter-resolved">
+              <option value="">All calls</option>
+              <option value="resolved">Resolved only</option>
+            </select>
+          </div>
+          <div class="group">
+            <label for="crypto-ongoing-filter-rows">Rows</label>
+            <select id="crypto-ongoing-filter-rows">
+              <option value="25">25</option>
+              <option value="50" selected>50</option>
+              <option value="100">100</option>
+              <option value="all">All</option>
+            </select>
+          </div>
         </div>
-        <div class="group">
-          <label for="crypto-ongoing-filter-setup">Setup</label>
-          <select id="crypto-ongoing-filter-setup"><option value="">All</option></select>
-        </div>
-        <div class="group">
-          <label for="crypto-ongoing-filter-status">Result</label>
-          <select id="crypto-ongoing-filter-status">
-            <option value="">All</option>
-            <option value="pending">Pending</option>
-          </select>
-        </div>
-        <div class="group">
-          <label for="crypto-ongoing-filter-resolved">Show</label>
-          <select id="crypto-ongoing-filter-resolved">
-            <option value="">All calls</option>
-            <option value="resolved">Resolved only</option>
-          </select>
-        </div>
-        <div class="group">
-          <label for="crypto-ongoing-filter-rows">Rows</label>
-          <select id="crypto-ongoing-filter-rows">
-            <option value="25">25</option>
-            <option value="50" selected>50</option>
-            <option value="100">100</option>
-            <option value="all">All</option>
-          </select>
-        </div>
-        <span class="muted" id="crypto-ongoing-filter-count"></span>
-      </section>
+      </details>
       <section>
-        <h2>Ongoing <span class="muted" style="text-transform:none;">- calls the current agent has made that haven't resolved yet</span></h2>
+        <h2>Ongoing <span class="info-ic" title="calls the current agent has made that haven't resolved yet">ⓘ</span></h2>
         <table id="crypto-ongoing-calls"></table>
       </section>
     </div>
 
     <div id="crypto-live-passfail" hidden>
       <section>
-        <h2>Pass/Fail <span class="muted" style="text-transform:none;">- current agent's performance since Live/Past tagging shipped 2026-09-13; everything before that (including same-day runs before the change) is under Past</span></h2>
+        <h2>Pass/Fail <span class="info-ic" title="current agent's performance since Live/Past tagging shipped 2026-09-13; everything before that (including same-day runs before the change) is under Past">ⓘ</span></h2>
         <div class="cards" id="crypto-live-scoreboard">
           <div class="card"><div class="label">Resolved</div><div class="value" id="crypto-live-resolved">-</div></div>
           <div class="card"><div class="label">Hit rate</div><div class="value" id="crypto-live-hitrate">-</div></div>
@@ -410,43 +439,45 @@
           <div class="card"><div class="label">Still open</div><div class="value" id="crypto-live-open">-</div></div>
         </div>
       </section>
-      <section class="perf-controls">
-        <div class="group">
-          <label for="crypto-passfail-filter-symbol">Coin</label>
-          <select id="crypto-passfail-filter-symbol"><option value="">All</option></select>
+      <details class="filters">
+        <summary>Filters <span class="muted" id="crypto-passfail-filter-count"></span></summary>
+        <div class="perf-controls">
+          <div class="group">
+            <label for="crypto-passfail-filter-symbol">Coin</label>
+            <select id="crypto-passfail-filter-symbol"><option value="">All</option></select>
+          </div>
+          <div class="group">
+            <label for="crypto-passfail-filter-setup">Setup</label>
+            <select id="crypto-passfail-filter-setup"><option value="">All</option></select>
+          </div>
+          <div class="group">
+            <label for="crypto-passfail-filter-status">Result</label>
+            <select id="crypto-passfail-filter-status">
+              <option value="">All</option>
+              <option value="target">Hit (target)</option>
+              <option value="stop">Not hit (stop)</option>
+              <option value="gap_stop">Not hit (gap stop)</option>
+              <option value="timeout">Not hit (timed out)</option>
+            </select>
+          </div>
+          <div class="group">
+            <label for="crypto-passfail-filter-resolved">Show</label>
+            <select id="crypto-passfail-filter-resolved">
+              <option value="">All calls</option>
+              <option value="resolved">Resolved only</option>
+            </select>
+          </div>
+          <div class="group">
+            <label for="crypto-passfail-filter-rows">Rows</label>
+            <select id="crypto-passfail-filter-rows">
+              <option value="25">25</option>
+              <option value="50" selected>50</option>
+              <option value="100">100</option>
+              <option value="all">All</option>
+            </select>
+          </div>
         </div>
-        <div class="group">
-          <label for="crypto-passfail-filter-setup">Setup</label>
-          <select id="crypto-passfail-filter-setup"><option value="">All</option></select>
-        </div>
-        <div class="group">
-          <label for="crypto-passfail-filter-status">Result</label>
-          <select id="crypto-passfail-filter-status">
-            <option value="">All</option>
-            <option value="target">Hit (target)</option>
-            <option value="stop">Not hit (stop)</option>
-            <option value="gap_stop">Not hit (gap stop)</option>
-            <option value="timeout">Not hit (timed out)</option>
-          </select>
-        </div>
-        <div class="group">
-          <label for="crypto-passfail-filter-resolved">Show</label>
-          <select id="crypto-passfail-filter-resolved">
-            <option value="">All calls</option>
-            <option value="resolved">Resolved only</option>
-          </select>
-        </div>
-        <div class="group">
-          <label for="crypto-passfail-filter-rows">Rows</label>
-          <select id="crypto-passfail-filter-rows">
-            <option value="25">25</option>
-            <option value="50" selected>50</option>
-            <option value="100">100</option>
-            <option value="all">All</option>
-          </select>
-        </div>
-        <span class="muted" id="crypto-passfail-filter-count"></span>
-      </section>
+      </details>
       <section>
         <h2>Resolved calls</h2>
         <table id="crypto-passfail-calls"></table>
@@ -454,7 +485,7 @@
     </div>
 
   <section>
-    <h2>Backfill P&amp;L <span class="muted" style="text-transform:none;">- the one-shot 2018-2026 historical replay, summarised over a timeframe rather than browsable row by row</span>
+    <h2>Backfill P&amp;L <span class="info-ic" title="the one-shot 2018-2026 historical replay, summarised over a timeframe rather than browsable row by row">ⓘ</span>
       <span style="margin-left:auto; display:flex; align-items:center; gap:6px;">
         <label for="crypto-backfill-days" class="muted" style="text-transform:none; font-size:12px;">over</label>
         <select id="crypto-backfill-days">
@@ -474,7 +505,7 @@
   </section>
 
   <section>
-    <h2>Coin confidence <span class="muted" style="text-transform:none;">- live agent calls only, not backfill. Wilson lower-bound confidence, not raw win rate: a coin with 1 resolved call and a win reads LOW, not 100%, until there's enough evidence to trust it</span></h2>
+    <h2>Coin confidence <span class="info-ic" title="live agent calls only, not backfill. Wilson lower-bound confidence, not raw win rate: a coin with 1 resolved call and a win reads LOW, not 100% until there's enough evidence to trust it">ⓘ</span></h2>
     <table id="crypto-symbol-confidence"></table>
   </section>
 </main>
@@ -535,7 +566,7 @@
   </section>
 
   <section>
-    <h2>Potential calls <span class="muted" style="text-transform:none;">- every candidate each market's daily scan evaluates, tradeable or not, resolved forward the same triple-barrier way real trades are. Click a market to see the whole day's picture: what was evaluated, why, and what actually happened.</span></h2>
+    <h2>Potential calls <span class="info-ic" title="every candidate each market's daily scan evaluates, tradeable or not, resolved forward the same triple-barrier way real trades are. Click a market to see the whole day's picture: what was evaluated, why, and what actually happened.">ⓘ</span></h2>
     <div class="cards" id="potential-calls-summary">
       <div class="card" id="potential-calls-nse" style="cursor:pointer;"><div class="label">NSE</div><div class="value">-</div></div>
       <div class="card" id="potential-calls-crypto" style="cursor:pointer;"><div class="label">Crypto</div><div class="value">-</div></div>
@@ -545,7 +576,7 @@
   </section>
 
   <section>
-    <h2>Model calibration <span class="muted" style="text-transform:none;">- how close the model's own p(T1 before stop) has been to what actually happened, per probability bucket. NSE only. Same check `tradedesk ml check-drift` already runs daily and auto-flags to Review on drift - shown here, not just a background pass/fail.</span></h2>
+    <h2>Model calibration <span class="info-ic" title="how close the model's own p(T1 before stop) has been to what actually happened, per probability bucket. NSE only. Same check `tradedesk ml check-drift` already runs daily and auto-flags to Review on drift - shown here, not just a background pass/fail.">ⓘ</span></h2>
     <div class="cards" id="calibration-summary">
       <div class="card"><div class="label">Predictions logged</div><div class="value" id="calib-n-logged">-</div></div>
       <div class="card"><div class="label">Checked vs real outcome</div><div class="value" id="calib-n-checked">-</div></div>
@@ -567,13 +598,15 @@
         <option value="bse">BSE</option>
       </select>
     </div>
-    <span class="muted">each market's candidates run against its own universe and its own random control - never pooled</span>
+    <span class="info-ic" title="each market's candidates run against its own universe and its own random control - never pooled">ⓘ</span>
   </section>
   <section>
-    <h2>Candidate rules <span class="muted" style="text-transform:none;">- forward, out-of-sample only, no backfill. Cannot alert. Compared against `random_eligible`, a matched random pick from the same universe on the same days.</span></h2>
+    <h2>Candidate rules <span class="info-ic" title="forward, out-of-sample only, no backfill. Cannot alert. Compared against `random_eligible`, a matched random pick from the same universe on the same days.">ⓘ</span></h2>
     <table id="research-summary"></table>
   </section>
-  <section class="perf-controls">
+  <details class="filters">
+    <summary>Filters <span class="muted" id="research-filter-count"></span></summary>
+    <div class="perf-controls">
     <div class="group">
       <label for="research-filter-rule">Rule</label>
       <select id="research-filter-rule"><option value="">All</option></select>
@@ -598,8 +631,8 @@
         <option value="all">All</option>
       </select>
     </div>
-    <span class="muted" id="research-filter-count"></span>
-  </section>
+    </div>
+  </details>
   <section>
     <h2>Calls</h2>
     <table id="research-calls"></table>
@@ -630,10 +663,10 @@
         <option value="bse">BSE</option>
       </select>
     </div>
-    <span class="muted">NSE/BSE retrain once daily; crypto twice (24/7 data) - see Research tab for the underlying candidate rules this trains on</span>
+    <span class="info-ic" title="NSE/BSE retrain once daily; crypto twice (24/7 data) - see Research view for the underlying candidate rules this trains on">ⓘ</span>
   </section>
   <section>
-    <h2>EOD self-learning <span class="muted" style="text-transform:none;">- retrain on this market's real forward evidence only, never the old backtest window. One row per run. Cannot alert - only ever flags Review if it clears the same evidence bar as everything else.</span></h2>
+    <h2>EOD self-learning <span class="info-ic" title="retrain on this market's real forward evidence only, never the old backtest window. One row per run. Cannot alert - only ever flags Review if it clears the same evidence bar as everything else.">ⓘ</span></h2>
     <table id="learning-table"></table>
   </section>
 </div>
@@ -656,33 +689,37 @@
         <option value="resolved">Resolved</option>
       </select>
     </div>
-    <span class="muted">Every candidate logged from the first prediction onward - what it predicted, side by side with what actually happened once it resolves. Nothing here changes any model; it is the raw material a human (or the model, once it has enough of these) can look for a pattern in.</span>
+    <span class="info-ic" title="Every candidate logged from the first prediction onward - what it predicted, side by side with what actually happened once it resolves. Nothing here changes any model; it is the raw material a human (or the model, once it has enough of these) can look for a pattern in.">ⓘ</span>
   </section>
   <section><table id="predictions-table"></table></section>
 </div>
 
 <div id="tab-lab" class="subtab" hidden>
   <section>
-    <h2>M14-M18 research lab <span class="muted" style="text-transform:none;">- own SQLite registry, own store (data/m14_m18/), read-only from here; nothing this dashboard shows or does can write into it or touch anything live</span></h2>
+    <h2>M14-M18 research lab <span class="info-ic" title="own SQLite registry, own store (data/m14_m18/), read-only from here; nothing this dashboard shows or does can write into it or touch anything live">ⓘ</span></h2>
     <div id="lab-summary" class="cards">
       <div class="card"><div class="label">Latest run</div><div class="value" id="lab-run">-</div></div>
       <div class="card"><div class="label">Historical replay</div><div class="value" id="lab-replay">-</div></div>
       <div class="card"><div class="label">Eligibility</div><div class="value" id="lab-eligibility">-</div></div>
     </div>
-    <h3 style="margin-top:16px;">Forward evidence <span class="muted" style="text-transform:none;">- genuinely new candidates scored since the frozen model activated, checked daily</span></h3>
+    <h3 style="margin-top:16px;">Forward evidence <span class="info-ic" title="genuinely new candidates scored since the frozen model activated, checked daily">ⓘ</span></h3>
     <div id="lab-forward" class="cards">
       <div class="card"><div class="label">Scored</div><div class="value" id="lab-fwd-scored">-</div></div>
       <div class="card"><div class="label">Resolved</div><div class="value" id="lab-fwd-resolved">-</div></div>
       <div class="card"><div class="label">Hit rate</div><div class="value" id="lab-fwd-hitrate">-</div></div>
     </div>
-    <p class="muted">Full lab UI (CPCV/PBO/DSR diagnostics, per-run detail, comparison charts) below - same origin, same Cloudflare link, no extra port needed: <a href="/lab/" target="_blank" rel="noopener">open in a new tab ↗</a></p>
+    <p class="muted">Full lab UI (CPCV/PBO/DSR diagnostics, per-run detail, comparison charts) below - <a href="/lab/" target="_blank" rel="noopener">open in a new tab ↗</a></p>
     <iframe src="/lab/" title="Research lab" style="width:100%; height:900px; border:1px solid var(--line); border-radius:6px; background:#0c0e12;" loading="lazy"></iframe>
   </section>
 </div>
 
 <div id="tab-review" class="subtab" hidden>
   <section>
-    <h2>Pending review <span class="muted" style="text-transform:none;">- proposals from `tradedesk review week`, never applied automatically</span></h2>
+    <h2>Replacement research <span class="info-ic" title="Every self-review run tests improved versions of failing/retired setups and new methods through the full gauntlet, continuing where the last run stopped. A candidate is only proposed once it beats random timing, survives walk-forward and kill criteria, and beats the retired setup's own result.">ⓘ</span></h2>
+    <div id="review-research"><div class="empty-note">no replacement search has run yet</div></div>
+  </section>
+  <section>
+    <h2>Pending review <span class="info-ic" title="proposals from `tradedesk review week`, never applied automatically">ⓘ</span></h2>
     <div id="review-pending"></div>
   </section>
   <section>
@@ -912,7 +949,9 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
 showCallsMarket('nse');  // the default active tab on page load
 
 // ---------------------------------------------------------------- status banner
-$('status-banner').innerHTML = 'Live NSE alerts are currently <b>off</b> - the three built-in setups (base_breakout / trend_pullback / nr7_breakout) have not cleared the evidence gate (measured worse than random entry timing), so no live buy alert will fire. The <b>Research</b> tab tracks forward, out-of-sample candidate ideas that cannot alert on their own - if one ever clears the same evidence bar, it shows up automatically in <b>Review</b> for you to look at.';
+// Collapsed by default (native <details>/<summary>, no JS needed to toggle) - the summary
+// line alone carries the actionable fact ("live alerts are off"); the full explanation is a
+// click away instead of permanently occupying space on every tab.
 
 // ---------------------------------------------------------------- agent performance strip
 // Visible on every tab (not nested inside one), so "how is the agent actually doing" is a
@@ -989,17 +1028,60 @@ setInterval(loadAgentReliability, 60000);
 
 // ---------------------------------------------------------------- Review tab
 function reviewCard(item) {
-  const buttons = item.status === 'pending'
-    ? `<button onclick="decideReview('${item.id}','approved')" style="background:var(--ok); color:#08111f; border:none; padding:5px 14px; font:inherit; font-weight:600; cursor:pointer; border-radius:6px; margin-right:8px;">Approve</button>
-       <button onclick="decideReview('${item.id}','rejected')" style="background:var(--bad); color:#08111f; border:none; padding:5px 14px; font:inherit; font-weight:600; cursor:pointer; border-radius:6px;">Reject</button>`
-    : `<span class="${item.status === 'approved' ? 'closed' : 'stopped'}">${item.status}</span> <span class="muted">${(item.decided_at||'').slice(0,10)}</span>`;
+  const isSelfReview = !!item.proposal_ref;
+  const approveLabel = isSelfReview ? 'Approve & Apply' : 'Approve';
+  const tag = isSelfReview
+    ? '<span class="muted" style="border:1px solid var(--line); border-radius:4px; padding:1px 6px; margin-right:6px;">self-review</span>'
+    : '';
+  let statusLine;
+  if (item.status === 'pending') {
+    statusLine = `<button onclick="decideReview('${item.id}','approved')" style="background:var(--ok); color:#08111f; border:none; padding:5px 14px; font:inherit; font-weight:600; cursor:pointer; border-radius:6px; margin-right:8px;">${approveLabel}</button>
+       <button onclick="decideReview('${item.id}','rejected')" style="background:var(--bad); color:#08111f; border:none; padding:5px 14px; font:inherit; font-weight:600; cursor:pointer; border-radius:6px;">Reject</button>`;
+  } else if (item.status === 'approved' && isSelfReview) {
+    statusLine = item.applied
+      ? `<span class="closed">approved &amp; applied</span> <span class="muted">${(item.decided_at||'').slice(0,10)}</span>`
+      : `<span class="stopped">approved, NOT applied</span> <span class="muted">${(item.decided_at||'').slice(0,10)}</span>`;
+  } else {
+    statusLine = `<span class="${item.status === 'approved' ? 'closed' : 'stopped'}">${item.status}</span> <span class="muted">${(item.decided_at||'').slice(0,10)}</span>`;
+  }
+  // "Details" (2026-09-27 request): which call failed, why, and what the agent decided to
+  // do about it - one place, instead of a bare "Gauntlet" button whose contents weren't
+  // self-evident. Collapsed by default (native <details>, lazy-fetched only on first open -
+  // see loadReviewDetails()), same pattern as the filter rows elsewhere on this dashboard.
+  const detailsBlock = isSelfReview
+    ? `<details class="filters" style="margin-top:8px;" ontoggle="loadReviewDetails(this,'${item.id}')">
+         <summary>Details - which call failed, why, and what the agent decided</summary>
+         <div class="review-details-body" style="padding:10px 12px; border-top:1px solid var(--line);">opening...</div>
+       </details>`
+    : '';
   return `<div style="border-bottom:1px solid var(--line); padding:10px 0;">
-    <div style="font-weight:600;">${item.title}</div>
+    <div style="font-weight:600;">${tag}${item.title}</div>
     <div class="muted" style="margin:4px 0;">${item.detail}</div>
-    <div style="margin-top:6px;">${buttons}</div>
+    <div style="margin-top:6px;">${statusLine}</div>
+    ${detailsBlock}
   </div>`;
 }
+async function loadResearch() {
+  const r = await fetch('/api/review/replacement-search');
+  const markets = r.ok ? await r.json() : [];
+  if (!markets.length) return;
+  const pct = v => v == null ? '-' : `${(v * 100).toFixed(0)}%`;
+  const rr = v => v == null ? '-' : `${v >= 0 ? '+' : ''}${v.toFixed(3)}R`;
+  $('review-research').innerHTML = markets.map(m => {
+    const rows = (m.leaderboard || []).map(c => `<tr>
+        <td>${c.passed ? '<span class="closed">PASS</span>' : ''} ${c.name}<div class="muted" style="font-size:11px;">${c.description}</div></td>
+        <td class="num">${rr(c.net_r)}</td><td class="num">${pct(c.win_rate)}</td><td class="num">${c.n_trades}</td>
+        <td class="muted" style="font-size:11px;">${(c.fail_reasons || []).join('; ') || '-'}</td></tr>`).join('');
+    return `<div style="border-bottom:1px solid var(--line); padding:10px 0;">
+      <div style="font-weight:600;">${m.market.toUpperCase()} <span class="muted" style="font-weight:400;">- ${m.tested_total}/${m.space_size} strategies tested, ${m.untested_remaining} queued; to beat: ${rr(m.baseline_net_r)}/call, ${pct(m.baseline_hit_rate)} hit rate (last run ${m.generated.replace('T', ' ')})</span></div>
+      <div class="muted" style="margin:4px 0;">${m.summary || ''}</div>
+      ${rows ? `<details class="filters" style="margin-top:6px;"><summary>Best candidates so far</summary>
+        <table><tr><th>Candidate</th><th>Net R/trade</th><th>Win rate</th><th>Trades</th><th>Missed on</th></tr>${rows}</table></details>` : ''}
+    </div>`;
+  }).join('');
+}
 async function loadReview() {
+  loadResearch();
   const r = await fetch('/api/review');
   const items = r.ok ? await r.json() : [];
   const pending = items.filter(i => i.status === 'pending');
@@ -1009,8 +1091,60 @@ async function loadReview() {
   updateReviewBadge(pending.length);
 }
 async function decideReview(id, status) {
-  await fetch(`/api/review/decide?item_id=${encodeURIComponent(id)}&status=${status}`, {method: 'POST'});
+  const r = await fetch(`/api/review/decide?item_id=${encodeURIComponent(id)}&status=${status}`, {method: 'POST'});
+  const body = await r.json().catch(() => null);
+  if (body && body.apply_error) {
+    alert(`Approved, but apply() refused: ${body.apply_error}\n\nThe decision was recorded; nothing was written. Fix the underlying issue and re-approve, or reject this item.`);
+  } else if (body && body.applied) {
+    alert(`Applied. Commit ${body.applied.git_commit_sha ? body.applied.git_commit_sha.slice(0,10) : '(none)'} - files: ${body.applied.files_changed.map(f => f.path).join(', ')}`);
+  }
   loadReview();
+}
+// Turns a proposal's raw payload into one plain-English line - "what the agent decided" -
+// instead of making the reader parse a JSON blob to find out.
+function describeDecision(kind, payload) {
+  if (kind === 'config_patch') {
+    const param = payload.path.split('.').pop();
+    return `Tune <b>${payload.setup}</b> on ${payload.market}: <code>${param}</code> ${payload.old_value} &rarr; ${payload.new_value}`;
+  }
+  if (kind === 'retire_setup') {
+    const repl = payload.replacement_source
+      ? ` Suggested replacement: ${payload.replacement_source}.`
+      : '';
+    const plan = payload.replacement_plan ? `<br><b>Replacement plan:</b> ${payload.replacement_plan}` : '';
+    return `Retire <b>${payload.setup}</b> on ${payload.market} only - other markets keep it, and it stays shadow-tracked here (graded, not a call).${repl}${plan}`;
+  }
+  if (kind === 'new_detector') {
+    return `Author a new setup '<b>${payload.setup_kind}</b>' on ${payload.market}, from lab candidate <code>${payload.lab_module_path}</code> (experiment ${payload.lab_experiment_id})`;
+  }
+  return JSON.stringify(payload);
+}
+async function loadReviewDetails(detailsEl, id) {
+  if (!detailsEl.open || detailsEl.dataset.loaded) return;  // toggle fires on close too
+  detailsEl.dataset.loaded = '1';
+  const body = detailsEl.querySelector('.review-details-body');
+  const r = await fetch(`/api/review/${encodeURIComponent(id)}/gauntlet`);
+  if (!r.ok) {
+    body.innerHTML = '<span class="empty-note">no detail available for this item</span>';
+    return;
+  }
+  const g = await r.json();
+  const kill = g.gauntlet_report && g.gauntlet_report.kill_criteria;
+  const stopped = g.gauntlet_report && g.gauntlet_report.stopped_at;
+  // A retirement makes no new performance claim, so it has no gauntlet of its own.
+  const verdict = g.kind === 'retire_setup'
+    ? 'not needed (retirement makes no new claim)'
+    : stopped
+      ? `stopped at ${stopped}`
+      : (kill && kill.passed ? 'PASSED' : 'kill criteria failed');
+  body.innerHTML = `
+    <p style="margin:0 0 8px;"><b>Which call failed, and why:</b><br>${g.evidence_summary}</p>
+    <p style="margin:0 0 8px;"><b>What the agent decided:</b><br>${describeDecision(g.kind, g.payload)}</p>
+    <p style="margin:0;"><b>Validation:</b> <span class="${verdict === 'PASSED' ? 'closed' : (g.kind === 'retire_setup' ? 'muted' : 'stopped')}">${verdict}</span></p>
+    <details style="margin-top:8px;">
+      <summary class="muted" style="text-transform:none; cursor:pointer; display:inline;">raw payload / gauntlet report</summary>
+      <pre style="white-space:pre-wrap; font-size:11px; background:#0c0e12; border:1px solid var(--line); border-radius:6px; padding:8px; margin-top:6px;">${JSON.stringify({payload: g.payload, gauntlet_report: g.gauntlet_report}, null, 2)}</pre>
+    </details>`;
 }
 function updateReviewBadge(n) {
   const b = $('review-badge');
@@ -1121,7 +1255,7 @@ function renderCalls(market) {
       const plClass = p == null ? '' : (p >= 0 ? 'pos' : 'neg');
       const dh = daysHeld(d);
       const daysText = dh == null ? '-' : (dh.pending ? `${dh.days}+` : `${dh.days}`);
-      return `<tr><td>${d.symbol}</td><td>${d.setup}</td><td class="${d.grade}">${d.grade}</td><td>${d.armed_on}</td><td class="num">${fmt(d.entry)}</td><td class="num">${d.exit_price!=null?fmt(d.exit_price):'-'}</td><td class="num">${daysText}</td><td>${d.rejected_for.length ? 'no' : 'yes'}</td><td class="${byId(d.outcome)}">${resultLabel(d.outcome)}${d.outcome && d.outcome !== 'target' ? ` (${d.outcome.replace('_',' ')})` : ''}</td><td class="num">${d.r_multiple!=null?fmt(d.r_multiple,2):'-'}</td><td class="num ${plClass}">${p!=null?pct(p):'-'}</td></tr>`;
+      return `<tr><td>${d.symbol}</td><td>${d.setup}${d.shadow ? ' <span class="muted" title="setup retired on this market by self-review - still tracked so the agent keeps learning, but not a call">(shadow)</span>' : ''}</td><td class="${d.grade}">${d.grade}</td><td>${d.armed_on}</td><td class="num">${fmt(d.entry)}</td><td class="num">${d.exit_price!=null?fmt(d.exit_price):'-'}</td><td class="num">${daysText}</td><td>${d.rejected_for.length ? 'no' : 'yes'}</td><td class="${byId(d.outcome)}">${resultLabel(d.outcome)}${d.outcome && d.outcome !== 'target' ? ` (${d.outcome.replace('_',' ')})` : ''}</td><td class="num">${d.r_multiple!=null?fmt(d.r_multiple,2):'-'}</td><td class="num ${plClass}">${p!=null?pct(p):'-'}</td></tr>`;
     }));
   let countText = `${data.length} of ${matched.length} matched (${all.length} total)`;
   if (resolved.length) {

@@ -2,13 +2,39 @@
 
 Prepared: 25 September 2026
 
-Last updated: 26 September 2026
+Last updated: 27 September 2026
 
 Working branch: `codex/aem-v2-accuracy-first`
 
-Status: **Milestones 0–1 implemented: the protocol and causal event/outcome engine are
-frozen. Feature scoring, selection and strategy evaluation are not yet implemented.
-No production change is authorized.**
+Status: **Milestones 0–4 complete, with a real, honest, NEGATIVE result. Milestones 0–2
+frozen against real staged data (5,999/6,000 symbol-sessions included). Milestone 3
+(Precision Ladder selector mechanics) implemented and tested. Milestone 4 Stage 1's real
+run completed 27 September (5,999 symbol-sessions, 177,351 resolved rows). Milestone 4
+Stage 2's real pipeline race also ran 27 September - its first attempt surfaced two real
+hard-veto bugs (99.997% of rows vetoed), which were found, fixed and regression-tested;
+the corrected re-run shows a genuine, non-degenerate result: NONE of the 24 registered
+specifications clears the frozen development gate. AEM v1 remains the canonical baseline
+(149/693 = 21.50% strict success, 18.60% Wilson lower bound, -0.27471R mean net R). No
+candidate is nominated, so Milestone 4's mandatory execution-stress gates (implemented
+and tested, `aem_v2_stress_gates.py`) have nothing to evaluate. No production change is
+authorized.**
+
+## Known gaps (tracked explicitly, not lost between checkpoints)
+
+- Milestone 3: the optional tree-model challenger on identical folds. Not done -
+  explicitly optional in this plan, so not blocking.
+- Milestone 3: `select_calls`'s `portfolio_filter` hook exists but nothing calls it
+  with the real, already-tested risk manager yet - moot for now since no candidate was
+  nominated to filter.
+- Milestone 4: complete, with a real negative result - see
+  [the pipeline-race checkpoint](aem-v2-pipeline-race-checkpoint.md)'s "Real run, 27
+  September 2026" section for the two bugs found/fixed and the final real numbers.
+- Milestones 5-7 (independent locked evaluation, prospective shadow evidence, broader
+  NSE qualification): Milestone 5's locked evaluation is moot with zero nominated
+  candidates. The open question going forward is whether a genuinely different signal
+  shape (not a parameter variant of anticipatory_impulse/confirmed_pullback/
+  breakout_retest) could be hypothesized, built and run through this same real pipeline -
+  not yet started.
 
 ## 1. Objective
 
@@ -414,27 +440,43 @@ or execution hypothesis—not another search over the same consumed answers.
 
 ### Milestone 2 — feature and integrity layer
 
-- [ ] Implement the causal feature registry and feature-availability timestamps.
-- [ ] Add cross-sectional breadth/relative-strength inputs without using parked index
+- [x] Implement the causal feature registry and feature-availability timestamps.
+- [x] Add cross-sectional breadth/relative-strength inputs without using parked index
   data or current sector membership.
-- [ ] Audit missingness, corporate actions, liquidity, tradability and source versions.
-- [ ] Freeze the development dataset and preserve every excluded event with a reason.
+- [x] Audit missingness, corporate actions, liquidity, tradability and source versions.
+  Real result on the frozen 50-stock cohort: 5,999/6,000 symbol-sessions included; the
+  one exclusion is the known VEDL 2026-04-30 incomplete-M1 exception.
+- [x] Freeze the development dataset and preserve every excluded event with a reason.
 
 ### Milestone 3 — Precision Ladder selector
 
-- [ ] Implement smoothed evidence contributions, sparse-regime shrinkage and hard
+- [x] Implement smoothed evidence contributions, sparse-regime shrinkage and hard
   vetoes.
-- [ ] Implement fold-local calibration, absolute thresholding, per-session ranking and
+- [x] Implement fold-local calibration, absolute thresholding, per-session ranking and
   symbol deduplication.
-- [ ] Add logistic control and optional existing tree challengers on identical folds.
-- [ ] Prove outcome columns and future bars cannot enter prediction code.
+- [x] Add logistic control on identical folds (the optional tree challenger is not
+  built; it is explicitly optional in this plan).
+- [x] Prove outcome columns and future bars cannot enter prediction code.
 
 ### Milestone 4 — bounded development experiment
 
-- [ ] Register no more than 24 complete pipeline specifications.
-- [ ] Run nested chronological walk-forward evaluation on consumed development data.
-- [ ] Publish the accuracy/availability/economics curve and every failed trial.
-- [ ] Freeze at most one candidate only if every development gate passes.
+- [x] Assemble the labeled development dataset (opportunities × features × outcomes per
+  geometry) over the frozen included universe. Real run complete 27 September: 5,999
+  symbol-sessions, 66,668 opportunities, 177,351 resolved rows.
+- [x] Register no more than 24 complete pipeline specifications. Real run complete: all
+  24 evaluated against the real dataset.
+- [x] Run nested chronological walk-forward evaluation on consumed development data. Real
+  run complete, after fixing two hard-veto bugs the first real attempt surfaced (see the
+  pipeline-race checkpoint's "Real run" section) - the corrected re-run's eligible
+  population is real and non-degenerate (13,649-40,610 candidates per dominant mode).
+- [x] Publish the accuracy/availability/economics curve and every failed trial. Published
+  in [`docs/evidence/aem-v2-pipeline-race.json`](evidence/aem-v2-pipeline-race.json) and
+  the pipeline-race checkpoint: all 24 trials reported, none qualifying.
+- [x] Freeze at most one candidate only if every development gate passes, including the
+  mandatory execution stress gates. No candidate cleared the development gate, so none is
+  frozen and the stress gates (implemented and tested, `aem_v2_stress_gates.py`) have
+  nothing real to evaluate. This is the honest, completed outcome of this checklist item,
+  not a gap - AEM v1 remains the canonical baseline.
 
 ### Milestone 5 — independent evaluation
 

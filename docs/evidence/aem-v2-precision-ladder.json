@@ -1,0 +1,46 @@
+{
+  "version": "aem-v2-milestone-3-precision-ladder-v1",
+  "status": "selector_mechanics_implemented_not_evaluated",
+  "milestone": 3,
+  "eligible_for_live": false,
+  "baseline_improved": false,
+  "hard_veto_layer_implemented": true,
+  "evidence_contributions_implemented": true,
+  "oof_calibration_implemented": true,
+  "absolute_threshold_and_ranking_implemented": true,
+  "symbol_deduplication_implemented": true,
+  "logistic_control_implemented": true,
+  "tree_challenger_implemented": false,
+  "algorithm_evaluated": false,
+  "strategy_contract_sha256": "87d416c314bd6376307834805f500f385484de59db3407796da7d931813976cb",
+  "implementation_sha256": "3adc491aa601d9df83c86f3e6ade889bf68b7ef96ead6371ae0dd514936c56bb",
+  "tests_sha256": "73e4bc9759c241b776af798c1828cd6d95ec24e3806bb7fb837c30ebba776efb",
+  "absolute_qualification_probability": 0.50,
+  "bin_count": 5,
+  "shrinkage_k": 20.0,
+  "registered_interactions": [
+    ["return_5m", "cross_sectional_breadth"],
+    ["vwap_distance", "volume_acceleration_3m"]
+  ],
+  "leakage_guarantees": [
+    "fit_feature_contributions and score_candidates reject any frame whose columns are not exactly the 34 registered feature names",
+    "labels are always a separate array, never a frame column, so there is no code path that reads a label out of the feature frame",
+    "fit_oof_calibration never scores a row with a model fit on that row's own chronological inner fold",
+    "an unqualified candidate (a hard veto or a sub-threshold calibrated probability) cannot be promoted by rank; the qualifying filter runs strictly before ranking and the top-k cap"
+  ],
+  "not_yet_implemented": [
+    "an optional tree-model challenger on identical folds (explicitly optional in the plan)",
+    "wiring portfolio/position/sector/heat limits into select_calls's portfolio_filter hook (the hook exists; nothing calls it yet with a real risk manager)",
+    "any accuracy, availability or economics result"
+  ],
+  "corrections": [
+    "27 September 2026, after the first real run against the full 177,351-row Milestone-4 development dataset: hard_veto_reasons() vetoed 177,350/177,351 rows (99.997%), leaving exactly 1 clean row. Root-caused to two bugs: (1) entry_requires_excess_chase compared limit_distance against the exact same maximum_chase_pct constant aem_v2_events.py::opportunities_at used to CONSTRUCT limit_distance in the first place, so it fired on 99.8% of rows as a near-tautology regardless of anything real about the opportunity - removed entirely, since resolve_opportunity already makes the real chase-rejection check correctly at fill time using the realized price. (2) no_remaining_causal_price_room applied a check whose entire premise (price is still below the reference level) is only true for anticipatory_impulse; breakout_retest and confirmed_pullback opportunities arm AFTER that level is already broken by construction, so the same feature reads negative for them and the check fired on 99.3% of rows - now gated to anticipatory_impulse only. Neither bug was caught by this milestone's own tests because they inject hand-picked synthetic feature values directly into hard_veto_reasons() rather than a real compute_features() output - the same class of gap the Milestone-2 tz bug slipped through. After the fix, the same real dataset shows 168,494/177,351 rows (95.0%) clean - a plausible, no-longer-degenerate rate. Real regression tests (test_no_remaining_causal_price_room_only_applies_to_anticipatory_impulse, test_entry_requires_excess_chase_veto_was_removed_as_a_tautology) now cover both. hard_veto_reasons() also gained a required mode parameter as part of this fix."
+  ],
+  "decision": {
+    "register_candidate": false,
+    "change_canonical_baseline": false,
+    "change_live_behavior": false,
+    "reason": "Milestone 3 implements the Precision Ladder scoring, calibration, thresholding, ranking, deduplication and hard-veto mechanics plus a logistic control, all proven leak-free by construction and by test. Nothing has been fit or scored against real data yet, so no accuracy claim exists and the canonical AEM v1 baseline (149/693 = 21.50% strict success, 18.60% Wilson lower bound, -0.27471R mean net R) is unchanged."
+  },
+  "next_step": "milestone_4_bounded_development_experiment_on_the_staged_universe"
+}

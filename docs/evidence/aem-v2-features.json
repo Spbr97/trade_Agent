@@ -1,0 +1,40 @@
+{
+  "version": "aem-v2-milestone-2-features-v1",
+  "status": "feature_registry_implemented_not_evaluated",
+  "milestone": 2,
+  "eligible_for_live": false,
+  "baseline_improved": false,
+  "feature_registry_implemented": true,
+  "integrity_audit_implemented": true,
+  "development_dataset_frozen": true,
+  "integrity_audit_evidence": "evidence/aem-v2-universe-audit.json",
+  "selector_implemented": false,
+  "algorithm_evaluated": false,
+  "strategy_contract_sha256": "87d416c314bd6376307834805f500f385484de59db3407796da7d931813976cb",
+  "implementation_sha256": "d1d8888c4fefa32f572945821320c33130ebda5b96088241e42cccb58ba32f09",
+  "tests_sha256": "1c3dd0812fd28297443a0bb7083172423c30b09ccd12a9dfb3148d4055adaff7",
+  "feature_count": 34,
+  "minimum_signal_bars_before_features_available": 11,
+  "cross_sectional_minimum_peers": 5,
+  "causal_guarantees": [
+    "every feature is computed only from bars closed strictly before decision_at",
+    "the same-time relative-volume baseline uses only prior-session history that ends before today's open",
+    "the daily context (ATR, EMA20, 20-day high, 20-day median turnover) uses only sessions strictly before today's session date",
+    "cross-sectional statistics exclude the candidate's own code from its peer distribution",
+    "future bars, future peer bars, and rows after the frozen exit window cannot change an already-computed feature vector"
+  ],
+  "not_yet_implemented": [
+    "the Precision Ladder selector, calibration, thresholding and abstention (Milestone 3 - since implemented, see evidence/aem-v2-precision-ladder.json)",
+    "any accuracy, availability or economics result (Milestone 4)"
+  ],
+  "corrections": [
+    "Milestone 4's real-data run surfaced a tz-backend mismatch (zoneinfo vs pytz, both legitimately 'Asia/Kolkata') that made pandas silently degrade a concatenated index to object dtype inside the tod_rvol computation, crashing on real staged data though every synthetic test fixture (built with one consistent backend) had passed. Fixed by normalizing intraday_history onto the same tz object as the signal bars before concatenating. No feature formula, contract or test assertion changed; implementation_sha256 above reflects the fixed file."
+  ],
+  "decision": {
+    "register_candidate": false,
+    "change_canonical_baseline": false,
+    "change_live_behavior": false,
+    "reason": "Milestone 2 is now complete: the causal feature registry, the universe integrity audit and the frozen development dataset all exist (see evidence/aem-v2-universe-audit.json for the audit result: 5,999/6,000 symbol-sessions included on the frozen 50-stock cohort). No selector has been fit on this data and no accuracy result exists. The canonical AEM v1 baseline (149/693 = 21.50% strict success, 18.60% Wilson lower bound, -0.27471R mean net R) is unchanged."
+  },
+  "next_step": "milestone_4_bounded_development_experiment"
+}

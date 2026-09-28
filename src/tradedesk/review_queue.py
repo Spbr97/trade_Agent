@@ -12,6 +12,13 @@ config value, tuning a setup) stays a manual step for the user, same as it alrea
 Same JSONL-log pattern as scripts/crypto_signal_tracker.py (small enough not to need a
 real table). NSE-only for now, matching `review week`'s current scope - crypto/BSE have no
 paper book or journal-based failure analysis to draw from yet.
+
+`proposal_ref` (2026-09-27) is a purely additive, optional pointer to a machine-actionable
+`tradedesk.proposals.Proposal` JSON file. It does not change this module's own contract:
+`decide()` still only flips `status`/`decided_at`. `self_review/apply.py` is a SEPARATE,
+explicit action that a human triggers after approving - it is the only code anywhere that
+ever turns a decision into a config/code change, and it refuses to run unless
+`status == "approved"`.
 """
 
 from __future__ import annotations
@@ -37,6 +44,10 @@ class ReviewItem:
     proposal: str
     status: str = "pending"  # "pending" | "approved" | "rejected"
     decided_at: str | None = None
+    # Path to a machine-actionable tradedesk.proposals.Proposal JSON file (self_review/*),
+    # None for every item created before this field existed and for every producer that
+    # still only wants a human to read `proposal` as free text. Additive - never required.
+    proposal_ref: str | None = None
 
 
 def load_queue(path: Path = QUEUE) -> dict[str, ReviewItem]:
@@ -54,7 +65,13 @@ def save_queue(rows: dict[str, ReviewItem], path: Path = QUEUE) -> None:
 
 
 def add_item(
-    market: str, title: str, detail: str, proposal: str, *, path: Path = QUEUE
+    market: str,
+    title: str,
+    detail: str,
+    proposal: str,
+    *,
+    path: Path = QUEUE,
+    proposal_ref: str | None = None,
 ) -> ReviewItem:
     rows = load_queue(path)
     created_at = datetime.now(IST).isoformat()
@@ -73,6 +90,7 @@ def add_item(
         title=title,
         detail=detail,
         proposal=proposal,
+        proposal_ref=proposal_ref,
     )
     rows[item.id] = item
     save_queue(rows, path)

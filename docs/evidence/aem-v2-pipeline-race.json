@@ -1,0 +1,54 @@
+{
+  "version": "aem-v2-milestone-4-pipeline-race-v1",
+  "status": "pipeline_race_evaluated",
+  "milestone": 4,
+  "eligible_for_live": false,
+  "baseline_improved": false,
+  "algorithm_evaluated": true,
+  "pipeline_race_implemented": true,
+  "real_run_completed": true,
+  "real_run_id": "789dc32d4c2340419c9fad38c88a4920",
+  "real_run_note": "Run against the real 177,351-row Milestone-4 development dataset (run id ed9fa509541741cca668bbb4a1eeb380), AFTER fixing two hard-veto bugs found by this exact run's FIRST attempt - see aem-v2-precision-ladder.json's corrections field for the full root-cause. A first real attempt (superseded, not this one) vetoed 177,350/177,351 rows and was discarded as not evidentiary; after the fix this run's veto layer passes a plausible 168,494/177,351 rows (95.0%) and every one of the 24 registered specifications was evaluated on a real, non-degenerate eligible population (13,649-40,610 eligible candidates for the three dominant modes; anticipatory_impulse stayed small at 4-55 since it is genuinely rare in the real data, 390/177,351 rows).",
+  "real_result": {
+    "trial_budget": 24,
+    "trials_evaluated": 24,
+    "qualified_candidates": [],
+    "summary": "No registered specification cleared the frozen development gate on real data. The unfiltered baseline strict-success rate for the three dominant modes (confirmed_pullback, breakout_retest, pooled) ranges 19.0%-24.5%, roughly in line with the AEM v1 canonical baseline (21.50%), but mean net R is negative for every one of them (-0.35R to -0.52R unfiltered). The Precision Ladder's own calibrated selector is conservative and often selects zero candidates (its 50% absolute-probability threshold is rarely cleared); the logistic control does select candidates but their mean net R is deeply negative (-0.39R to -1.31R) with strict-success rates of 20-50% on small, unstable samples. AEM v1 remains the canonical baseline; no live change."
+  },
+  "entry_mode_groups": ["anticipatory_impulse", "confirmed_pullback", "breakout_retest", "pooled"],
+  "model_kinds": ["precision_ladder", "logistic_control"],
+  "top_k_policies": [1, 2, 3],
+  "strategy_contract_sha256": "87d416c314bd6376307834805f500f385484de59db3407796da7d931813976cb",
+  "implementation_sha256": "d995fb56503d68949357b97ec6030dd8ff2b02dd3b65b320cb0222a573ad30b2",
+  "tests_sha256": "b729fc86d2eb6edaec268f440f544552a1889cdd5755030795e92bbbf53009bc",
+  "outer_split": "tradedesk_lab.validation.walk_forward (chronological, purged, embargoed)",
+  "inner_split": "aem_v2_precision_ladder.fit_oof_calibration (chronological inner folds, Milestone 3)",
+  "development_gates_checked": [
+    "resolved_selected_fills >= 100",
+    "active_sessions >= 30",
+    "active_session_coverage >= 40%",
+    "strict_success_rate >= 50%",
+    "wilson95_lower >= 40% and strictly above the AEM v1 baseline (18.60%)",
+    "mean_net_r >= 0 after base costs",
+    "mean_net_r beats the matched-random-timing control by >= 0.10R",
+    "no single symbol accounts for more than 50% of strict wins (a disclosed concentration proxy)"
+  ],
+  "deferred_gates": [
+    "the frozen protocol's mandatory execution stresses (cost x1.25/x1.5, slippage x2, one-bar delay, adversarial missed fills) are not evaluated here - staged the same way AEM v1's own validation was (baseline first, registered stress gates as a separate later checkpoint)"
+  ],
+  "corrections": [
+    "Added selected_fills_for_spec(): re-runs one registered spec's nested walk-forward selection deterministically and returns the exact fill rows a (spec_id, top_k) policy chose. This does not change run_pipeline_race's own trials/metrics output - it exists so the mandatory execution-stress replay (aem_v2_stress_gates.py) can re-resolve the real, selected fills rather than the whole eligible population."
+  ],
+  "verified_on_synthetic_data": {
+    "wilson_formula_matches_known_aem_v1_value": true,
+    "precision_ladder_shows_a_real_advantage_over_matched_random_on_an_informative_synthetic_signal": true,
+    "an_unqualified_candidate_is_never_selected_regardless_of_rank": true
+  },
+  "decision": {
+    "register_candidate": false,
+    "change_canonical_baseline": false,
+    "change_live_behavior": false,
+    "reason": "The real pipeline race ran against the full real development dataset and no registered specification cleared every frozen development gate. AEM v1 remains the canonical baseline (149/693 = 21.50% strict success, 18.60% Wilson lower bound, -0.27471R mean net R). No live change; nothing is nominated for the mandatory stress gates."
+  },
+  "next_step": "milestone_4_is_complete_with_a_real_negative_result_next_is_milestone_5_or_a_new_structurally_different_candidate"
+}

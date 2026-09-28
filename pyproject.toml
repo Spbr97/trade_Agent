@@ -23,7 +23,7 @@ dependencies = [
     "uvicorn>=0.30",
     "anthropic>=1.0",
     "mcp>=1.2",
-    "scikit-learn>=1.5",
+    "scikit-learn==1.5.2",  # 1.9.1's _sgd_fast DLL blocked by Windows Smart App Control here
     "joblib>=1.4",
     "xgboost>=3.4.1",
 ]

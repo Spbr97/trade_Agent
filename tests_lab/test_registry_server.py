@@ -160,6 +160,63 @@ async def test_accuracy_milestone_exposes_compact_readonly_baseline(tmp_path):
         "algorithm_evaluated": False,
     }
     aem_v2_engine_path.write_text(json.dumps(aem_v2_engine), encoding="utf-8")
+    aem_v2_features_path = tmp_path / "docs/evidence/aem-v2-features.json"
+    aem_v2_features = {
+        "status": "feature_registry_implemented_not_evaluated",
+        "milestone": 2,
+        "baseline_improved": False,
+        "feature_registry_implemented": True,
+        "integrity_audit_implemented": False,
+        "development_dataset_frozen": False,
+    }
+    aem_v2_features_path.write_text(json.dumps(aem_v2_features), encoding="utf-8")
+    aem_v2_ladder_path = tmp_path / "docs/evidence/aem-v2-precision-ladder.json"
+    aem_v2_ladder = {
+        "status": "selector_mechanics_implemented_not_evaluated",
+        "milestone": 3,
+        "baseline_improved": False,
+        "evidence_contributions_implemented": True,
+        "tree_challenger_implemented": False,
+    }
+    aem_v2_ladder_path.write_text(json.dumps(aem_v2_ladder), encoding="utf-8")
+    aem_v2_audit_path = tmp_path / "docs/evidence/aem-v2-universe-audit.json"
+    aem_v2_audit = {
+        "status": "universe_audit_complete",
+        "milestone": 2,
+        "baseline_improved": False,
+        "included_code_sessions": 5999,
+        "total_code_sessions": 6000,
+        "active_session_coverage": 5999 / 6000,
+    }
+    aem_v2_audit_path.write_text(json.dumps(aem_v2_audit), encoding="utf-8")
+    aem_v2_dev_dataset_path = tmp_path / "docs/evidence/aem-v2-development-dataset.json"
+    aem_v2_dev_dataset = {
+        "status": "code_implemented_and_tested_real_run_in_progress",
+        "milestone": 4,
+        "baseline_improved": False,
+        "assembly_implemented": True,
+        "real_run_completed": False,
+    }
+    aem_v2_dev_dataset_path.write_text(json.dumps(aem_v2_dev_dataset), encoding="utf-8")
+    aem_v2_pipeline_race_path = tmp_path / "docs/evidence/aem-v2-pipeline-race.json"
+    aem_v2_pipeline_race = {
+        "status": "code_implemented_and_tested_real_run_pending",
+        "milestone": 4,
+        "baseline_improved": False,
+        "pipeline_race_implemented": True,
+        "real_run_completed": False,
+        "trial_budget": 24,
+    }
+    aem_v2_pipeline_race_path.write_text(json.dumps(aem_v2_pipeline_race), encoding="utf-8")
+    aem_v2_stress_gates_path = tmp_path / "docs/evidence/aem-v2-stress-gates.json"
+    aem_v2_stress_gates = {
+        "status": "code_implemented_and_tested_real_run_pending",
+        "milestone": 4,
+        "baseline_improved": False,
+        "stress_gates_implemented": True,
+        "real_run_completed": False,
+    }
+    aem_v2_stress_gates_path.write_text(json.dumps(aem_v2_stress_gates), encoding="utf-8")
 
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=create_app(tmp_path, output)), base_url="http://test"
@@ -179,6 +236,12 @@ async def test_accuracy_milestone_exposes_compact_readonly_baseline(tmp_path):
         assert result["market_sector_context_readiness"] == context
         assert result["aem_v2_protocol"] == aem_v2
         assert result["aem_v2_engine"] == aem_v2_engine
+        assert result["aem_v2_features"] == aem_v2_features
+        assert result["aem_v2_precision_ladder"] == aem_v2_ladder
+        assert result["aem_v2_universe_audit"] == aem_v2_audit
+        assert result["aem_v2_development_dataset"] == aem_v2_dev_dataset
+        assert result["aem_v2_pipeline_race"] == aem_v2_pipeline_race
+        assert result["aem_v2_stress_gates"] == aem_v2_stress_gates
         assert result["validation"] is None
         assert result["eligible_for_live"] is False
         assert (await client.post("/api/accuracy-milestone")).status_code == 405
@@ -276,4 +339,10 @@ async def test_accuracy_milestone_uses_only_matching_completed_validation(tmp_pa
     assert result["market_sector_context_readiness"] is None
     assert result["aem_v2_protocol"] is None
     assert result["aem_v2_engine"] is None
+    assert result["aem_v2_features"] is None
+    assert result["aem_v2_precision_ladder"] is None
+    assert result["aem_v2_universe_audit"] is None
+    assert result["aem_v2_development_dataset"] is None
+    assert result["aem_v2_pipeline_race"] is None
+    assert result["aem_v2_stress_gates"] is None
     assert result["next_gate"] == "accuracy_improvement_experiments"

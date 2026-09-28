@@ -127,6 +127,18 @@ class Registry:
         ]
         return result
 
+    def candidates(self, family: str) -> list[dict[str, Any]]:
+        """Every candidate row in one family, whatever its status, oldest first - with its
+        experiment's start time (the self-review replacement search's memory of what it
+        has already tried, and when)."""
+        rows = self.con.execute(
+            "SELECT c.*, e.started_at AS started_at FROM candidates c "
+            "JOIN experiments e ON e.id = c.experiment_id WHERE c.family=? "
+            "ORDER BY e.started_at",
+            (family,),
+        ).fetchall()
+        return [self._decode(row) for row in rows]
+
     def best(self, metric: str = "brier", family: str | None = None) -> dict[str, Any] | None:
         if metric not in {"brier", "auc", "precision", "net_r", "wilson_lower"}:
             raise ValueError("Unknown metric")

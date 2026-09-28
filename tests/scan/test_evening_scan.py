@@ -270,6 +270,42 @@ def test_no_enabled_setups_still_runs_everything_by_default() -> None:
     assert set(cfg.setups) == set(SetupKind)
 
 
+def _with_retired(settings: Settings, setup: str, markets: list[str]) -> Settings:
+    patched = dict(settings.setups.setups)
+    patched[setup] = patched[setup].model_copy(update={"retired_markets": markets})
+    return settings.model_copy(
+        update={"setups": settings.setups.model_copy(update={"setups": patched})}
+    )
+
+
+def test_a_setup_retired_on_one_market_stays_active_on_the_others() -> None:
+    """Real bug (2026-09-29): setups.yaml has one `enabled` flag per setup for every market,
+    so approving a crypto-only retirement used to switch the setup off on NSE and BSE too -
+    and with all three retired, left NSE's live scan with nothing to run."""
+    from tradedesk.markets import crypto_market, nse_market
+
+    settings = _with_retired(load_config(ROOT), "nr7_breakout", ["crypto"])
+    crypto_cfg = scan_config(settings, date(2026, 3, 2), market=crypto_market(settings))
+    nse_cfg = scan_config(settings, date(2026, 3, 2), market=nse_market(settings))
+    assert SetupKind.NR7_BREAKOUT not in crypto_cfg.setups
+    assert SetupKind.NR7_BREAKOUT in nse_cfg.setups
+    # The trackers' view: still scanned there, so it keeps being shadow-tracked.
+    shadow_cfg = scan_config(
+        settings, date(2026, 3, 2), market=crypto_market(settings), include_retired=True
+    )
+    assert SetupKind.NR7_BREAKOUT in shadow_cfg.setups
+
+
+def test_everything_retired_on_a_market_does_not_trigger_the_run_everything_fallback() -> None:
+    from tradedesk.markets import crypto_market
+
+    settings = load_config(ROOT)
+    for kind in SetupKind:
+        settings = _with_retired(settings, kind.value, ["crypto"])
+    cfg = scan_config(settings, date(2026, 3, 2), market=crypto_market(settings))
+    assert cfg.setups == []  # retired means retired, not "fall back to all of them"
+
+
 def test_explicit_setup_list_is_respected_regardless_of_fallback_flag() -> None:
     settings = load_config(ROOT)
     cfg = scan_config(
@@ -335,6 +371,23 @@ def test_watchlist_matches_backtester_signals_for_that_date(world) -> None:  # t
         levels = {ts.signal.id: (ts.signal.trigger, ts.signal.stop) for ts in res.signals}
         for e in wl.entries:
             assert (e.signal.trigger, e.signal.stop) == levels[e.signal.id]
+
+
+def test_a_retired_setup_is_rejected_never_alerts_and_is_logged_as_shadow(world) -> None:  # type: ignore[no-untyped-def]
+    from tradedesk.signal_tracker import log_new_signals
+
+    store, cfg, md, res, settings = world
+    d = sorted({ts.signal.armed_on for ts in res.signals})[-1]
+    s = _with_retired(_settings_for(settings, cfg), "base_breakout", ["nse"])
+    wl = build_watchlist(md, cfg, s, d)
+    assert wl.entries  # still detected...
+    assert wl.active == []  # ...but never on the watchlist, so never monitored or alerted
+    for e in wl.entries:
+        assert any(r.startswith("retired by self-review on nse") for r in e.rejected_for)
+        assert not e.alertable
+    rows: dict = {}
+    logged = log_new_signals(wl, rows)
+    assert logged and all(r.shadow for r in logged)  # graded, so the loop keeps learning
 
 
 def test_watchlist_entries_are_priced_scored_and_serialisable(world, tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
