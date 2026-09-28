@@ -5,9 +5,8 @@ Date: 27 September 2026
 Branch: `codex/aem-v2-accuracy-first`
 
 Status: **stress-gate replay implemented and tested against a real, reconstructed
-opportunity/outcome fixture; no specification has been nominated yet (the real
-pipeline race has not run against real data), so no stress result exists and no live
-change**
+opportunity/outcome fixture; the real pipeline race completed but nominated no
+specification, so a real stress replay is not applicable and no live change follows**
 
 ## Outcome
 
@@ -118,10 +117,9 @@ alerts, management, risk, dashboard or order code.
 
 ## Next checkpoint
 
-Once Stage 1's real dataset-assembly run finishes and `freeze_pipeline_race` is run
-against it: if any of the 24 registered specifications clears every development gate,
-run `uv run --no-sync python -m tradedesk_lab aem-v2-stress-gates --spec-id <id>
---top-k <k>` against that real nomination. Only a specification that ALSO clears every
-registered stress case, and then Milestone 5's independent locked evaluation on
-unconsumed data, could be called a research baseline - in that order, and only with
-real, disclosed numbers, whatever they turn out to be.
+The real Stage-2 pipeline race completed against 177,351 rows and none of its 24
+registered specifications cleared every development gate. Therefore nothing can be
+passed to this replay and Milestone 5 is moot for AEM v2. If a future, genuinely
+different candidate is nominated under a frozen contract, its selected fills must run
+through these same stress cases before any independent locked evaluation or baseline
+claim.

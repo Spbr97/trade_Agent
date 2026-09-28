@@ -336,12 +336,17 @@ fresh evidence; missed targets remain visible.
   development dataset are all done.
 - [x] Build Milestone 3: the Precision Ladder selector mechanics (evidence
   contributions, hard vetoes, fold-local calibration, thresholding, ranking,
-  deduplication, logistic control) are implemented and proven leak-free. Not yet run
-  against real data.
-- [ ] Complete Milestone 4: the development-dataset assembly (Stage 1) is built and
-  tested; its real run against the full 50-stock cohort is in progress. The bounded
-  pipeline race and walk-forward evaluation (Stage 2) are built and proven on synthetic
-  data but not yet run against real data, and the mandatory stress gates are deferred.
+  deduplication, logistic control) are implemented and proven leak-free. Its real-data
+  use is now covered by the completed Milestone-4 pipeline race.
+- [x] Complete Milestone 4: the real 5,999-symbol-session development dataset contains
+  177,351 resolved opportunity-by-geometry rows, and all 24 preregistered specifications
+  were evaluated with nested chronological walk-forward selection. None cleared the
+  frozen development gate. Therefore no candidate was nominated and the implemented
+  execution-stress replay has no selected fills to evaluate. This is a completed negative
+  checkpoint, not an accuracy improvement; AEM v1 remains the 21.50% canonical baseline.
+- [ ] Register one genuinely different causal signal family before another bounded race.
+  It must not reuse the failed AEM v2 generator with only parameter changes, and all
+  previously inspected history remains development-only evidence.
 
 For each completed item, attach its artifact/run identifier, date, sample size and
 pass/fail result. Update this checklist at checkpoints. The 70–80% objective remains
