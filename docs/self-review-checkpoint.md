@@ -10,14 +10,11 @@ user request ("approve should mean something, not just bookkeeping - it should a
 "Dashboard wiring" below. The rolling-failure monitor's CLI (`tradedesk review
 rolling-check`) has been run for real against the live NSE/BSE/crypto signal-tracking logs -
 see "Real first run" below - and correctly flagged all three live setups on all three
-markets. No candidate/retirement/new-detector proposal has been generated against real data
-yet (that requires wiring the monitor's real output into
-`config_tuning.py`/`retire_replace.py`/`detector_authoring.py`, not yet done), and no
-proposal has been applied to the real `config/setups.yaml`. Phase 3's
-`detector_authoring.py` cannot actually run against real data right now for an unrelated,
-disclosed reason: `tradedesk_lab`'s own `verify_base()` drift check correctly reports real
-drift, since its recorded baseline predates this entire session's legitimate production
-changes - see "Known operational gap" below.**
+markets. Three market-scoped crypto retirement proposals now exist in the real review
+queue, all still pending, and none has been applied to `config/setups.yaml`. They contain
+no passing replacement candidate. Replacement research is currently fail-closed because
+`tradedesk_lab`'s `verify_base()` detects legitimate production drift after the last human
+manifest refresh; see "Known operational gap" and "Replacement research" below.**
 
 ## Why this exists
 
@@ -554,10 +551,13 @@ bar yet; that is reported as-is, not worked around.
 
 ## Next checkpoint
 
-The lab base manifest has to be refreshed (a human decision - see the 2026-09-27 section)
-before the replacement search can run: this change touched production files, so
-`verify_base()` reports drift and the search reports itself BLOCKED on every item until
-then. After that, crypto's twice-daily runs work through the whole strategy space in 2-3
-days. The three pending crypto retirements (2026-09-29) are now safe to approve - they will
-retire on crypto only and keep shadow-tracking - and will have their replacement plan
-refreshed on the next run.
+The lab base manifest has to be deliberately reviewed and refreshed (a human decision -
+see the 2026-09-27 section) before the replacement search can run: this change touched
+production files, so `verify_base()` reports drift and the search reports itself BLOCKED
+on every item until then. After that, crypto's twice-daily runs can work through the whole
+strategy space in 2-3 days. The three pending crypto retirements (2026-09-29) are correctly
+market-scoped and retain shadow tracking, but the queue summary currently renders them as
+`gauntlet FAILED ()` because retirement is failure-evidence driven and has no passing
+replacement. Do not treat that text as a successful gauntlet or approve the items as if a
+replacement had qualified; the dashboard decision should explicitly distinguish retirement
+evidence from replacement evidence first.

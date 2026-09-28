@@ -36,7 +36,7 @@
   "implementation_sha256": "1fc3d80873bc1fc5972e99aa9844a3bf520d5b293abb3dfc383ee05d32be2612",
   "tests_sha256": "50f1229ec7aa9abb388b7f657f1c2074dbfe2e03fb064c481f8f60a1079e7b1c",
   "description": "Stage 1 of Milestone 4: reconstructs opportunities (Milestone 1), computes causal features (Milestone 2) and resolves outcomes for all three quick-profit geometries, restricted to exactly the (symbol, session) pairs the Milestone 2 universe audit included. Produces one labeled row per (opportunity, geometry).",
-  "real_run_note": "The real run against the full frozen 5,999-symbol-session cohort completed 27 September 2026, taking roughly 7 hours (well beyond the ~3.85-hour estimate from a 45-session profiling sample - the full-scale run evidently scales worse than linearly in some component, most likely the peer-universe lookups, though this was not root-caused further since the run still completed correctly). pooled_label_rate (22.66%) is the RAW, UNSELECTED strict-success rate across every resolved (opportunity, geometry) row pooled together - it is not an AEM v2 accuracy result and must not be read as one: no selector (Milestone 3's Precision Ladder) has been applied yet. That requires Stage 2's pipeline race, which this real dataset now feeds.",
+  "real_run_note": "The real run against the full frozen 5,999-symbol-session cohort completed 27 September 2026, taking roughly 7 hours (well beyond the ~3.85-hour estimate from a 45-session profiling sample - the full-scale run evidently scales worse than linearly in some component, most likely the peer-universe lookups, though this was not root-caused further since the run still completed correctly). pooled_label_rate (22.66%) is the RAW, UNSELECTED strict-success rate across every resolved (opportunity, geometry) row pooled together - it is not an AEM v2 accuracy result and must not be read as one. Stage 2 subsequently ran all 24 registered specifications against this dataset; none cleared the frozen development gate.",
   "sizing_note": "Uses a simple fixed-risk quantity (0.5% of trading capital per trade, matching CLAUDE.md's stated breakeven reference) for accuracy determination, not the portfolio-constrained replay a later stage could add if this result is promising enough to warrant it.",
   "corrections": [
     "Extracted the real-data loading (universe audit + Milestone 1 manifest + staged minute/daily bars) into a new public load_real_session_sources() so the mandatory execution-stress replay (aem_v2_stress_gates.py) reads through the exact same verified path rather than a second, divergent loader. build_development_dataset's own behavior and output are unchanged - this only removes duplication. fixed_risk_quantity was also made public (was _fixed_risk_quantity) for the same reason."
@@ -45,7 +45,7 @@
     "register_candidate": false,
     "change_canonical_baseline": false,
     "change_live_behavior": false,
-    "reason": "This evidence file pins the dataset-assembly code, its tests, and now the real run's dataset statistics. It intentionally contains no accuracy, availability or economics result for AEM v2 itself - that requires the walk-forward pipeline race (Stage 2) this dataset exists to support, which is a separate checkpoint."
+    "reason": "This evidence file pins the dataset-assembly code, its tests, and the real run's dataset statistics. It intentionally contains no standalone selector result. The separate Stage-2 evidence records the completed real pipeline race and its negative result."
   },
-  "next_step": "run_freeze_pipeline_race_against_this_real_dataset_run_id"
+  "next_step": "see_completed_pipeline_race_run_789dc32d4c2340419c9fad38c88a4920"
 }

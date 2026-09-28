@@ -1,12 +1,11 @@
-# AEM v2 Milestone 4, Stage 1: development-dataset assembly (real run in progress)
+# AEM v2 Milestone 4, Stage 1: development-dataset assembly (real run complete)
 
-Date: 26 September 2026
+Date: 27 September 2026
 
 Branch: `codex/aem-v2-accuracy-first`
 
-Status: **assembly code implemented and tested; a real run against the frozen
-50-stock/120-session cohort is in progress in the background; no accuracy result yet;
-no live change**
+Status: **assembly code implemented and tested; the real frozen 50-stock/120-session
+run is complete; this dataset alone is not an accuracy result; no live change**
 
 ## Outcome
 
@@ -14,8 +13,9 @@ This is the first place in the project that runs Milestones 1 (causal event/outc
 engine), 2 (causal feature registry) and the Milestone 2 universe audit's frozen
 inclusion decision together, against real data, to produce one labeled row per
 (opportunity, quick-profit geometry). It is still not an accuracy result: a labeled
-dataset is not a fitted, validated selector. That is Stage 2 of Milestone 4 (the bounded
-pipeline race and nested chronological walk-forward evaluation), not yet built.
+dataset is not a fitted, validated selector. Stage 2 of Milestone 4 subsequently ran the
+bounded pipeline race and nested chronological walk-forward evaluation; no registered
+specification cleared its development gate.
 
 ## A real bug this surfaced and fixed
 
@@ -76,17 +76,19 @@ suite.
 
 ## The real run
 
-Profiling on the real frozen data (not the synthetic tests) showed roughly 2.3 seconds
-per included symbol-session, split roughly evenly between Milestone 1's own per-minute
-opportunity search and the same-time relative-volume calculation - neither added by
-this stage. Across 5,999 included symbol-sessions that is a genuinely multi-hour
-computation, launched as a background job
-(`uv run --no-sync python -m tradedesk_lab aem-v2-development-dataset`) rather than run
-inline. Machine-readable evidence for the **code** is in
-[`docs/evidence/aem-v2-development-dataset.json`](evidence/aem-v2-development-dataset.json)
-(`real_run_completed: false`); it will be updated with the real row counts, label rate
-and exclusion breakdown once that run finishes - this checkpoint does not claim a
-result it does not yet have.
+Run `ed9fa509541741cca668bbb4a1eeb380` completed against 5,999 included
+symbol-sessions. It found 66,668 opportunities and produced 177,351 resolved
+(opportunity, geometry) rows. Another 14,995 events were retained as exclusions:
+10,233 unfilled, 3,829 feature-computation failures and 933 unresolved. Mode counts
+were 116,694 breakout-retest rows, 60,267 confirmed-pullback rows and only 390
+anticipatory-impulse rows.
+
+The pooled raw label rate was 22.659%. This is the unselected label frequency across
+all opportunity-by-geometry rows, not selector accuracy, and the repeated geometries
+mean it must not be presented as 177,351 independent trades. The subsequent real
+pipeline race is the relevant model result: all 24 specifications ran and none
+qualified. Machine-readable dataset evidence is in
+[`docs/evidence/aem-v2-development-dataset.json`](evidence/aem-v2-development-dataset.json).
 
 ## Safety boundary
 
@@ -96,10 +98,8 @@ management, risk, dashboard or order code.
 
 ## Next checkpoint
 
-Once the real run completes: publish the actual dataset statistics (rows, label rate,
-mode/geometry breakdown, exclusion reasons) as a follow-up to this checkpoint, then
-build Stage 2 - register the bounded (≤24) pipeline specification race and run the
-first real nested chronological walk-forward evaluation, reusing
-`tradedesk_lab.validation.walk_forward` for the outer chronological splits and
-Milestone 3's `fit_oof_calibration` for the inner fold-local fit. That is the first
-point an actual AEM v2 accuracy number can exist.
+Stage 2 is complete with a real negative result, recorded in
+[`aem-v2-pipeline-race-checkpoint.md`](aem-v2-pipeline-race-checkpoint.md). With no
+nominated specification, there is no candidate for stress replay or independent locked
+evaluation. Any next experiment must register a genuinely different causal signal
+family, and previously inspected history remains development-only evidence.
