@@ -1,0 +1,59 @@
+{
+  "version": "osr-milestone-0-v1",
+  "status": "protocol_frozen_not_evaluated",
+  "milestone": 0,
+  "eligible_for_live": false,
+  "baseline_improved": false,
+  "algorithm_implemented": false,
+  "algorithm_evaluated": false,
+  "signal_family": "failed_opening_downside_auction_mean_reversion",
+  "entry_modes": [
+    "gap_down_reclaim",
+    "opening_low_sweep_reclaim"
+  ],
+  "geometries": [
+    "reclaim_30_22_20",
+    "reclaim_40_28_35",
+    "reclaim_55_36_50"
+  ],
+  "feature_count": 30,
+  "registered_pipeline_budget": 12,
+  "contract_sha256": "5468a1b5ae8e0a325e561b4ff2c4e3d5117a425310ea51470d0e3dadbbde8e43",
+  "protocol_sha256": "752e8a1ed83ddaad6741ac2c3649dd47ae5adbe2469ec400cde35495528a3ca2",
+  "bundle_sha256": "f71bfa250c71e09c010a1fd6b735c85cad4feb7f67282002d5a3c90c81eac160",
+  "implementation_sha256": "bbbd00798b2167a8adf6402b17d232857c5a556b72df0d157887b81421af9f83",
+  "tests_sha256": "92316977943f5676fcf8fad06a73ec504e8765a78296fae99819ee1cd0b4772f",
+  "plan_sha256": "12646bbf43ebab1575bcce4b8772de28e4681c49bbba696f676b2c271a807408",
+  "canonical_baseline": {
+    "name": "AEM_v1_frozen_50_stock_cohort",
+    "dataset_id": "ec539cf66bea4c18ba994506f85a52d6",
+    "resolved_fills": 693,
+    "strict_wins": 149,
+    "strict_success_rate": 0.215007215007215,
+    "wilson95_lower": 0.18603500195342146,
+    "mean_net_r": -0.2747079541350378
+  },
+  "prior_challenger": {
+    "name": "AEM_v2",
+    "pipeline_run_id": "789dc32d4c2340419c9fad38c88a4920",
+    "qualified_candidates": 0
+  },
+  "development_gates": {
+    "minimum_strict_success_rate": 0.5,
+    "minimum_wilson95_lower": 0.4,
+    "minimum_resolved_selected_fills": 100,
+    "minimum_active_sessions": 30,
+    "minimum_active_session_coverage": 0.4,
+    "minimum_mean_net_r": 0.0,
+    "minimum_random_advantage_r": 0.1,
+    "maximum_single_symbol_win_share": 0.25
+  },
+  "evidence_boundary": "All existing 120-session AEM history is consumed historical development evidence and cannot establish a new baseline.",
+  "decision": {
+    "register_candidate": false,
+    "change_canonical_baseline": false,
+    "change_live_behavior": false,
+    "reason": "Milestone 0 freezes the OSR hypothesis and gates before implementation or evaluation. It contains no performance result."
+  },
+  "next_step": "implement_causal_opening_sweep_reclaim_event_and_outcome_engine"
+}
