@@ -158,16 +158,17 @@ def test_milestone_four_pipeline_race_evidence_matches_source_and_is_real():
     assert evidence["decision"]["change_canonical_baseline"] is False
 
 
-def test_milestone_four_stress_gates_evidence_matches_source_and_is_pending():
+def test_milestone_four_stress_gates_evidence_matches_source_and_has_no_nominee():
     root = Path(__file__).resolve().parents[1]
     evidence = json.loads(
         (root / "docs/evidence/aem-v2-stress-gates.json").read_text(encoding="utf-8")
     )
 
-    assert evidence["status"] == "code_implemented_and_tested_real_run_pending"
+    assert evidence["status"] == "code_implemented_and_tested_no_nominated_candidate"
     assert evidence["milestone"] == 4
     assert evidence["stress_gates_implemented"] is True
     assert evidence["real_run_completed"] is False
+    assert evidence["not_yet_completed"][0].startswith("a real stress replay")
     assert evidence["algorithm_evaluated"] is False
     assert evidence["baseline_improved"] is False
     assert evidence["eligible_for_live"] is False
