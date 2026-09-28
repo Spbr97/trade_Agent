@@ -344,9 +344,14 @@ fresh evidence; missed targets remain visible.
   frozen development gate. Therefore no candidate was nominated and the implemented
   execution-stress replay has no selected fills to evaluate. This is a completed negative
   checkpoint, not an accuracy improvement; AEM v1 remains the 21.50% canonical baseline.
-- [ ] Register one genuinely different causal signal family before another bounded race.
-  It must not reuse the failed AEM v2 generator with only parameter changes, and all
-  previously inspected history remains development-only evidence.
+- [x] Register OSR v1 (Opening Sweep-Reclaim), a genuinely different failed-auction
+  mean-reversion signal family, before another bounded race. Its two event modes, three
+  small-profit geometries, 30 causal feature names, 12-specification budget, accuracy/
+  availability/economics gates and evidence classes are frozen in Milestone 0. This is
+  a protocol, not a performance result; all previously inspected history remains
+  development-only evidence.
+- [ ] Build OSR Milestone 1's causal event and conservative outcome engine before
+  fitting or evaluating any selector.
 
 For each completed item, attach its artifact/run identifier, date, sample size and
 pass/fail result. Update this checklist at checkpoints. The 70–80% objective remains

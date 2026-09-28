@@ -42,6 +42,7 @@ def main() -> None:
     accuracy_experiment = sub.add_parser("aem-accuracy-experiment")
     accuracy_experiment.add_argument("--dataset-id")
     sub.add_parser("aem-v2-freeze-protocol")
+    sub.add_parser("osr-freeze-protocol")
     universe_audit = sub.add_parser("aem-v2-universe-audit")
     universe_audit.add_argument("--dataset-id")
     development_dataset = sub.add_parser("aem-v2-development-dataset")
@@ -208,6 +209,36 @@ def main() -> None:
                         "feature_count",
                         "geometry_count",
                         "entry_mode_count",
+                        "next_milestone",
+                    )
+                },
+                indent=2,
+            )
+        )
+        return
+    if args.command == "osr-freeze-protocol":
+        from tradedesk_lab.osr_contract import freeze_osr_protocol
+
+        report = freeze_osr_protocol()
+        print(
+            json.dumps(
+                {
+                    key: report[key]
+                    for key in (
+                        "id",
+                        "status",
+                        "milestone",
+                        "artifact_path",
+                        "eligible_for_live",
+                        "baseline_improved",
+                        "algorithm_implemented",
+                        "contract_sha256",
+                        "protocol_sha256",
+                        "bundle_sha256",
+                        "feature_count",
+                        "geometry_count",
+                        "entry_mode_count",
+                        "registered_pipeline_budget",
                         "next_milestone",
                     )
                 },
