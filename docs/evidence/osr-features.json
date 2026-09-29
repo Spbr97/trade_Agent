@@ -1,0 +1,75 @@
+{
+  "version": "osr-milestone-2-features-and-assembly-v1",
+  "status": "feature_and_dataset_assembly_implemented_real_run_pending",
+  "milestone": 2,
+  "eligible_for_live": false,
+  "baseline_improved": false,
+  "algorithm_evaluated": false,
+  "feature_registry_implemented": true,
+  "development_dataset_assembly_implemented": true,
+  "real_run_completed": false,
+  "feature_count": 30,
+  "strategy_contract_sha256": "5468a1b5ae8e0a325e561b4ff2c4e3d5117a425310ea51470d0e3dadbbde8e43",
+  "feature_implementation_sha256": "54c1c95be00a670023a1c2c0f37be96bb2e28ed1a1e3231be3d52d64e85bd4e6",
+  "feature_tests_sha256": "6da7f9bc880c2788f24dabe92cb8fa77dd2ba40b91d56a985c709bfe0c5855ad",
+  "dataset_implementation_sha256": "2d218b78ac8ab8d08e33b765de8ed18e8a4f300198e745abadae38a44adc6b1c",
+  "dataset_tests_sha256": "f577de4cb4c2b5a827ee4708c6160e3e1542a166aa549bdd46855138138abef3",
+  "causal_guards": [
+    "candidate and peer M1 bars are truncated before the decision timestamp",
+    "today's incomplete daily candle is forbidden",
+    "prior close and low recorded by the opportunity must match the prior completed daily bar",
+    "time-of-day relative-volume history must end before today's session",
+    "the candidate symbol is excluded from peer calculations",
+    "at least five valid same-time peers are required",
+    "missing, mismatched, non-finite, or insufficient inputs fail closed"
+  ],
+  "accuracy_relevant_feature_groups": {
+    "failed_auction": [
+      "early_drawdown",
+      "sweep_depth",
+      "recovery_from_low",
+      "recovery_speed_bars"
+    ],
+    "reclaim_quality": [
+      "reclaim_body_ratio",
+      "reclaim_close_location",
+      "reclaim_lower_wick_ratio",
+      "return_1m",
+      "return_3m"
+    ],
+    "reclaim_context": [
+      "price_to_open",
+      "price_to_vwap",
+      "vwap_slope_5m",
+      "vwap_reclaim_bars"
+    ],
+    "participation_and_cross_section": [
+      "tod_rvol",
+      "volume_acceleration_3m",
+      "cross_sectional_return_rank",
+      "cross_sectional_recovery_rank",
+      "cross_sectional_breadth",
+      "cross_sectional_dispersion"
+    ],
+    "cost_and_liquidity": [
+      "median_turnover_20d",
+      "impact_proxy",
+      "modeled_round_trip_cost_pct"
+    ]
+  },
+  "dataset_policy": {
+    "source": "existing fingerprint-verified AEM v2 50-stock universe audit and staged candles",
+    "included_code_sessions_expected": 5999,
+    "evidence_class": "consumed_historical_development",
+    "risk_sizing": "fixed 0.5% capital risk per resolved opportunity for development comparison",
+    "all_exclusions_retained": true,
+    "empty_dataset_schema_stable": true
+  },
+  "decision": {
+    "register_candidate": false,
+    "change_canonical_baseline": false,
+    "change_live_behavior": false,
+    "reason": "The causal feature and dataset-assembly code is implemented and tested, but the real OSR population has not been assembled and no selector or accuracy result exists."
+  },
+  "next_step": "run_and_freeze_real_5999_symbol_session_osr_development_dataset"
+}
