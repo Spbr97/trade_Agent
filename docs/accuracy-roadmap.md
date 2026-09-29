@@ -382,6 +382,14 @@ fresh evidence; missed targets remain visible.
   confidence/availability/economics gates are frozen before measurement. This is a
   protocol, not an accuracy improvement; see the
   [SSM 50% baseline plan](plan-ssm-50pct-baseline.md).
+- [x] Implement SSM Milestone 1's causal feature, opportunity, and outcome engine.
+  All 24 frozen features are computed one minute before entry from prior matching
+  slots and completed pre-decision bars; the candidate is excluded from at least 30
+  peers. Conservative next-slot fills, zero-volume entries, gaps, same-bar ambiguity,
+  costs, missing windows, and time exits are explicit. Nineteen SSM tests pass across
+  the protocol and engine. This remains implementation evidence only; no real SSM
+  population or accuracy result exists. See the
+  [SSM Milestone-1 engine checkpoint](ssm-engine-checkpoint.md).
 
 For each completed item, attach its artifact/run identifier, date, sample size and
 pass/fail result. Update this checklist at checkpoints. The 70–80% objective remains

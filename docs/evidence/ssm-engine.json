@@ -1,0 +1,87 @@
+{
+  "version": "ssm-milestone-1-engine-v1",
+  "status": "causal_engine_implemented_not_evaluated",
+  "milestone": 1,
+  "eligible_for_live": false,
+  "baseline_improved": false,
+  "algorithm_implemented": false,
+  "algorithm_evaluated": false,
+  "feature_engine_implemented": true,
+  "opportunity_engine_implemented": true,
+  "outcome_engine_implemented": true,
+  "selector_implemented": false,
+  "real_dataset_assembled": false,
+  "feature_count": 24,
+  "predictor_modes": [
+    "lag1_cross_sectional",
+    "multi_day_persistence"
+  ],
+  "strategy_contract_sha256": "1abdadc549dc806bb1030e4bfe69cac4d844b55b97d2ec93daa783cb549ff35d",
+  "engine_contract_sha256": "abcf797abe61edb3ace102aa045eee7235b69391fe3e20883195f0114b6d9502",
+  "implementation_sha256": "2d670c1537dedffa2187ea13d4567aafbd0385268a8c26a69d4d33a67ff014d7",
+  "tests_sha256": "04bc2e49e442db3be2fceea333077fca4be7f817a29ef1f210625a8e9ca9b0d5",
+  "causal_ordering": {
+    "prediction_time": "one minute before the registered half-hour begins",
+    "entry_time": "the registered half-hour's first M1 open",
+    "historical_slot_inputs": "complete matching half-hours from prior sessions only",
+    "current_session_inputs": "complete M1 bars strictly before the prediction timestamp",
+    "predicted_slot_inputs": "forbidden",
+    "history_sessions_maximum": 40,
+    "history_sessions_minimum": 20,
+    "minimum_candidate_excluded_peers": 30,
+    "future_rows_discarded_before_value_validation": true
+  },
+  "feature_policy": {
+    "exact_frozen_features": 24,
+    "same_slot_returns": "lag 1, 2, 3 and mean 5, 20, 40",
+    "same_slot_persistence": "positive shares over 5, 20, and up to 40 sessions",
+    "cross_section": "lag 1/5/20 ranks and lag-1 dispersion with candidate excluded",
+    "current_context": "pre-slot return, candidate-excluded rank, and breadth",
+    "participation": "historical same-slot volume ratio and turnover",
+    "execution": "prior daily median turnover, impact proxy, and modeled round-trip cost",
+    "nonfinite_or_incomplete": "fail_closed"
+  },
+  "opportunity_policy": {
+    "lag1_cross_sectional": "positive lag-1 same-slot return and upper-decile candidate-excluded rank",
+    "multi_day_persistence": "positive lag-20 mean, at least 65% positive lag-20 slots, and upper-decile lag-20 rank",
+    "side": "long_only",
+    "maximum_reported_calls_per_session": 3,
+    "same_stock_can_qualify_both_modes": true
+  },
+  "execution_policy": {
+    "entry": "next_slot_open_market_with_slippage",
+    "entry_zero_volume": "unfilled_never_success",
+    "same_bar_ambiguity": "adverse_stop_first",
+    "gap_through_target": "capped_at_target_and_debited_slippage",
+    "gap_through_stop": "filled_at_adverse_open_and_debited_slippage",
+    "target_requires_positive_net_pnl": true,
+    "positive_time_exit": "reported_separately_not_strict_success",
+    "missing_entry_or_outcome_bars": "unresolved_never_success",
+    "cost_model": "existing_market_cost_model"
+  },
+  "verified_behaviors": [
+    "the computed vector exactly matches all 24 frozen feature names",
+    "the candidate is excluded from every peer statistic",
+    "mutating the predicted slot or later candidate bars cannot change features or calls",
+    "mutating future peer and daily rows cannot change features",
+    "fewer than 20 historical slots or 30 valid peers fails closed",
+    "a missing pre-decision bar fails closed",
+    "only registered half-hour starts are accepted",
+    "entry occurs after the prediction at the next slot open",
+    "target returns include slippage and actual Indian cost-model charges",
+    "same-bar target and stop touches are losses",
+    "missing entry or outcome bars never become wins",
+    "zero entry volume is explicitly unfilled",
+    "a time exit is never promoted to strict target success",
+    "bars after the frozen slot cannot rewrite an outcome",
+    "strategy and engine contract mismatches fail closed"
+  ],
+  "decision": {
+    "register_candidate": false,
+    "change_canonical_baseline": false,
+    "change_live_behavior": false,
+    "change_dashboard": false,
+    "reason": "Milestone 1 implements and tests causal features, opportunity rules, and conservative outcomes only. No real SSM population, mechanism estimate, selector race, accuracy result, or aggregate after-cost performance exists yet."
+  },
+  "next_step": "assemble_the_real_frozen_population_and_test_same_slot_continuation_against_adjacent_slot_and_shuffled_placebos_before_any_selector_race"
+}
