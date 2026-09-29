@@ -74,6 +74,10 @@ def main() -> None:
     context.add_argument("--max-requests", type=int, default=0)
     context_integrity = sub.add_parser("aem-context-integrity")
     context_integrity.add_argument("--dataset-id", required=True)
+    sub.add_parser("aem-context-mechanism-freeze")
+    context_mechanism = sub.add_parser("aem-context-mechanism-run")
+    context_mechanism.add_argument("--dataset-id", required=True)
+    context_mechanism.add_argument("--integrity-run-id", required=True)
     pilot = sub.add_parser("aem-universe-plan")
     pilot.add_argument("--dataset-id", required=True)
     pilot.add_argument("--shortlist-size", type=int, default=50)
@@ -571,6 +575,57 @@ def main() -> None:
             )
         )
         if report["population"]["excluded"]:
+            raise SystemExit(1)
+        return
+    if args.command == "aem-context-mechanism-freeze":
+        from tradedesk_lab.aem_context_mechanism import (
+            freeze_context_mechanism_protocol,
+        )
+
+        report = freeze_context_mechanism_protocol()
+        print(
+            json.dumps(
+                {
+                    key: report[key]
+                    for key in (
+                        "id",
+                        "status",
+                        "milestone",
+                        "protocol_sha256",
+                        "mechanism_evaluated",
+                        "decision",
+                    )
+                },
+                indent=2,
+            )
+        )
+        return
+    if args.command == "aem-context-mechanism-run":
+        from tradedesk_lab.aem_context_mechanism import run_real_context_mechanism
+
+        report = run_real_context_mechanism(
+            dataset_id=args.dataset_id,
+            integrity_run_id=args.integrity_run_id,
+        )
+        print(
+            json.dumps(
+                {
+                    key: report[key]
+                    for key in (
+                        "id",
+                        "status",
+                        "milestone",
+                        "dataset_id",
+                        "integrity_run_id",
+                        "mechanism_passed",
+                        "summary",
+                        "decision",
+                    )
+                },
+                indent=2,
+            )
+        )
+        if not report["mechanism_passed"]:
             raise SystemExit(1)
         return
     if args.command == "aem-universe-plan":

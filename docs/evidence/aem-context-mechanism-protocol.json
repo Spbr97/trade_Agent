@@ -1,0 +1,56 @@
+{
+  "version": "aem-index-context-mechanism-protocol-evidence-v1",
+  "created_at": "2026-09-30T02:55:41.610160+05:30",
+  "run_id": "f595a49f2e1a4592b403f3e0a6027e86",
+  "status": "protocol_frozen_no_outcome_evaluation",
+  "protocol_sha256": "f8543543eb46c06710389882a5d791cb0886dbd0e30e31978f124034e3c6852d",
+  "integrity_run_id": "b66ac4b126c54374a9fd8cb2ff846cfb",
+  "integrity_features_sha256": "3306a54c00fa707ed51c86413f010d02540301d38d048a95ae04457de7874871",
+  "population_identity": {
+    "trade_attempts": 815,
+    "resolved_fills": 693,
+    "strict_wins": 149,
+    "strict_success_rate": 0.215007215007215,
+    "mean_net_r": -0.2747079541350378
+  },
+  "rules": [
+    "nifty50_positive_5m",
+    "majority_positive_5m",
+    "all_positive_5m",
+    "all_positive_3m"
+  ],
+  "controls": {
+    "chronological_folds": 3,
+    "sessions_per_fold": 40,
+    "temporal_placebo": "within_session_circular_next_event_rotation",
+    "matched_shuffles": 256,
+    "shuffle_seed": 20260930,
+    "maximum_empirical_p": 0.05
+  },
+  "sample_floors": {
+    "resolved_fills": 100,
+    "active_sessions": 48,
+    "active_session_coverage": 0.4
+  },
+  "source": {
+    "plan_sha256": "53a3df60a6159017fbe450e486cfa667151e330340364496217c4450ef65871f",
+    "integrity_evidence_sha256": "4dae1cb79f3e38cf8b202199e5d0799b6ecbc1a9b922f88a59625f98c6ec592a",
+    "implementation_sha256": "54b6be8c5380806e88e3201be8e0d90c381b6e6b7848f7613d5e9893da938c13",
+    "tests_sha256": "fc44f7ec7a7e9240d42c927db520160597731f2427870bf4d2f10bbbe5d2f1ee"
+  },
+  "verification": {
+    "focused_tests_passed": 167,
+    "mechanism_tests_passed": 7,
+    "ruff_passed": true,
+    "real_outcomes_joined": false,
+    "mechanism_evaluated": false
+  },
+  "decision": {
+    "run_mechanism_once_after_commit": true,
+    "run_selector": false,
+    "change_canonical_baseline": false,
+    "change_live_behavior": false,
+    "change_dashboard": false,
+    "baseline_improved": false
+  }
+}

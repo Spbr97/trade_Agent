@@ -2,7 +2,7 @@
 
 Frozen: 30 September 2026
 
-Status: **registered next accuracy experiment; acquisition checkpoint complete;
+Status: **mechanism protocol frozen; real outcome evaluation not yet run;
 no accuracy improvement claimed**
 
 ## Objective
@@ -89,8 +89,9 @@ features are available for 755 decisions and must fail closed before 09:30.
 
 ### Checkpoint 2 — mechanism before model
 
-- [ ] Freeze no more than six simple alignment/relative-strength rules before reading
-  their outcome results.
+- [x] Freeze the four simple price-alignment rules below before reading their outcome
+  results. Relative-strength rules are deferred because the integrity artifact does
+  not yet contain causally joined stock returns.
 - [ ] Compare each rule with its inverse, time-shift/placebo, and matched label-shuffle
   controls on the same candidate population.
 - [ ] Require consistent direction across chronological folds, a positive effect on
@@ -98,6 +99,33 @@ features are available for 755 decisions and must fail closed before 09:30.
   controls.
 - [ ] Stop the track if the mechanism is absent, reverses by fold, or is economically
   too small after costs. Do not run a selector race after a failed mechanism gate.
+
+The version-1 protocol is fully specified as follows:
+
+1. NIFTY 50 completed five-minute return is positive.
+2. At least two of NIFTY 50, BANK NIFTY, and Nifty Financial have positive completed
+   five-minute returns.
+3. All three indices have positive completed five-minute returns.
+4. All three indices have positive completed three-minute returns.
+
+Rules are evaluated in that order, without changing thresholds or adding variants.
+The population is the unchanged 815 AEM `TRADE` attempts. Its identity must remain
+693 resolved fills, 149 strict wins, 21.5007215% strict accuracy, and -0.274707954R
+mean net R. The 120 chronological sessions are split into three fixed consecutive
+40-session folds.
+
+Each rule must pass every one of these gates: at least 100 resolved fills, at least
+48 active sessions and 40% active-session coverage; higher strict accuracy, Wilson
+lower bound, and mean net R than the unchanged population; positive absolute mean
+net R; positive accuracy and net-R deltas in every fold; superiority to its inverse
+and a within-session next-event circular time placebo; and superiority to the 95th
+percentile of 256 within-session matched-selection shuffles for both strict accuracy
+and mean net R. Both one-sided empirical shuffle p-values must be at most 0.05. The
+shuffle seed is `20260930`. Empty or unavailable selections fail closed.
+
+If multiple rules pass, choose by Wilson lower bound, then mean net R, resolved fills,
+and finally the registered rule order. Passing only permits checkpoint 3; it does not
+change the canonical baseline, live behavior, or dashboard.
 
 ### Checkpoint 3 — bounded selector diagnostic
 
@@ -156,7 +184,7 @@ separate, evidence-backed checkpoint explicitly authorizes integration.
 
 ## Next executable task
 
-Implement the causal context join and its integrity report. Do not train or tune a
-selector in the same checkpoint. The join checkpoint is complete only when every
-decision is either matched to completed context bars or retained with an explicit
-exclusion reason, including the known 7 July closing gap.
+Freeze and commit the exact checkpoint-2 mechanism protocol without joining outcomes.
+Only from that committed state, open the real outcomes once and run the four rules and
+their frozen controls. Stop before a selector race unless at least one rule passes
+every registered gate.
