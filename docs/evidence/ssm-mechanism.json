@@ -1,0 +1,90 @@
+{
+  "version": "ssm-milestone-2-real-mechanism-v1",
+  "run_id": "6f0ee07df9c64019a951c209e4c4d320",
+  "status": "mechanism_absent_stop",
+  "milestone": 2,
+  "eligible_for_live": false,
+  "baseline_improved": false,
+  "algorithm_evaluated": false,
+  "trade_geometry_evaluated": false,
+  "selector_evaluated": false,
+  "mechanism_evaluated": true,
+  "mechanism_passed": false,
+  "source_dataset_id": "ec539cf66bea4c18ba994506f85a52d6",
+  "source_universe_audit_id": "154c62bc439347a2ae68c3e1bb7d915d",
+  "source_sha256": "b07440d8a07686fe3b7d0f0071119c81ce5f04255a9428dc61470cfda85f83cf",
+  "source_sessions": 140,
+  "evaluation_sessions": 120,
+  "universe_symbols": 50,
+  "planned_decisions": 66000,
+  "eligible_decisions": 65989,
+  "excluded_decisions": 11,
+  "exclusion_reason_counts": {
+    "source_universe_pair_excluded": 11
+  },
+  "evidence_class": "consumed_historical_development",
+  "ssm_contract_sha256": "1abdadc549dc806bb1030e4bfe69cac4d844b55b97d2ec93daa783cb549ff35d",
+  "mechanism_contract_sha256": "5599957b53327cc09abf3a98d4652f60662249065e0743e88d486a9304816595",
+  "mechanism_contract": {
+    "lags": "1_through_40_sessions",
+    "adjacent_slot_offsets": [
+      -1,
+      1
+    ],
+    "shuffle_repetitions": 128,
+    "shuffle_seed": 20260929,
+    "minimum_candidates_per_group": 31,
+    "minimum_positive_lag_fraction": 0.6,
+    "minimum_lag_mean_t_statistic": 1.96,
+    "maximum_shuffle_empirical_p": 0.05
+  },
+  "mechanism": {
+    "same_slot_mean_lag1_40_coefficient": 0.002756376381563208,
+    "same_slot_lag1_coefficient": -0.0012423349843861031,
+    "same_slot_positive_lag_fraction": 0.7,
+    "same_slot_lag_mean_standard_error": 0.0006303011250395259,
+    "same_slot_lag_mean_t_statistic": 4.3731103627498,
+    "adjacent_previous_mean_lag1_40_coefficient": 0.0009402341026695501,
+    "adjacent_next_mean_lag1_40_coefficient": 0.0034161252672353843,
+    "strongest_adjacent_mean_lag1_40_coefficient": 0.0034161252672353843,
+    "shuffle_mean_lag1_40_p95": 0.0012599967868918026,
+    "shuffle_empirical_p": 0.007751937984496124,
+    "lag1_top_bucket_gross_return": 0.000008809891001278414,
+    "lag1_top_bucket_gross_excess_return": 0.00002837543991325489,
+    "gates": {
+      "lag1_positive": false,
+      "mean_lag1_40_positive": true,
+      "positive_lag_fraction": true,
+      "lag_mean_t_statistic": true,
+      "beats_both_adjacent_slot_placebos": false,
+      "beats_shuffled_95th_percentile": true,
+      "shuffle_empirical_p": true,
+      "lag1_top_bucket_gross_excess_positive": true
+    }
+  },
+  "artifact_sha256": {
+    "report": "e6bdd3ba1315ed11aad7c1d0287fe829afd212c0d2ea73ca1aa24aca16e3f3f5",
+    "decisions": "cde723cec98a853caad7f8d4802e579fcc9956fb362fd409722b2be11181329a",
+    "lag_diagnostics": "69af03d3d5531cf45a6655083933250dc6bf5eb5e7b45b053f819fc7876d0f69",
+    "shuffled_controls": "eb294511d6e85e1923cdcadcccf6953ec4f6cfcd7b10ce56fa27cfdfffc1f180",
+    "source_slot_exclusions": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+  },
+  "implementation_sha256": "93a5bed49ff40ee3795236bafd5085ddb196ffae58b568a5e14320d40fbe2b80",
+  "tests_sha256": "0cfa09e56a868c675debcb24f1bffbbe9be99aeb802730862d660efd971caf21",
+  "cli_sha256": "75925b17fd9b617cc3a363e3a45450726cb7e710aa2e9868c9f99fce8f93bf13",
+  "canonical_baseline": {
+    "name": "AEM_v1_frozen_50_stock_cohort",
+    "strict_wins": 149,
+    "resolved_fills": 693,
+    "strict_success_rate": 0.215007215007215,
+    "changed": false
+  },
+  "decision": {
+    "proceed_to_selector_race": false,
+    "register_candidate": false,
+    "change_canonical_baseline": false,
+    "change_live_behavior": false,
+    "change_dashboard": false,
+    "reason": "Lag-1 continuation was negative and the mean same-slot coefficient was weaker than the next-adjacent-slot placebo. The registered stop rule rejects SSM before any selector race."
+  }
+}
