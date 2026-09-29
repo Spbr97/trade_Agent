@@ -1,0 +1,121 @@
+{
+  "version": "osr-milestone-3-selector-race-v1",
+  "status": "selector_race_rejected",
+  "milestone": 3,
+  "eligible_for_live": false,
+  "baseline_improved": false,
+  "algorithm_evaluated": true,
+  "real_run_completed": true,
+  "development_candidate_nominated": false,
+  "strategy_contract_sha256": "5468a1b5ae8e0a325e561b4ff2c4e3d5117a425310ea51470d0e3dadbbde8e43",
+  "population_implementation_sha256": "3f03a629690daed0e30b9cf1f46e03ccdf4c213268240c812f4b5b45cd2fff32",
+  "selector_implementation_sha256": "f1e1c9cfd70ad431e6e22eb2cdb607ea9142e2c58a78714e5c210de4de95c8f6",
+  "race_implementation_sha256": "c45e29efb7e572cdafebadb84627e9c6ddd3571353709e68fbebfd0ecb890f22",
+  "cli_sha256": "391b304e4611d8f5125cca8e9cc75ade2f8cb07175554b0856608696b70c1e1c",
+  "population_tests_sha256": "4407bd826b13d9470c3aa0ea98d625482e7739b88187b4641d04f6b4e44a14f6",
+  "selector_tests_sha256": "54027f8ed229161c9b5312cf75bb0e9eeda4da7c444dd0fde57d0d6a897dacc5",
+  "tests_sha256": "1c1981b65cd63424fd8cfdb65467e009604e978521a1e6e41214ac25339760d3",
+  "selection_population": {
+    "id": "8bee2b7ede9b4d1bb28c6958d5ad646d",
+    "created_at": "2026-09-29T20:06:47.599248+05:30",
+    "source_development_dataset_run_id": "2ece3a469de84a3aad74f8afa9192f59",
+    "source_events_sha256": "e52dd1832cc17e1a4314bbfd63bff8a247f4b29ec5507fe88741c5748749ad28",
+    "source_exclusions_sha256": "3aa6ac20f3e10db86363bf9e0f1b634f13743038deebf4c2e60c4b9a5858c2ef",
+    "calls_sha256": "abe4829dd6c35f13d87e0d0444de53e1b03c4a8d137cd95dd8f87706df9f3f25",
+    "report_sha256": "9d562454f93358a7fdff06ecf8dce12f4071f02b3ccdaa660f2bf5b79fcc74a0",
+    "rows": 8091,
+    "resolved_calls": 7303,
+    "unfilled_calls": 720,
+    "unresolved_calls": 68,
+    "strict_successes": 1564,
+    "all_call_strict_success_rate": 0.19330119886293412,
+    "resolved_strict_success_rate": 0.21415856497329863,
+    "feature_count": 30,
+    "duplicate_identity_rows": 0,
+    "feature_null_or_nonfinite_cells": 0,
+    "unique_opportunities": 2697,
+    "unique_sessions": 120,
+    "unique_scrip_codes": 49,
+    "integrity_correction": "The prior resolved-events table could not be used by a selector because resolution and fill status are future outcomes. The race population restores every later unfilled and unresolved attempt and conservatively treats those calls as non-successes. Features remain decision-time-only and separate from outcome columns."
+  },
+  "registered_race": {
+    "trial_budget": 12,
+    "modes": [
+      "gap_down_reclaim",
+      "opening_low_sweep_reclaim"
+    ],
+    "geometry_ids": [
+      "reclaim_30_22_20",
+      "reclaim_40_28_35",
+      "reclaim_55_36_50"
+    ],
+    "selector_kinds": [
+      "transparent_additive",
+      "regularized_tree"
+    ],
+    "top_k_reporting_policies": [1, 2, 3],
+    "top_k_counts_as_trials": false,
+    "fixed_qualification_probability": 0.5,
+    "outer_splits": 3,
+    "outer_embargo_sessions": 10,
+    "inner_splits": 3,
+    "inner_embargo_sessions": 2,
+    "matched_random_cohorts": 200,
+    "seed": 20260929,
+    "registry_sha256": "19dc5a0e092836115c118cdfa38d1f128916ce41681953dd526c25b9d2ca3bdc"
+  },
+  "development_gates_checked": [
+    "resolved selected fills >= 100",
+    "active sessions >= 30",
+    "active-session coverage >= 40%",
+    "observed strict success rate >= 50%",
+    "Wilson 95% lower bound >= 40%",
+    "unresolved selected calls = 0",
+    "after-cost mean net R > 0",
+    "after-cost mean net R advantage over matched random >= 0.10R",
+    "single-symbol share of strict wins <= 25%",
+    "at least two scored outer folds",
+    "positive mean-net-R share across scored folds >= two thirds"
+  ],
+  "real_run": {
+    "id": "d4ec1201a3394548bd4299d8f17647e4",
+    "created_at": "2026-09-29T20:07:35.407359+05:30",
+    "report_sha256": "58a97dabb9fa141daaa6750f07a2c1c418135703b7cf446a672f46449df6b669",
+    "evidence_class": "consumed_historical_development",
+    "trials_evaluated": 12,
+    "outer_folds_registered_per_spec": 3,
+    "outer_folds_scored_per_spec": 2,
+    "skipped_fold_reason": "insufficient selector training rows",
+    "selected_calls_at_fixed_threshold": 0,
+    "qualified_candidates": [],
+    "stress_gates_evaluated": false,
+    "best_unfiltered_oos_slice": {
+      "mode": "gap_down_reclaim",
+      "geometry_id": "reclaim_40_28_35",
+      "resolved_fills": 525,
+      "strict_successes": 135,
+      "strict_success_rate": 0.2571428571428571,
+      "wilson95_lower": 0.22161529162406124,
+      "mean_net_r": -0.4333966301636372
+    },
+    "interpretation": "Both selector families correctly abstained because no calibrated out-of-sample probability reached the frozen 0.50 call threshold. Every unfiltered mode-geometry slice had negative after-cost mean net R. This is a decisive rejection, not a near miss and not permission to lower the threshold after inspecting the result."
+  },
+  "canonical_baseline": {
+    "name": "AEM v1 frozen 50-stock baseline",
+    "strict_successes": 149,
+    "resolved_fills": 693,
+    "strict_success_rate": 0.215007215007215,
+    "wilson95_lower": 0.18603500195342146,
+    "mean_net_r": -0.27471,
+    "changed": false
+  },
+  "decision": {
+    "register_candidate": false,
+    "run_stress_replay": false,
+    "change_canonical_baseline": false,
+    "change_live_behavior": false,
+    "change_dashboard": false,
+    "reason": "No preregistered OSR specification cleared the frozen development gates. OSR is stopped at Milestone 3; AEM v1 remains the 21.50% canonical baseline."
+  },
+  "next_step": "register_a_genuinely_new_causal_signal_hypothesis_before_any_more_consumed_history_evaluation_do_not_retune_osr"
+}

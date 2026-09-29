@@ -45,6 +45,10 @@ def main() -> None:
     sub.add_parser("osr-freeze-protocol")
     osr_dataset = sub.add_parser("osr-development-dataset")
     osr_dataset.add_argument("--audit-id")
+    osr_population = sub.add_parser("osr-selection-population")
+    osr_population.add_argument("--dataset-run-id")
+    osr_race = sub.add_parser("osr-selector-race")
+    osr_race.add_argument("--population-run-id")
     universe_audit = sub.add_parser("aem-v2-universe-audit")
     universe_audit.add_argument("--dataset-id")
     development_dataset = sub.add_parser("aem-v2-development-dataset")
@@ -271,6 +275,61 @@ def main() -> None:
                         "geometry_counts",
                         "exclusion_reason_counts",
                         "evidence_class",
+                    )
+                },
+                indent=2,
+            )
+        )
+        return
+    if args.command == "osr-selection-population":
+        from tradedesk_lab.osr_selection_population import freeze_selection_population
+
+        report = freeze_selection_population(dataset_run_id=args.dataset_run_id)
+        print(
+            json.dumps(
+                {
+                    key: report[key]
+                    for key in (
+                        "id",
+                        "status",
+                        "milestone",
+                        "source_development_dataset_run_id",
+                        "rows",
+                        "resolved_calls",
+                        "unfilled_calls",
+                        "unresolved_calls",
+                        "strict_successes",
+                        "strict_success_rate_all_calls",
+                        "strict_success_rate_resolved",
+                        "feature_count",
+                        "evidence_class",
+                        "decision",
+                    )
+                },
+                indent=2,
+            )
+        )
+        return
+    if args.command == "osr-selector-race":
+        from tradedesk_lab.osr_selector_race import freeze_selector_race
+
+        report = freeze_selector_race(population_run_id=args.population_run_id)
+        print(
+            json.dumps(
+                {
+                    key: report[key]
+                    for key in (
+                        "id",
+                        "status",
+                        "milestone",
+                        "selection_population_run_id",
+                        "selection_population_rows",
+                        "trial_budget",
+                        "qualified_candidates",
+                        "stress_gates_evaluated",
+                        "development_candidate_nominated",
+                        "baseline_improved",
+                        "decision",
                     )
                 },
                 indent=2,
