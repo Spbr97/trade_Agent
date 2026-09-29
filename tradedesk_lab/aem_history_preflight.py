@@ -103,6 +103,10 @@ def _classification(name: str, command: str) -> str:
         )
     if operations and all(op == "dashboard" for op in operations):
         return "standalone_dashboard"
+    if operations and all(op == "mcp" for op in operations):
+        # The repository MCP command serves local, read-only store/journal analysis
+        # over stdio. It does not create a broker client or run a market-data loop.
+        return "read_only_mcp"
     if re.search(r"(?:^|\s)-m\s+(?:pytest|ruff|mypy)\b|\b(?:pytest|ruff)\.exe\b", line):
         return "offline_development_tool"
     if _OFFLINE_SCRIPTS.search(line):
@@ -119,6 +123,7 @@ def _classification(name: str, command: str) -> str:
 _NON_CONSUMERS = {
     "not_relevant",
     "standalone_dashboard",
+    "read_only_mcp",
     "offline_development_tool",
     "known_offline_script",
     "known_offline_research",

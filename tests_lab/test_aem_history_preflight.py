@@ -117,6 +117,8 @@ def test_consumer_and_opaque_python_block_without_argument_leaks(command):
     "command",
     [
         '"C:\\venv\\tradedesk.exe" dashboard --port 8765',
+        "uv run tradedesk mcp",
+        'python "C:\\venv\\Scripts\\tradedesk.exe" mcp',
         "python -m pytest tests_lab -q",
         "python -m ruff check tradedesk_lab",
         "python -m tradedesk_lab aem-benchmark",

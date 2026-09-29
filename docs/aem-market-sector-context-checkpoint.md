@@ -1,51 +1,76 @@
-# AEM market/sector context readiness checkpoint
+# AEM market/sector context collection checkpoint
 
-Date: 25 September 2026
+Date: 30 September 2026
+
+Branch: `codex/aem-context-m1-collection`
 
 Frozen dataset: `ec539cf66bea4c18ba994506f85a52d6`
 
-Status: **not ready; no baseline improvement established**
+Status: **bounded collection complete with one reproducible source gap; context
+experiment not yet run; no baseline improvement established**
 
 ## Outcome
 
-This checkpoint adds an isolated, resumable collector for causal one-minute market
-and financial-sector context. It deliberately does not change the AEM baseline,
-production calls, management logic, risk rules or order paths.
+The isolated collector acquired causal one-minute context for the frozen 120-session
+evaluation calendar:
 
-The frozen plan covers 120 evaluation sessions and these index series:
+- NIFTY 50: `NSE_40000001` — 45,000/45,000 bars;
+- BANK NIFTY: `NSE_40000003` — 45,000/45,000 bars; and
+- Nifty Financial: `NSE_40000100` — 44,987/45,000 bars.
 
-- NIFTY 50: `NSE_40000001`
-- BANK NIFTY: `NSE_40000003`
-- Nifty Financial: `NSE_40000100`
+Run `d213de5b8c564896b24c2b424d902bd2` used 26 read-only requests and collected
+**134,987/135,000 bars (99.990%)**, covering **359/360 index-sessions** completely.
+Run `2051f3c5c247476daa723ab6ef7dff05` repeated the only incomplete window in one
+additional request and returned the identical gap.
 
-That is 360 required index-sessions and 135,000 expected regular-session M1 bars.
-Current coverage is **0/360 sessions and 0/135,000 bars**.
+The missing coordinate is Nifty Financial on **7 July 2026**, from **15:17 through
+15:29 IST** (13 consecutive closing minutes). It is retained as a source-data
+exception. It will not be filled, interpolated, or silently dropped. A later causal
+join must fail closed for any event whose registered lookback needs those bars.
 
 ## Safety result
 
-Offline preparation completed in run `b837ccb6301042e09dd0e31123ca6ab7`.
-A bounded collection run `7e30983067ab426db6ecb88dc1305a54` was attempted at
-10:17 IST. The safety preflight returned `protected_weekday_market_window`, so it
-stopped before constructing a broker client or making a remote request.
+The first preflight initially classified the running `uv run tradedesk mcp` process
+chain as unknown. Inspection showed that the repository command serves local,
+read-only store and journal analysis over stdio and does not construct a broker
+client or market-data loop. The lab-only preflight now classifies only the exact
+`tradedesk mcp` operation as `read_only_mcp`; broker operations, opaque Python
+processes, unknown research consumers, and running/imminent scheduled tasks still
+block.
 
-Requests made in the run: **0**. Requests recorded across context runs: **0**.
-No live process was stopped and no safety check was bypassed.
+Forty-seven focused preflight tests pass. The real preflight then allowed collection
+outside the protected market window. It re-ran before every request. No process or
+scheduled task was stopped, and no credential, production call, dashboard,
+management, risk, alert, or order path changed.
 
 ## Accuracy interpretation
 
-This is data-foundation work, not evidence that prediction quality improved. The
-canonical broader AEM baseline remains **149/693 strict wins (21.50%)** with
-**−0.27471R per resolved fill**. The most recent bounded selector remains rejected.
+Collection is a data milestone, not an accuracy result. The canonical broader AEM
+baseline remains **149/693 strict wins (21.50%)** with **-0.27471R per resolved
+fill**. No model or selector has consumed the new index data, so the measured
+improvement remains exactly zero.
 
-The context data can only be credited after all of the following:
+All 120 sessions are already outcome-inspected development data. Any mechanism test
+on them can reject a weak hypothesis or justify freezing a later trial, but cannot
+establish a new baseline. A promotion claim requires later unconsumed or prospective
+evidence under the unchanged accuracy, Wilson-bound, availability, after-cost, stress,
+and concentration gates.
 
-1. collect the frozen index history outside protected market hours;
-2. verify timestamps, session completeness and causal availability;
-3. resolve historical point-in-time sector membership or explicitly restrict the
-   sector-context hypothesis so current membership cannot leak into history;
-4. preregister a bounded trial set and evaluate it on later unconsumed or prospective
-   evidence against the unchanged baseline, including accuracy, Wilson bound,
-   availability and after-cost net R.
+## Frozen next step
+
+The next track is recorded in
+[`plan-aem-index-context-accuracy.md`](plan-aem-index-context-accuracy.md). Its first
+version avoids historical membership leakage by using all three index series only as
+uniform market/risk context for every candidate. It does **not** assign stocks to
+current Nifty or sector membership. The order is:
+
+1. build and audit the causal decision-time join;
+2. verify the one known gap fails closed;
+3. run the preregistered mechanism and placebo checks on consumed development data;
+4. freeze at most one simple context rule only if the mechanism and economics pass;
+5. test that frozen rule once on later unconsumed/prospective evidence; and
+6. add dashboard visibility only after a real candidate exists, never from collection
+   progress alone.
 
 The structured evidence is in
 [`docs/evidence/aem-market-sector-context-readiness.json`](evidence/aem-market-sector-context-readiness.json).

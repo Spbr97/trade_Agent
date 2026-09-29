@@ -1,6 +1,7 @@
 # Accuracy-first checkbox roadmap
 
-Updated: 26 September 2026. Working branch: `codex/aem-v2-accuracy-first`.
+Updated: 30 September 2026. Current checkpoint branch:
+`codex/aem-context-m1-collection`.
 
 Primary objective: maintain and improve the reliability of executable NSE calls,
 working toward 70–80% successful calls within sessions. Prioritize anticipatory
@@ -36,6 +37,10 @@ dated records. Proposed future production changes in those documents remain defe
 - [x] Complete the resumable M1 collection: **2,624,979 valid bars**, **6,999/7,000
   complete stock-sessions**, 272 requests recorded. The only exception is VEDL on
   30 April 2026, whose reproducible 21-bar opening gap is retained and rejected.
+- [x] Complete the bounded three-index context acquisition attempt: **134,987/135,000
+  bars (99.990%)** and **359/360 complete index-sessions** in 27 requests. The single
+  Nifty Financial gap on 7 July 2026 from 15:17-15:29 repeated identically and is
+  preserved; this is data readiness, not an accuracy improvement.
 - [x] Replay the unchanged AEM contract on the frozen 50-stock cohort: **149/693
   strict wins (21.50%)**, **−0.27471R per resolved fill**. The baseline fails.
 - [x] Run the broader matched-random gate: observed timing is **−0.03949R per
@@ -164,11 +169,12 @@ in every future session cannot be guaranteed by a model or by this roadmap.
   contract and re-establish its baseline.
 - [x] Freeze the three-index, 120-session context acquisition plan and implement a
   resumable isolated collector with preflight, request caps and fail-closed storage.
-- [ ] Collect and verify the 135,000 planned index M1 bars outside the protected
-  market window. Current coverage is **0/360 index-sessions**; the attempted run was
-  blocked before any request, so this is not an accuracy improvement.
-- [ ] Obtain point-in-time historical sector membership, or preregister a narrower
-  context hypothesis that cannot leak current membership into historical evaluation.
+- [ ] Complete the context integrity join. Collection reached **134,987/135,000 bars
+  and 359/360 complete index-sessions**; one repeated 13-minute source gap must fail
+  closed at affected decision times, so full integrity is not yet established.
+- [x] Preregister a narrower context hypothesis that cannot leak current membership:
+  use all three index series uniformly for every candidate and do not join stocks to
+  present-day sector/index membership. Point-in-time membership remains future work.
 - [ ] Verify feature availability times, adjustments, benchmark dates, trading
   status and data-source versions. Preserve source and experiment fingerprints.
 - [ ] Restore the five SciPy-dependent test modules in an isolated compatible
@@ -324,9 +330,11 @@ fresh evidence; missed targets remain visible.
   failure taxonomy and evaluate one selected rule on the later chronological cohort.
 - [ ] Add point-in-time intraday benchmark and sector context, then freeze a new
   bounded trial set for later unconsumed sessions or prospective shadow evidence.
-  The collection plan and safe collector are complete, but data coverage is 0/360
-  index-sessions and historical point-in-time sector membership remains unresolved;
-  this acquisition track is currently parked.
+  Collection now covers 359/360 index-sessions (134,987/135,000 bars); the sole
+  repeated source gap is frozen. The leakage-safe index-only hypothesis is registered
+  in the [AEM index-context accuracy plan](plan-aem-index-context-accuracy.md). Next is
+  the causal join/integrity report, followed by a mechanism/placebo stop gate before
+  any model race.
 - [x] Freeze the AEM v2 custom-algorithm contract, feature registry, entry modes,
   geometry grid, trial budget and evidence gates with immutable fingerprints.
 - [x] Build Milestone 1: the causal event and outcome engine with conservative fills,
