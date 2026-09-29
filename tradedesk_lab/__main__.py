@@ -44,6 +44,8 @@ def main() -> None:
     sub.add_parser("aem-v2-freeze-protocol")
     sub.add_parser("osr-freeze-protocol")
     sub.add_parser("ssm-freeze-protocol")
+    ssm_mechanism = sub.add_parser("ssm-mechanism-check")
+    ssm_mechanism.add_argument("--audit-id")
     osr_dataset = sub.add_parser("osr-development-dataset")
     osr_dataset.add_argument("--audit-id")
     osr_population = sub.add_parser("osr-selection-population")
@@ -279,6 +281,33 @@ def main() -> None:
                         "slot_count",
                         "registered_pipeline_budget",
                         "next_milestone",
+                    )
+                },
+                indent=2,
+            )
+        )
+        return
+    if args.command == "ssm-mechanism-check":
+        from tradedesk_lab.ssm_mechanism import freeze_real_mechanism_check
+
+        report = freeze_real_mechanism_check(audit_id=args.audit_id)
+        print(
+            json.dumps(
+                {
+                    key: report[key]
+                    for key in (
+                        "id",
+                        "status",
+                        "milestone",
+                        "source_dataset_id",
+                        "source_universe_audit_id",
+                        "planned_decisions",
+                        "eligible_decisions",
+                        "excluded_decisions",
+                        "mechanism_passed",
+                        "baseline_improved",
+                        "mechanism",
+                        "decision",
                     )
                 },
                 indent=2,

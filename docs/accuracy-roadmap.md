@@ -390,6 +390,13 @@ fresh evidence; missed targets remain visible.
   the protocol and engine. This remains implementation evidence only; no real SSM
   population or accuracy result exists. See the
   [SSM Milestone-1 engine checkpoint](ssm-engine-checkpoint.md).
+- [x] Evaluate SSM Milestone 2 on the frozen real 50-stock population and enforce the
+  mechanism stop rule. All 66,000 planned stock/slot decisions are accounted for,
+  with 65,989 eligible and 11 explicitly excluded. Lag-1 same-slot continuation was
+  negative, and the mean same-slot coefficient was weaker than the next-adjacent-slot
+  placebo. SSM is therefore rejected before any selector race; the canonical 21.50%
+  baseline does not change. See the
+  [SSM Milestone-2 mechanism checkpoint](ssm-mechanism-checkpoint.md).
 
 For each completed item, attach its artifact/run identifier, date, sample size and
 pass/fail result. Update this checklist at checkpoints. The 70–80% objective remains
