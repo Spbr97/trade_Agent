@@ -43,6 +43,7 @@ def main() -> None:
     accuracy_experiment.add_argument("--dataset-id")
     sub.add_parser("aem-v2-freeze-protocol")
     sub.add_parser("osr-freeze-protocol")
+    sub.add_parser("ssm-freeze-protocol")
     osr_dataset = sub.add_parser("osr-development-dataset")
     osr_dataset.add_argument("--audit-id")
     osr_population = sub.add_parser("osr-selection-population")
@@ -244,6 +245,38 @@ def main() -> None:
                         "feature_count",
                         "geometry_count",
                         "entry_mode_count",
+                        "registered_pipeline_budget",
+                        "next_milestone",
+                    )
+                },
+                indent=2,
+            )
+        )
+        return
+    if args.command == "ssm-freeze-protocol":
+        from tradedesk_lab.ssm_contract import freeze_ssm_protocol
+
+        report = freeze_ssm_protocol()
+        print(
+            json.dumps(
+                {
+                    key: report[key]
+                    for key in (
+                        "id",
+                        "status",
+                        "milestone",
+                        "artifact_path",
+                        "eligible_for_live",
+                        "baseline_improved",
+                        "algorithm_implemented",
+                        "contract_sha256",
+                        "protocol_sha256",
+                        "bundle_sha256",
+                        "feature_count",
+                        "geometry_count",
+                        "predictor_mode_count",
+                        "selector_kind_count",
+                        "slot_count",
                         "registered_pipeline_budget",
                         "next_milestone",
                     )
