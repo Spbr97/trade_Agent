@@ -374,6 +374,14 @@ fresh evidence; missed targets remain visible.
   cleared the gates, so OSR is rejected without retuning and AEM v1 remains the 21.50%
   canonical baseline. See the
   [OSR Milestone-3 selector-race checkpoint](osr-selector-race-checkpoint.md).
+- [x] Register SSM v1 (Same-Slot Micro-Momentum) as the next evidence-backed signal
+  family. Unlike AEM/OSR pattern variations, SSM tests published half-hour return
+  periodicity documented directly on NSE data and independently in the Journal of
+  Finance. Its 30-minute slots, two predictor modes, three quick-profit geometries,
+  24 causal features, 12-specification budget, placebos, and unchanged accuracy/
+  confidence/availability/economics gates are frozen before measurement. This is a
+  protocol, not an accuracy improvement; see the
+  [SSM 50% baseline plan](plan-ssm-50pct-baseline.md).
 
 For each completed item, attach its artifact/run identifier, date, sample size and
 pass/fail result. Update this checklist at checkpoints. The 70–80% objective remains

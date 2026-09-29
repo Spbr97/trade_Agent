@@ -1,0 +1,99 @@
+{
+  "version": "ssm-milestone-0-v1",
+  "status": "protocol_frozen_not_evaluated",
+  "milestone": 0,
+  "eligible_for_live": false,
+  "baseline_improved": false,
+  "algorithm_implemented": false,
+  "algorithm_evaluated": false,
+  "signal_family": "interday_same_half_hour_cross_sectional_momentum",
+  "predictor_modes": [
+    "lag1_cross_sectional",
+    "multi_day_persistence"
+  ],
+  "selector_kinds": [
+    "transparent_rank_gate",
+    "regularized_logistic"
+  ],
+  "geometries": [
+    "slot_20_30_30",
+    "slot_25_30_30",
+    "slot_30_30_30"
+  ],
+  "feature_count": 24,
+  "slot_count": 11,
+  "registered_pipeline_budget": 12,
+  "contract_sha256": "1abdadc549dc806bb1030e4bfe69cac4d844b55b97d2ec93daa783cb549ff35d",
+  "protocol_sha256": "ddf0c859cf2fc07f27a32702dca86eb25c84ad09c37ed8207d518fd451666996",
+  "bundle_sha256": "5c2a0ba5f8964f546daf4fc451612ff577dd372ce3c33c31cc828c298fd2b4bf",
+  "implementation_sha256": "7840b55e936ac98e2a6cd14fb407b59b3115d0e55c978953a36d1b5bd5f57fb1",
+  "tests_sha256": "5840eec7d24d787c8b79baef8ab90259110c47ba16d6716a44f2e00b74d65dec",
+  "plan_sha256": "bb4e689635eea931f710e2f17141340497c355f1519047289186ecb8d2223524",
+  "cli_sha256": "f661802a0dfe89704508e81af65eabee42ee04128aef74979f2ec1c6810a1fe3",
+  "frozen_run": {
+    "id": "95fda73fa00e4594acfeae995452bdc1",
+    "created_at": "2026-09-29T15:06:32.338657+00:00",
+    "report_sha256": "870b9ba8a33352fc21f1909fb0df1509bd99803087d3a98daf9f72eaa16e7d79"
+  },
+  "evidence_basis": [
+    {
+      "title": "Short-Term Return Predictability and Repetitive Institutional Net Order Activity",
+      "authors": "Dermot P. Murphy and Ramabhadran S. Thirumalai",
+      "doi": "10.1111/jfir.12131",
+      "market": "NSE India",
+      "claim_used": "Half-hour returns and repetitive institutional order activity predict same-half-hour returns on subsequent days."
+    },
+    {
+      "title": "Intraday Patterns in the Cross-section of Stock Returns",
+      "authors": "Steven L. Heston, Robert A. Korajczyk, and Ronnie Sadka",
+      "doi": "10.1111/j.1540-6261.2010.01573.x",
+      "market": "United States",
+      "claim_used": "Cross-sectional half-hour return continuation appears at exact daily multiples and persists for as long as 40 sessions."
+    }
+  ],
+  "canonical_baseline": {
+    "name": "AEM_v1_frozen_50_stock_cohort",
+    "dataset_id": "ec539cf66bea4c18ba994506f85a52d6",
+    "resolved_fills": 693,
+    "strict_wins": 149,
+    "strict_success_rate": 0.215007215007215,
+    "wilson95_lower": 0.18603500195342146,
+    "mean_net_r": -0.2747079541350378
+  },
+  "prior_challenger": {
+    "name": "OSR_v1",
+    "pipeline_run_id": "d4ec1201a3394548bd4299d8f17647e4",
+    "qualified_candidates": 0
+  },
+  "development_gates": {
+    "minimum_strict_success_rate": 0.5,
+    "minimum_wilson95_lower": 0.4,
+    "minimum_resolved_selected_fills": 100,
+    "minimum_active_sessions": 30,
+    "minimum_active_session_coverage": 0.4,
+    "maximum_unresolved_selected_calls": 0,
+    "minimum_mean_net_r": 0.0,
+    "minimum_random_advantage_r": 0.1,
+    "maximum_single_symbol_win_share": 0.25,
+    "maximum_single_slot_win_share": 0.35
+  },
+  "causal_boundaries": [
+    "prediction is frozen one minute before the half-hour entry slot",
+    "current-slot bars are forbidden from every predictor",
+    "historical same-slot inputs end at the prior completed session",
+    "current-session context ends before the predicted slot",
+    "cross-sectional features exclude the candidate and require at least 30 peers",
+    "unfilled and unresolved calls remain in the issued-call ledger",
+    "top-k views do not expand the 12-specification trial budget"
+  ],
+  "evidence_boundary": "Published results justify testing SSM but do not prove an OHLCV-only current-NSE edge. All existing 120-session history is consumed development evidence and cannot establish a new baseline.",
+  "decision": {
+    "register_hypothesis": true,
+    "register_candidate": false,
+    "change_canonical_baseline": false,
+    "change_live_behavior": false,
+    "change_dashboard": false,
+    "reason": "Milestone 0 freezes the published SSM hypothesis and its rejection gates before implementation or evaluation. It contains no performance result."
+  },
+  "next_step": "implement_and_test_the_causal_same_slot_feature_event_and_outcome_engine_before_any_real_performance_measurement"
+}
