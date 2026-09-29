@@ -1,11 +1,11 @@
 {
-  "version": "aem-market-sector-context-readiness-v1",
-  "created_at": "2026-09-25T10:17:53.170678+05:30",
+  "version": "aem-market-sector-context-readiness-v2",
+  "created_at": "2026-09-30T02:11:16.3936428+05:30",
   "dataset_id": "ec539cf66bea4c18ba994506f85a52d6",
   "plan_sha256": "03015d2dc834fbb023b900253afeb1812e55895ff2708af4650582a929766dff",
   "dataset_manifest_sha256": "2433d79af86b6a18b32a013fe57de5957be78b04cbeefd18c29bdcde259d3b07",
   "instrument_source_sha256": "f22be58d1116194ef7d68f7afecfba8bd2523a428b747cab435537b9d15e2df3",
-  "status": "blocked_preflight",
+  "status": "collected_with_persistent_source_gap",
   "eligible_for_live": false,
   "context_ready": false,
   "baseline_improved": false,
@@ -18,32 +18,52 @@
     "codes": 3,
     "evaluation_sessions": 120,
     "expected_rows": 135000,
-    "collected_rows": 0,
-    "complete_code_sessions": 0,
+    "collected_rows": 134987,
+    "coverage_pct": 99.99037037037037,
+    "complete_code_sessions": 359,
     "total_code_sessions": 360,
-    "missing_code_sessions": 360
+    "missing_code_sessions": 1,
+    "invalid_rows": 0
   },
   "collection": {
-    "offline_run_id": "b837ccb6301042e09dd0e31123ca6ab7",
-    "offline_status": "prepared_offline",
-    "attempted_run_id": "7e30983067ab426db6ecb88dc1305a54",
-    "attempted_status": "blocked_preflight",
-    "blocked_reasons": [
-      "protected_weekday_market_window"
-    ],
-    "requests_made": 0,
-    "requests_recorded_all_runs": 0
+    "primary_run_id": "d213de5b8c564896b24c2b424d902bd2",
+    "primary_status": "frozen_requests_exhausted",
+    "primary_report_sha256": "877ad95ea4bd8aa1b7fa76121d5073bac718dd91a8186cdda383ed936eadeeca",
+    "primary_requests": 26,
+    "recovery_run_id": "2051f3c5c247476daa723ab6ef7dff05",
+    "recovery_status": "frozen_requests_exhausted",
+    "recovery_report_sha256": "f5af25b4e963f70ac145e43545ea7f54f46c037af702789c4de215b778d097a8",
+    "recovery_requests": 1,
+    "requests_recorded_all_runs": 27,
+    "local_database_sha256": "abc309ded1cb1ce817015a491422686e4624a00c91ab9d25cbb38e806c06c224"
+  },
+  "persistent_gap": {
+    "scrip_code": "NSE_40000100",
+    "symbol": "Nifty Financial",
+    "session": "2026-07-07",
+    "missing_bars": 13,
+    "first_missing_ist": "15:17",
+    "last_missing_ist": "15:29",
+    "recovery_result": "identical_gap",
+    "policy": "retain exception; never interpolate; fail closed when a feature window requires a missing bar"
+  },
+  "registered_scope": {
+    "membership_policy": "Use the three index series as uniform context for all candidates; do not join stocks to current sector/index membership.",
+    "evidence_class": "consumed_development_diagnostic",
+    "next_plan": "docs/plan-aem-index-context-accuracy.md"
   },
   "decision": {
     "register_candidate": false,
     "change_canonical_baseline": false,
     "change_live_behavior": false,
-    "reason": "Context acquisition is incomplete and no frozen accuracy experiment has been run."
+    "proceed_to_integrity_join": true,
+    "reason": "Acquisition is sufficient for a fail-closed causal join audit, but one source gap remains and no context mechanism or accuracy experiment has run."
   },
   "limitations": [
-    "This checkpoint prepares isolated data acquisition; it does not improve measured accuracy.",
-    "Current sector membership metadata is not historical point-in-time membership.",
-    "The protected weekday market-window guard blocked collection before any remote request.",
-    "A later frozen experiment or prospective cohort must establish any accuracy improvement."
+    "Collection does not improve measured accuracy.",
+    "One index-session is missing 13 closing minutes after a repeated source request.",
+    "Current sector membership metadata is not historical point-in-time membership and is excluded from the registered v1 scope.",
+    "All 120 sessions are consumed development evidence and cannot certify a new baseline.",
+    "A later frozen experiment and prospective cohort must establish any accuracy improvement."
   ]
 }
