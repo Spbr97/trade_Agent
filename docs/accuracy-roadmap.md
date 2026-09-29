@@ -353,10 +353,15 @@ fresh evidence; missed targets remain visible.
 - [x] Build OSR Milestone 1's causal event and conservative outcome engine. Both frozen
   failed-auction modes now require completed observations in order; future bars cannot
   change a decision; later fills, chase, gaps, target/stop ambiguity, deadlines, costs,
-  and missing data resolve conservatively. Eleven focused tests pass. This is engine
+  and missing data resolve conservatively. Twelve focused test functions pass. This is engine
   evidence only and does not improve the baseline.
-- [ ] Build OSR Milestone 2's 30-feature causal layer and audited development dataset
-  before fitting or evaluating any selector.
+- [x] Implement OSR Milestone 2A's 30-feature causal layer and audited development-
+  dataset assembly. Future candidate/peer bars, current daily bars, candidate-included
+  peer statistics, mismatched prior context, and undersized peer populations fail closed.
+  The full engine/feature/synthetic-dataset suite passes 28 cases. This is implementation
+  evidence only and does not improve the baseline.
+- [ ] Run and freeze the real 5,999-symbol-session OSR development population, retaining
+  every exclusion and labeling all existing history as consumed development evidence.
 
 For each completed item, attach its artifact/run identifier, date, sample size and
 pass/fail result. Update this checklist at checkpoints. The 70–80% objective remains

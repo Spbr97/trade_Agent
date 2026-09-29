@@ -326,14 +326,53 @@ def reconstruct_session_opportunities(
     hour, minute = (int(value) for value in contract.latest_decision_time.split(":"))
     latest_signal_open = raw_index[0].normalize() + pd.Timedelta(hours=hour, minutes=minute - 1)
     bars = _validated_bars(frame, through_open=latest_signal_open)
-    result: list[OsrOpportunity] = []
-    seen_modes: set[str] = set()
-    for stamp in bars.index:
+    # Necessary-condition prefilter only: the definitive detector remains
+    # opportunities_at(). This avoids re-validating every minute of every flat
+    # session while never discarding a bar that could satisfy either frozen mode.
+    vwaps = _vwap(bars).to_numpy(dtype=float)
+    closes = bars.close.to_numpy(dtype=float)
+    lows = bars.low.to_numpy(dtype=float)
+    opening_price = float(bars.open.iloc[0])
+    opening_low = float(bars.low.iloc[: contract.opening_range_minutes].min())
+    gap_from_prior_close = opening_price / float(prior_close) - 1
+    gap_eligible = (
+        -contract.maximum_gap_down_pct
+        <= gap_from_prior_close
+        <= -contract.minimum_gap_down_pct
+    )
+    candidate_positions: list[int] = []
+    for position in range(contract.opening_range_minutes - 1, len(bars)):
+        stamp = bars.index[position]
         at = stamp + M1
         if at.strftime("%H:%M") < contract.earliest_decision_time:
             continue
         if at.strftime("%H:%M") > contract.latest_decision_time:
             break
+        strong_reclaim, _close_location = _strong_reclaim(
+            bars.iloc[position], contract.minimum_reclaim_close_location
+        )
+        if not strong_reclaim or position == 0:
+            continue
+        possible_gap = bool(
+            gap_eligible
+            and closes[position - 1] <= max(opening_price, vwaps[position - 1])
+            and closes[position] > max(opening_price, vwaps[position])
+        )
+        prior_post_range = lows[contract.opening_range_minutes : position]
+        possible_sweep = bool(
+            prior_post_range.size
+            and float(prior_post_range.min())
+            <= opening_low * (1 - contract.minimum_sweep_depth_pct)
+            and closes[position - 1] <= opening_low
+            and closes[position] > opening_low
+        )
+        if possible_gap or possible_sweep:
+            candidate_positions.append(position)
+
+    result: list[OsrOpportunity] = []
+    seen_modes: set[str] = set()
+    for position in candidate_positions:
+        at = bars.index[position] + M1
         for opportunity in opportunities_at(
             bars,
             at=at,

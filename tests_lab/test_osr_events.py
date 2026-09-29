@@ -203,6 +203,44 @@ def test_signal_is_future_invariant_and_session_reconstruction_deduplicates_mode
     )
 
 
+@pytest.mark.parametrize(
+    ("frame", "prior_close", "prior_low"),
+    [
+        (gap_reclaim_frame(), 100.0, 97.0),
+        (sweep_reclaim_frame(), 100.0, 99.0),
+        (execution_frame(), 100.0, 99.0),
+    ],
+)
+def test_reconstruction_prefilter_matches_exhaustive_detection(frame, prior_close, prior_low):
+    expected = []
+    seen_modes = set()
+    for stamp in frame.index:
+        at = stamp + pd.Timedelta(minutes=1)
+        if at.strftime("%H:%M") < DEFAULT_OSR_CONTRACT.earliest_decision_time:
+            continue
+        if at.strftime("%H:%M") > DEFAULT_OSR_CONTRACT.latest_decision_time:
+            break
+        for event in opportunities_at(
+            frame,
+            at=at,
+            prior_close=prior_close,
+            prior_low=prior_low,
+            scrip_code="NSE_1",
+            symbol="TEST",
+        ):
+            if event.mode not in seen_modes:
+                expected.append(event)
+                seen_modes.add(event.mode)
+    actual = reconstruct_session_opportunities(
+        frame,
+        prior_close=prior_close,
+        prior_low=prior_low,
+        scrip_code="NSE_1",
+        symbol="TEST",
+    )
+    assert actual == tuple(expected)
+
+
 def test_invalid_prior_context_and_incomplete_m1_fail_closed():
     frame = gap_reclaim_frame()
     kwargs = {

@@ -43,6 +43,8 @@ def main() -> None:
     accuracy_experiment.add_argument("--dataset-id")
     sub.add_parser("aem-v2-freeze-protocol")
     sub.add_parser("osr-freeze-protocol")
+    osr_dataset = sub.add_parser("osr-development-dataset")
+    osr_dataset.add_argument("--audit-id")
     universe_audit = sub.add_parser("aem-v2-universe-audit")
     universe_audit.add_argument("--dataset-id")
     development_dataset = sub.add_parser("aem-v2-development-dataset")
@@ -240,6 +242,35 @@ def main() -> None:
                         "entry_mode_count",
                         "registered_pipeline_budget",
                         "next_milestone",
+                    )
+                },
+                indent=2,
+            )
+        )
+        return
+    if args.command == "osr-development-dataset":
+        from tradedesk_lab.osr_development_experiment import freeze_development_dataset
+
+        report = freeze_development_dataset(audit_id=args.audit_id)
+        print(
+            json.dumps(
+                {
+                    key: report[key]
+                    for key in (
+                        "id",
+                        "status",
+                        "milestone",
+                        "source_dataset_id",
+                        "source_universe_audit_id",
+                        "included_code_sessions",
+                        "opportunities_found",
+                        "resolved_rows",
+                        "excluded_events",
+                        "label_rate",
+                        "mode_counts",
+                        "geometry_counts",
+                        "exclusion_reason_counts",
+                        "evidence_class",
                     )
                 },
                 indent=2,

@@ -32,7 +32,7 @@ not evidence that OSR improves the 21.50% canonical AEM v1 baseline.
 
 ## Causal and failure verification
 
-Eleven focused behavioral tests establish that:
+Twelve focused test functions establish that:
 
 - bars at or after the decision timestamp cannot change the opportunity;
 - the 15-minute opening range, later sweep, and still-later reclaim occur in causal order;
@@ -42,6 +42,11 @@ Eleven focused behavioral tests establish that:
 - target/stop ambiguity becomes a loss;
 - a target touch with negative after-cost P&L is not strict success; and
 - changes after the frozen exit window cannot rewrite a resolved outcome.
+
+Milestone 2 later added a necessary-condition prefilter to avoid repeatedly validating
+flat minutes during full-session reconstruction. The definitive detector is unchanged;
+a parameterized regression proves the optimized session result exactly matches exhaustive
+minute-by-minute detection for both modes and a no-signal session.
 
 Machine-readable evidence is in
 [`docs/evidence/osr-engine.json`](evidence/osr-engine.json). The evidence fingerprints

@@ -16,8 +16,8 @@
   ],
   "strategy_contract_sha256": "5468a1b5ae8e0a325e561b4ff2c4e3d5117a425310ea51470d0e3dadbbde8e43",
   "event_contract_sha256": "0e2cd4c8aa7d1e5699a09bf933d407baf91cc180ed6b5c2d11f851b098a8dd51",
-  "implementation_sha256": "49119eb82ee8bf645be10449922bf948326ebdddf1bdd2dd221084a89eb3fb72",
-  "tests_sha256": "62afb4c5f8ed635591a429dad6330558e7449eee55eaab9919dfcb80fd4829d5",
+  "implementation_sha256": "b7a026851f9fa54571ad7b0e1673b4b81916f650fc9b98c72439b6c3d1d866ba",
+  "tests_sha256": "0026d3a16d40eec9d67a3289073271befc8422bf7c49c8bb2143d6790542c7ca",
   "causal_ordering": {
     "prediction_time": "one minute after the completed reclaim bar opens",
     "opening_range": "first 15 completed M1 bars",
@@ -47,6 +47,9 @@
     "missing entry or outcome bars never become wins",
     "bars after the frozen exit window cannot change a resolved outcome",
     "expired entries and contract mismatches are explicit"
+  ],
+  "corrections": [
+    "Milestone 2 added a necessary-condition prefilter to session reconstruction so flat minutes are not repeatedly revalidated. The definitive opportunities_at detector is unchanged, and a parameterized regression test proves optimized reconstruction exactly matches exhaustive minute-by-minute detection for gap-reclaim, opening-low-sweep-reclaim, and no-signal sessions."
   ],
   "decision": {
     "register_candidate": false,
