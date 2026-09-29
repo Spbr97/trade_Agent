@@ -210,14 +210,18 @@ def test_tracked_osr_feature_evidence_matches_sources():
     root = Path(__file__).resolve().parents[1]
     evidence = json.loads((root / "docs/evidence/osr-features.json").read_text(encoding="utf-8"))
 
-    assert evidence["status"] == "feature_and_dataset_assembly_implemented_real_run_pending"
+    assert evidence["status"] == "real_development_dataset_frozen_not_evaluated"
     assert evidence["milestone"] == 2
     assert evidence["feature_registry_implemented"] is True
-    assert evidence["real_run_completed"] is False
+    assert evidence["feature_count"] == 30
+    assert evidence["real_run_completed"] is True
     assert evidence["algorithm_evaluated"] is False
     assert evidence["baseline_improved"] is False
     assert evidence["eligible_for_live"] is False
     assert evidence["strategy_contract_sha256"] == DEFAULT_OSR_CONTRACT.sha256
     assert evidence["feature_implementation_sha256"] == digest(Path(osr_features.__file__))
     assert evidence["feature_tests_sha256"] == digest(root / "tests_lab/test_osr_features.py")
+    assert evidence["real_run"]["id"] == "2ece3a469de84a3aad74f8afa9192f59"
+    assert evidence["real_run"]["null_cells"] == 0
+    assert evidence["real_run"]["duplicate_opportunity_geometry_rows"] == 0
     assert evidence["decision"]["change_live_behavior"] is False

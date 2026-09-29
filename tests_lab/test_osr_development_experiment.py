@@ -209,9 +209,16 @@ def test_tracked_osr_dataset_assembly_evidence_matches_sources():
     evidence = json.loads((root / "docs/evidence/osr-features.json").read_text(encoding="utf-8"))
 
     assert evidence["development_dataset_assembly_implemented"] is True
-    assert evidence["real_run_completed"] is False
+    assert evidence["real_run_completed"] is True
     assert evidence["dataset_implementation_sha256"] == digest(Path(mod.__file__))
     assert evidence["dataset_tests_sha256"] == digest(
         root / "tests_lab/test_osr_development_experiment.py"
     )
+    assert evidence["real_run"]["included_code_sessions"] == 5999
+    assert evidence["real_run"]["opportunities_found"] == 2697
+    assert evidence["real_run"]["resolved_rows"] == 7303
+    assert evidence["real_run"]["excluded_events"] == 788
+    assert evidence["real_run"]["raw_label_rate"] == 0.21415856497329863
+    assert evidence["real_run"]["raw_mean_net_r"] < 0.0
+    assert evidence["algorithm_evaluated"] is False
     assert evidence["decision"]["change_canonical_baseline"] is False
