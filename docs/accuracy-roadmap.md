@@ -350,8 +350,13 @@ fresh evidence; missed targets remain visible.
   availability/economics gates and evidence classes are frozen in Milestone 0. This is
   a protocol, not a performance result; all previously inspected history remains
   development-only evidence.
-- [ ] Build OSR Milestone 1's causal event and conservative outcome engine before
-  fitting or evaluating any selector.
+- [x] Build OSR Milestone 1's causal event and conservative outcome engine. Both frozen
+  failed-auction modes now require completed observations in order; future bars cannot
+  change a decision; later fills, chase, gaps, target/stop ambiguity, deadlines, costs,
+  and missing data resolve conservatively. Eleven focused tests pass. This is engine
+  evidence only and does not improve the baseline.
+- [ ] Build OSR Milestone 2's 30-feature causal layer and audited development dataset
+  before fitting or evaluating any selector.
 
 For each completed item, attach its artifact/run identifier, date, sample size and
 pass/fail result. Update this checklist at checkpoints. The 70–80% objective remains

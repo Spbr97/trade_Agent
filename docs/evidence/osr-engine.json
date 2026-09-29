@@ -1,0 +1,58 @@
+{
+  "version": "osr-milestone-1-engine-v1",
+  "status": "causal_engine_implemented_not_evaluated",
+  "milestone": 1,
+  "eligible_for_live": false,
+  "baseline_improved": false,
+  "algorithm_implemented": false,
+  "algorithm_evaluated": false,
+  "opportunity_engine_implemented": true,
+  "outcome_engine_implemented": true,
+  "selector_implemented": false,
+  "real_dataset_assembled": false,
+  "entry_modes": [
+    "gap_down_reclaim",
+    "opening_low_sweep_reclaim"
+  ],
+  "strategy_contract_sha256": "5468a1b5ae8e0a325e561b4ff2c4e3d5117a425310ea51470d0e3dadbbde8e43",
+  "event_contract_sha256": "0e2cd4c8aa7d1e5699a09bf933d407baf91cc180ed6b5c2d11f851b098a8dd51",
+  "implementation_sha256": "49119eb82ee8bf645be10449922bf948326ebdddf1bdd2dd221084a89eb3fb72",
+  "tests_sha256": "62afb4c5f8ed635591a429dad6330558e7449eee55eaab9919dfcb80fd4829d5",
+  "causal_ordering": {
+    "prediction_time": "one minute after the completed reclaim bar opens",
+    "opening_range": "first 15 completed M1 bars",
+    "opening_low_sweep": "must occur after the completed opening range and before a later reclaim bar",
+    "entry_window_minutes": 2,
+    "one_opportunity_per_mode_per_session": true,
+    "future_bars_ignored": true
+  },
+  "execution_policy": {
+    "maximum_chase_pct": 0.001,
+    "same_bar_ambiguity": "adverse_stop_first",
+    "gap_through_target": "capped_at_target_and_debited_slippage",
+    "gap_through_stop": "filled_at_adverse_open_and_debited_slippage",
+    "target_requires_positive_net_pnl": true,
+    "missing_entry_or_outcome_bars": "unresolved_never_success",
+    "cost_model": "existing_market_cost_model"
+  },
+  "verified_behaviors": [
+    "gap-down reclaim uses explicit prior completed daily context",
+    "opening-low reclaim requires completed range then sweep then later reclaim",
+    "future bar mutations cannot change an already-issued opportunity",
+    "session reconstruction retains only the first event per mode",
+    "invalid daily context and incomplete M1 sequences fail closed",
+    "fills above the chase limit are unfilled",
+    "same-bar target and stop touches are losses",
+    "a cost-negative target touch is not strict success",
+    "missing entry or outcome bars never become wins",
+    "bars after the frozen exit window cannot change a resolved outcome",
+    "expired entries and contract mismatches are explicit"
+  ],
+  "decision": {
+    "register_candidate": false,
+    "change_canonical_baseline": false,
+    "change_live_behavior": false,
+    "reason": "Milestone 1 implements and tests causal opportunity and outcome mechanics only. No real OSR dataset, selector, accuracy result, or after-cost aggregate exists yet."
+  },
+  "next_step": "implement_30_feature_layer_and_assemble_audited_development_population"
+}
