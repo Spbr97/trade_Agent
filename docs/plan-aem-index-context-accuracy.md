@@ -75,10 +75,17 @@ candidate membership label may enter a feature.
 - [x] Freeze the three-index/120-session plan and source fingerprints.
 - [x] Collect 134,987/135,000 bars in 27 bounded, preflight-guarded requests.
 - [x] Repeat the incomplete window and preserve the identical 13-bar source gap.
-- [ ] Build the causal as-of join to every frozen decision/opportunity.
-- [ ] Prove timestamp alignment, completed-bar availability, session boundaries, and
+- [x] Build the causal as-of join to every frozen decision/opportunity. Real run
+  `b66ac4b126c54374a9fd8cb2ff846cfb` joined 1,397/1,397 decisions with zero exclusions.
+- [x] Prove timestamp alignment, completed-bar availability, session boundaries, and
   fail-closed missingness with focused tests.
-- [ ] Publish included/excluded decision counts and hash the joined artifact.
+- [x] Publish included/excluded decision counts and hash the joined feature artifact.
+  Outcome columns are absent; 58 focused tests pass.
+
+Integrity outcome: causal price returns are ready for the mechanism check. All-index
+VWAP is available for only 16 decisions because index volume is incomplete, so VWAP
+is excluded from version 1 rather than computed from partial volume. Fifteen-minute
+features are available for 755 decisions and must fail closed before 09:30.
 
 ### Checkpoint 2 — mechanism before model
 

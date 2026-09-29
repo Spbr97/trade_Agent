@@ -72,6 +72,8 @@ def main() -> None:
     context = sub.add_parser("aem-context-collect")
     context.add_argument("--dataset-id", required=True)
     context.add_argument("--max-requests", type=int, default=0)
+    context_integrity = sub.add_parser("aem-context-integrity")
+    context_integrity.add_argument("--dataset-id", required=True)
     pilot = sub.add_parser("aem-universe-plan")
     pilot.add_argument("--dataset-id", required=True)
     pilot.add_argument("--shortlist-size", type=int, default=50)
@@ -545,6 +547,30 @@ def main() -> None:
             )
         )
         if report["status"].startswith("blocked_"):
+            raise SystemExit(1)
+        return
+    if args.command == "aem-context-integrity":
+        from tradedesk_lab.aem_context_integrity import run_context_integrity
+
+        report = run_context_integrity(dataset_id=args.dataset_id)
+        print(
+            json.dumps(
+                {
+                    key: report[key]
+                    for key in (
+                        "id",
+                        "status",
+                        "milestone",
+                        "dataset_id",
+                        "population",
+                        "feature_availability",
+                        "decision",
+                    )
+                },
+                indent=2,
+            )
+        )
+        if report["population"]["excluded"]:
             raise SystemExit(1)
         return
     if args.command == "aem-universe-plan":
