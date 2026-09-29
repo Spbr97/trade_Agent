@@ -1061,7 +1061,7 @@ function reviewCard(item) {
     ${detailsBlock}
   </div>`;
 }
-async function loadResearch() {
+async function loadReplacementResearch() {
   const r = await fetch('/api/review/replacement-search');
   const markets = r.ok ? await r.json() : [];
   if (!markets.length) return;
@@ -1081,7 +1081,7 @@ async function loadResearch() {
   }).join('');
 }
 async function loadReview() {
-  loadResearch();
+  loadReplacementResearch();
   const r = await fetch('/api/review');
   const items = r.ok ? await r.json() : [];
   const pending = items.filter(i => i.status === 'pending');
