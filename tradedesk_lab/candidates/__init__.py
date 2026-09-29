@@ -35,15 +35,16 @@ def candidate_space(
     failing_setups: list[str], setup_params: dict[str, dict[str, Any]]
 ) -> list[Any]:
     """Everything the replacement search may test for one market, in priority order:
-    improvement variants of the setups currently failing there first (fix what's broken
-    before looking elsewhere), then the hand-written library, then every new-method rule.
-    `setup_params` is config/setups.yaml's per-setup blocks at search time."""
+    new-method rules first (research-backed ones leading, per `rules.TRIGGERS` order), then
+    the hand-written library, then improvement variants of the failing setups last - a new
+    filter or exit on a pattern that already loses to random entry timing is the least
+    likely place to find an edge. `setup_params` is config/setups.yaml's per-setup blocks
+    at search time."""
 
-    space: list[Any] = []
+    space: list[Any] = list(rule_candidates())
+    space.extend(CANDIDATE_LIBRARY)
     for setup in failing_setups:
         space.extend(improvement_candidates(setup, setup_params.get(setup, {})))
-    space.extend(CANDIDATE_LIBRARY)
-    space.extend(rule_candidates())
     return space
 
 

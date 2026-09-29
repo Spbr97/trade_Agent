@@ -29,7 +29,38 @@ WARMUP_BARS = 210
 TAIL_BARS = 300  # >= the longest lookback below (rolling 120 over a 20-bar stdev + shifts)
 
 # name -> (family, expression). Family decides which exit styles it is paired with.
+# Dict order is search priority. The first block holds the rules with published,
+# out-of-sample evidence behind them (sources in EVIDENCE); they are tested before the
+# textbook rules that follow, whose published record is weaker or has decayed.
 TRIGGERS: dict[str, tuple[str, str]] = {
+    "high52_break": (
+        "momentum",
+        'df["close"] > df["high"].shift(1).rolling(252, min_periods=252).max()',
+    ),
+    "tsmom252": (
+        "momentum",
+        '(df["close"] > df["close"].shift(252)) & (df["close"].shift(1) <= df["close"].shift(253))',
+    ),
+    "tsmom20": (
+        "momentum",
+        '(df["close"] > df["close"].shift(20)) & (df["close"].shift(1) <= df["close"].shift(21))',
+    ),
+    "crsi2_dip": ("reversion", '(df["rsi2"] + df["rsi2"].shift(1)) < 35'),
+    "double7_dip": (
+        "reversion",
+        'df["close"] <= df["close"].rolling(7, min_periods=7).min()',
+    ),
+    "ibs_low": (
+        "reversion",
+        '((df["close"] - df["low"]) / (df["high"] - df["low"]))'
+        '.where(df["high"] > df["low"]) < 0.2',
+    ),
+    "bullish_engulfing": (
+        "reversion",
+        '(df["close"] > df["open"]) & (df["close"].shift(1) < df["open"].shift(1)) '
+        '& (df["open"] <= df["close"].shift(1)) & (df["close"] >= df["open"].shift(1)) '
+        '& (df["close"].shift(1) < df["close"].shift(6))',
+    ),
     "donchian20": (
         "momentum",
         'df["close"] > df["high"].shift(1).rolling(20, min_periods=20).max()',
@@ -92,6 +123,39 @@ FILTERS: dict[str, str] = {
     "rsi_momentum": 'df["rsi14"] > 55',
     "volume_confirm": 'df["vol_ratio50"] >= 1.5',
     "calm_vol": 'df["atr_pct_rank"] < 50',
+    "near_high52": 'df["close"] >= 0.9 * df["high"].rolling(252, min_periods=252).max()',
+    "tsmom_up": 'df["close"] > df["close"].shift(252)',
+}
+
+# Where each research-backed rule comes from, and what that source actually found. A
+# published result is a reason to test a rule first, never a reason to relax the gauntlet
+# for it: most of these were measured on US equities/futures, before costs like CoinDCX's
+# or India's, and several have weakened since publication.
+EVIDENCE: dict[str, str] = {
+    "high52_break": "George & Hwang (2004, J. Finance): nearness to the 52-week high "
+    "predicts returns better than past-return momentum and does not reverse long-term.",
+    "near_high52": "George & Hwang (2004, J. Finance), as a trend filter.",
+    "tsmom252": "Moskowitz, Ooi & Pedersen (2012, JFE) 'Time Series Momentum': 12-month "
+    "own-return sign persists across 58 futures; Hurst, Ooi & Pedersen (2017) extend to a "
+    "century of data.",
+    "tsmom_up": "Moskowitz, Ooi & Pedersen (2012), as a trend filter; cf. Faber (2007) "
+    "10-month moving-average filter.",
+    "tsmom20": "Liu & Tsyvinski (2021, RFS) 'Risks and Returns of Cryptocurrency': "
+    "1-4 week time-series momentum is the strongest predictor found in crypto returns.",
+    "crsi2_dip": "Connors & Alvarez (2009) 'Short Term Trading Strategies That Work': "
+    "cumulative 2-day RSI(2) < 35 above the 200-day average (practitioner, US equities).",
+    "double7_dip": "Connors & Alvarez (2009) 'Double 7s': close at a 7-day low while "
+    "above the 200-day average (practitioner, US index ETFs).",
+    "ibs_low": "Pagonidis (2014, NAAIM) 'The IBS Effect': close near the day's low "
+    "(internal bar strength < 0.2) precedes next-day gains in equity-index ETFs.",
+    "bullish_engulfing": "Included as a control: Marshall, Young & Rose (2006, JBF) and "
+    "Horton (2009) find candlestick patterns add no value on US stocks. Expected to fail.",
+    "rsi2_dip": "Connors & Alvarez (2009). This project's own research: beats random by "
+    "+0.067-0.077R gross but not net of costs at policy sizing (see CLAUDE.md).",
+    "donchian20": "Brock, Lakonishok & LeBaron (1992, J. Finance) trading-range breakout; "
+    "Sullivan, Timmermann & White (1999) show the edge vanished after 1986 once "
+    "data-snooping is accounted for.",
+    "golden_cross": "Brock, Lakonishok & LeBaron (1992); same data-snooping caveat.",
 }
 
 

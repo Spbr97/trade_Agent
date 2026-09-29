@@ -18,11 +18,11 @@ from tradedesk.setups import REGISTRY
 from tradedesk.setups.base import SetupContext
 
 
-def _frame(n: int = 700, seed: int = 3) -> pd.DataFrame:
+def _frame(n: int = 700, seed: int = 3, regime: int = 90) -> pd.DataFrame:
     rng = np.random.default_rng(seed)
     idx = pd.bdate_range("2021-01-04", periods=n, tz="Asia/Kolkata")
     # Regime-switching drift so crosses, breakouts, squeezes and dips all actually occur.
-    drift = np.where((np.arange(n) // 90) % 2 == 0, 0.002, -0.0015)
+    drift = np.where((np.arange(n) // regime) % 2 == 0, 0.002, -0.0015)
     close = 100 * np.exp(np.cumsum(drift + rng.normal(0, 0.018, n)))
     high = close * (1 + np.abs(rng.normal(0.008, 0.004, n)))
     low = close * (1 - np.abs(rng.normal(0.008, 0.004, n)))
@@ -56,9 +56,11 @@ def test_no_look_ahead_and_tail_equals_full(name: str) -> None:
 
 
 def test_every_trigger_fires_at_least_once_on_realistic_data() -> None:
-    # A trigger that can never fire would silently waste search budget.
+    # A trigger that can never fire would silently waste search budget. The long-regime
+    # frame has year-long bear phases, so 12-month momentum can turn negative and back.
+    long_regime = _frame(n=1200, regime=300)
     for name, fn in R._TRIGGER_FNS.items():
-        assert R.evaluate(fn, FULL).any(), name
+        assert R.evaluate(fn, FULL).any() or R.evaluate(fn, long_regime).any(), name
 
 
 def test_prepared_column_and_on_the_fly_arm_agree() -> None:
@@ -87,6 +89,8 @@ def _exec_production(source: str) -> dict:
     [
         R.RuleCandidate("donchian20", "any", "trend_trail"),
         R.RuleCandidate("rsi2_dip", "above_ema200", "revert_2r"),
+        R.RuleCandidate("ibs_low", "any", "revert_1r"),
+        R.RuleCandidate("high52_break", "any", "trend_trail"),
         R.ImprovedSetup("nr7_breakout", "any", "target_3r", base_params={"enabled": True}),
     ],
     ids=lambda c: c.name,
@@ -128,15 +132,25 @@ def test_improvement_variant_reuses_the_production_pattern_and_the_cache_is_tran
             assert cached_again.trigger == direct.trigger and cached_again.stop == direct.stop
 
 
-def test_candidate_space_puts_improvements_of_failing_setups_first() -> None:
+def test_candidate_space_puts_research_backed_rules_first_and_improvements_last() -> None:
     space = candidate_space(["base_breakout"], {"base_breakout": {"enabled": True}})
     names = [c.name for c in space]
-    assert names[0].startswith("imp_base_breakout_")
+    assert names[0].startswith("r_high52_break_")
     assert len(names) == len(set(names))  # every name unique - the search's memory key
     n_improve = len(R.FILTERS) * 2
-    assert all(n.startswith("imp_") for n in names[:n_improve])
+    assert all(n.startswith("imp_base_breakout_") for n in names[-n_improve:])
     assert "mean_reversion_v1" in names
     assert any(n.startswith("r_donchian55_") for n in names)
+    research = [t for t in R.TRIGGERS if t in R.EVIDENCE][:6]
+    first_textbook = next(i for i, n in enumerate(names) if n.startswith("r_donchian20_"))
+    assert all(
+        max(i for i, n in enumerate(names) if n.startswith(f"r_{t}_")) < first_textbook
+        for t in research
+    )
     # Names must survive apply()'s enum/class/file-name derivation.
     for name in names:
         assert name.isidentifier() and name == name.lower()
+
+
+def test_every_evidence_entry_names_a_real_trigger_or_filter() -> None:
+    assert set(R.EVIDENCE) <= set(R.TRIGGERS) | set(R.FILTERS)
