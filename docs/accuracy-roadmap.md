@@ -366,10 +366,14 @@ fresh evidence; missed targets remain visible.
   raw after-cost mean net R is -0.529; every unfiltered geometry is negative. All 788
   exclusions are retained. This is consumed development evidence, not selector
   accuracy, and it does not improve the 21.50% canonical baseline.
-- [ ] Run the frozen 12-specification OSR chronological walk-forward selector race.
-  Reject every candidate that misses even one accuracy, confidence, availability,
-  economics, matched-random, or concentration gate; do not tune the event contract or
-  geometries after inspecting this population.
+- [x] Run the frozen 12-specification OSR chronological walk-forward selector race on
+  a corrected decision-time population that retains all 8,091 calls, including 720
+  later-unfilled and 68 unresolved outcomes. Both selector families issued zero calls
+  at the frozen 50% probability threshold; the best unfiltered OOS slice was 25.71%
+  strict success (22.16% Wilson lower bound) with -0.433R mean net R. No specification
+  cleared the gates, so OSR is rejected without retuning and AEM v1 remains the 21.50%
+  canonical baseline. See the
+  [OSR Milestone-3 selector-race checkpoint](osr-selector-race-checkpoint.md).
 
 For each completed item, attach its artifact/run identifier, date, sample size and
 pass/fail result. Update this checklist at checkpoints. The 70–80% objective remains
