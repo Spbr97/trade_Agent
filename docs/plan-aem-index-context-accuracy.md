@@ -2,8 +2,7 @@
 
 Frozen: 30 September 2026
 
-Status: **mechanism protocol frozen; real outcome evaluation not yet run;
-no accuracy improvement claimed**
+Status: **mechanism absent; version-1 track stopped; no baseline improvement claimed**
 
 ## Objective
 
@@ -92,12 +91,12 @@ features are available for 755 decisions and must fail closed before 09:30.
 - [x] Freeze the four simple price-alignment rules below before reading their outcome
   results. Relative-strength rules are deferred because the integrity artifact does
   not yet contain causally joined stock returns.
-- [ ] Compare each rule with its inverse, time-shift/placebo, and matched label-shuffle
+- [x] Compare each rule with its inverse, time-shift/placebo, and matched label-shuffle
   controls on the same candidate population.
-- [ ] Require consistent direction across chronological folds, a positive effect on
+- [x] Require consistent direction across chronological folds, a positive effect on
   strict success and mean net R, and an advantage over both placebos and shuffled
   controls.
-- [ ] Stop the track if the mechanism is absent, reverses by fold, or is economically
+- [x] Stop the track if the mechanism is absent, reverses by fold, or is economically
   too small after costs. Do not run a selector race after a failed mechanism gate.
 
 The version-1 protocol is fully specified as follows:
@@ -127,7 +126,18 @@ If multiple rules pass, choose by Wilson lower bound, then mean net R, resolved 
 and finally the registered rule order. Passing only permits checkpoint 3; it does not
 change the canonical baseline, live behavior, or dashboard.
 
+Real run `e3857bf8400c496d9af081e54f8346a5` tested the committed protocol
+once. All four rules increased pooled strict accuracy, but none passed. The highest
+raw rate was 72/278 (**25.90%**) for all-three-positive over three minutes, with a
+still-negative **-0.19418R** mean net R; it also reversed in the middle fold and
+missed both shuffle gates. The most statistically credible accuracy result was the
+five-minute majority rule at 103/410 (**25.12%**, accuracy shuffle p=0.0195), but its
+mean net R remained **-0.20519R** and failed the net-R shuffle gate (p=0.0817).
+Therefore checkpoint 3 is not authorized for this context version.
+
 ### Checkpoint 3 — bounded selector diagnostic
+
+Status: **not authorized because checkpoint 2 failed**.
 
 - [ ] Only after the mechanism passes, compare the best frozen simple rule with one
   regularized logistic control on identical chronological folds.
@@ -184,7 +194,7 @@ separate, evidence-backed checkpoint explicitly authorizes integration.
 
 ## Next executable task
 
-Freeze and commit the exact checkpoint-2 mechanism protocol without joining outcomes.
-Only from that committed state, open the real outcomes once and run the four rules and
-their frozen controls. Stop before a selector race unless at least one rule passes
-every registered gate.
+Close version 1 without tuning these four rules or running the selector. Return to the
+accuracy roadmap and preregister a materially different causal information source;
+do not treat the 25.90% consumed-development subset as a new baseline. The canonical
+baseline remains 149/693 (**21.50%**) and -0.27471R.
