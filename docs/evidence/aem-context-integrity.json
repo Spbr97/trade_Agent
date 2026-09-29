@@ -1,0 +1,72 @@
+{
+  "version": "aem-index-context-integrity-v1",
+  "created_at": "2026-09-30T02:33:43.3465263+05:30",
+  "run_id": "b66ac4b126c54374a9fd8cb2ff846cfb",
+  "status": "integrity_passed",
+  "dataset_id": "ec539cf66bea4c18ba994506f85a52d6",
+  "join_version": "aem-index-context-join-v1",
+  "report_sha256": "e225222440da2e84558fb6627d83e6497442817164673c01998ebaa423765b1b",
+  "context_features_sha256": "3306a54c00fa707ed51c86413f010d02540301d38d048a95ae04457de7874871",
+  "source_fingerprints": {
+    "manifest_sha256": "2433d79af86b6a18b32a013fe57de5957be78b04cbeefd18c29bdcde259d3b07",
+    "events_csv_sha256": "008b5c9dbbaa5d57c91fc382c1bded34e4cff98e4bb97d71570bbaccc6d27aeb",
+    "context_plan_sha256": "03015d2dc834fbb023b900253afeb1812e55895ff2708af4650582a929766dff",
+    "context_database_sha256": "abc309ded1cb1ce817015a491422686e4624a00c91ab9d25cbb38e806c06c224",
+    "implementation_sha256": "97c2fa4e2871e4e876c86731bf0862b159d05d8ab0c9c03237a16a6d44214153",
+    "test_sha256": "6875c596f5ced9e0ec5e2b7001dd60f050e9f3487c72abf6f65778110a8703dd"
+  },
+  "eligible_for_live": false,
+  "baseline_improved": false,
+  "population": {
+    "events_total": 1397,
+    "trades": 815,
+    "no_trades": 582,
+    "joined": 1397,
+    "excluded": 0,
+    "outcome_columns_present": []
+  },
+  "feature_availability": {
+    "return_1m_all_indices": 1397,
+    "return_3m_all_indices": 1397,
+    "return_5m_all_indices": 1397,
+    "return_15m_all_indices": 755,
+    "vwap_nifty50": 919,
+    "vwap_bank_nifty": 908,
+    "vwap_nifty_financial": 16,
+    "vwap_all_indices": 16
+  },
+  "source_gap": {
+    "scrip_code": "NSE_40000100",
+    "session": "2026-07-07",
+    "missing_bars": 13,
+    "first_missing_ist": "15:17",
+    "last_missing_ist": "15:29",
+    "impacted_events": 0
+  },
+  "causality": {
+    "rule": "bar_open + one minute <= decision available_at",
+    "latest_usable_bar": "decision available_at minus one minute",
+    "future_bar_change_tested": true,
+    "membership_join_used": false,
+    "outcome_columns_present": []
+  },
+  "verification": {
+    "focused_tests_passed": 58,
+    "ruff_passed": true
+  },
+  "decision": {
+    "price_context_ready_for_mechanism_check": true,
+    "vwap_context_ready": false,
+    "run_selector": false,
+    "change_canonical_baseline": false,
+    "change_live_behavior": false,
+    "reason": "The causal price join is complete, but predictive value has not been tested and all-index VWAP is available for only 16 decisions."
+  },
+  "limitations": [
+    "All 120 sessions are consumed development evidence.",
+    "A causal join is data integrity, not evidence of predictive improvement.",
+    "Fifteen-minute features are unavailable before 09:30 and must fail closed.",
+    "VWAP context is rejected from the next mechanism test because volume completeness is inadequate.",
+    "No current sector or index membership is joined to stocks."
+  ]
+}

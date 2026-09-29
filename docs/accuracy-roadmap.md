@@ -1,7 +1,7 @@
 # Accuracy-first checkbox roadmap
 
 Updated: 30 September 2026. Current checkpoint branch:
-`codex/aem-context-m1-collection`.
+`codex/aem-context-m2-integrity`.
 
 Primary objective: maintain and improve the reliability of executable NSE calls,
 working toward 70–80% successful calls within sessions. Prioritize anticipatory
@@ -41,6 +41,10 @@ dated records. Proposed future production changes in those documents remain defe
   bars (99.990%)** and **359/360 complete index-sessions** in 27 requests. The single
   Nifty Financial gap on 7 July 2026 from 15:17-15:29 repeated identically and is
   preserved; this is data readiness, not an accuracy improvement.
+- [x] Complete the causal context integrity join: **1,397/1,397 frozen decisions**
+  joined to completed price bars with zero exclusions and zero outcome columns. All
+  decisions have 1/3/5-minute returns; 755 have 15-minute returns. Only 16 have
+  complete all-index VWAP, so VWAP is rejected from the next mechanism test.
 - [x] Replay the unchanged AEM contract on the frozen 50-stock cohort: **149/693
   strict wins (21.50%)**, **−0.27471R per resolved fill**. The baseline fails.
 - [x] Run the broader matched-random gate: observed timing is **−0.03949R per
@@ -169,9 +173,9 @@ in every future session cannot be guaranteed by a model or by this roadmap.
   contract and re-establish its baseline.
 - [x] Freeze the three-index, 120-session context acquisition plan and implement a
   resumable isolated collector with preflight, request caps and fail-closed storage.
-- [ ] Complete the context integrity join. Collection reached **134,987/135,000 bars
-  and 359/360 complete index-sessions**; one repeated 13-minute source gap must fail
-  closed at affected decision times, so full integrity is not yet established.
+- [x] Complete the context integrity join. All **1,397/1,397 decisions** joined with
+  no exclusions; the repeated 15:17-15:29 source gap affects zero decisions because
+  the frozen decision window ends at 11:00. Price context is ready; VWAP is not.
 - [x] Preregister a narrower context hypothesis that cannot leak current membership:
   use all three index series uniformly for every candidate and do not join stocks to
   present-day sector/index membership. Point-in-time membership remains future work.
@@ -332,9 +336,10 @@ fresh evidence; missed targets remain visible.
   bounded trial set for later unconsumed sessions or prospective shadow evidence.
   Collection now covers 359/360 index-sessions (134,987/135,000 bars); the sole
   repeated source gap is frozen. The leakage-safe index-only hypothesis is registered
-  in the [AEM index-context accuracy plan](plan-aem-index-context-accuracy.md). Next is
-  the causal join/integrity report, followed by a mechanism/placebo stop gate before
-  any model race.
+  in the [AEM index-context accuracy plan](plan-aem-index-context-accuracy.md). The
+  [causal join integrity checkpoint](aem-index-context-integrity-checkpoint.md) passed
+  for all 1,397 decisions. Next is the price-only mechanism/placebo stop gate before
+  any model race; VWAP is excluded because only 16 decisions have complete volume.
 - [x] Freeze the AEM v2 custom-algorithm contract, feature registry, entry modes,
   geometry grid, trial budget and evidence gates with immutable fingerprints.
 - [x] Build Milestone 1: the causal event and outcome engine with conservative fills,
