@@ -1,19 +1,19 @@
 {
-  "version": "osr-milestone-2-features-and-assembly-v1",
-  "status": "feature_and_dataset_assembly_implemented_real_run_pending",
+  "version": "osr-milestone-2-real-development-dataset-v1",
+  "status": "real_development_dataset_frozen_not_evaluated",
   "milestone": 2,
   "eligible_for_live": false,
   "baseline_improved": false,
   "algorithm_evaluated": false,
   "feature_registry_implemented": true,
   "development_dataset_assembly_implemented": true,
-  "real_run_completed": false,
+  "real_run_completed": true,
   "feature_count": 30,
   "strategy_contract_sha256": "5468a1b5ae8e0a325e561b4ff2c4e3d5117a425310ea51470d0e3dadbbde8e43",
   "feature_implementation_sha256": "54c1c95be00a670023a1c2c0f37be96bb2e28ed1a1e3231be3d52d64e85bd4e6",
-  "feature_tests_sha256": "6da7f9bc880c2788f24dabe92cb8fa77dd2ba40b91d56a985c709bfe0c5855ad",
+  "feature_tests_sha256": "6ff8397d39f4dc68efd8e7aa0a7ef6335b33e87a66a31e255fa90c383f9eac5c",
   "dataset_implementation_sha256": "2d218b78ac8ab8d08e33b765de8ed18e8a4f300198e745abadae38a44adc6b1c",
-  "dataset_tests_sha256": "f577de4cb4c2b5a827ee4708c6160e3e1542a166aa549bdd46855138138abef3",
+  "dataset_tests_sha256": "a62cf3e5beb75d59a44c08b55c0355fd80c9808ac20798a2f5281d5b05564011",
   "causal_guards": [
     "candidate and peer M1 bars are truncated before the decision timestamp",
     "today's incomplete daily candle is forbidden",
@@ -65,11 +65,78 @@
     "all_exclusions_retained": true,
     "empty_dataset_schema_stable": true
   },
+  "real_run": {
+    "id": "2ece3a469de84a3aad74f8afa9192f59",
+    "created_at": "2026-09-29T11:07:21.663307+00:00",
+    "source_dataset_id": "ec539cf66bea4c18ba994506f85a52d6",
+    "source_universe_audit_id": "154c62bc439347a2ae68c3e1bb7d915d",
+    "source_contract_sha256": "0d55608af3d55441e5ea64725efb394473c44251df0c3a4e458459b4b9a5aa08",
+    "source_sha256": "b07440d8a07686fe3b7d0f0071119c81ce5f04255a9428dc61470cfda85f83cf",
+    "report_sha256": "0b57be10bfeba360b0de23af1bba68c18eb82635f23854459618fc9af04df6ad",
+    "events_sha256": "e52dd1832cc17e1a4314bbfd63bff8a247f4b29ec5507fe88741c5748749ad28",
+    "excluded_events_sha256": "3aa6ac20f3e10db86363bf9e0f1b634f13743038deebf4c2e60c4b9a5858c2ef",
+    "included_code_sessions": 5999,
+    "opportunities_found": 2697,
+    "resolved_unique_opportunities": 2441,
+    "resolved_rows": 7303,
+    "excluded_events": 788,
+    "unique_sessions": 120,
+    "unique_scrip_codes_with_resolved_rows": 49,
+    "session_min": "2026-03-25",
+    "session_max": "2026-09-18",
+    "column_count": 39,
+    "null_cells": 0,
+    "duplicate_opportunity_geometry_rows": 0,
+    "strict_successes": 1564,
+    "strict_failures": 5739,
+    "raw_label_rate": 0.21415856497329863,
+    "raw_mean_net_r": -0.5291943400197395,
+    "maximum_winning_symbol_share": 0.0370843989769821,
+    "mode_results": {
+      "gap_down_reclaim": {
+        "rows": 2263,
+        "strict_successes": 552,
+        "raw_label_rate": 0.24392399469730447,
+        "raw_mean_net_r": -0.48876017853400244
+      },
+      "opening_low_sweep_reclaim": {
+        "rows": 5040,
+        "strict_successes": 1012,
+        "raw_label_rate": 0.2007936507936508,
+        "raw_mean_net_r": -0.5473495994328791
+      }
+    },
+    "geometry_results": {
+      "reclaim_30_22_20": {
+        "rows": 2431,
+        "strict_successes": 520,
+        "raw_label_rate": 0.21390374331550802,
+        "raw_mean_net_r": -0.6690421515133899
+      },
+      "reclaim_40_28_35": {
+        "rows": 2431,
+        "strict_successes": 557,
+        "raw_label_rate": 0.22912381735911147,
+        "raw_mean_net_r": -0.5148712253625606
+      },
+      "reclaim_55_36_50": {
+        "rows": 2441,
+        "strict_successes": 487,
+        "raw_label_rate": 0.19950839819746005,
+        "raw_mean_net_r": -0.40418387791016913
+      }
+    },
+    "exclusion_reason_counts": {
+      "unfilled": 720,
+      "unresolved": 68
+    },
+    "interpretation": "This is the unselected opportunity-population prevalence on consumed historical development data, not selector accuracy. Every raw geometry has negative after-cost mean net R. No candidate is nominated."
+  },
   "decision": {
     "register_candidate": false,
     "change_canonical_baseline": false,
     "change_live_behavior": false,
-    "reason": "The causal feature and dataset-assembly code is implemented and tested, but the real OSR population has not been assembled and no selector or accuracy result exists."
+    "reason": "The real causal OSR development population is frozen and integrity-checked, but no selector, chronological walk-forward evaluation, stress replay, or independent validation has run. The raw 21.42% label prevalence and negative mean net R are not an accuracy improvement."
   },
-  "next_step": "run_and_freeze_real_5999_symbol_session_osr_development_dataset"
+  "next_step": "run_the_frozen_12_specification_chronological_walk_forward_selector_race_and_reject_every_candidate_that_misses_any_promotion_gate"
 }

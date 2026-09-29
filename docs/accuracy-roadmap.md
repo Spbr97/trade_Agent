@@ -358,10 +358,18 @@ fresh evidence; missed targets remain visible.
 - [x] Implement OSR Milestone 2A's 30-feature causal layer and audited development-
   dataset assembly. Future candidate/peer bars, current daily bars, candidate-included
   peer statistics, mismatched prior context, and undersized peer populations fail closed.
-  The full engine/feature/synthetic-dataset suite passes 28 cases. This is implementation
+  The full engine/feature/synthetic-dataset suite passes 34 cases. This is implementation
   evidence only and does not improve the baseline.
-- [ ] Run and freeze the real 5,999-symbol-session OSR development population, retaining
-  every exclusion and labeling all existing history as consumed development evidence.
+- [x] Run and freeze the real 5,999-symbol-session OSR development population. Run
+  `2ece3a469de84a3aad74f8afa9192f59` found 2,697 causal opportunities and 7,303
+  resolved geometry rows across 120 sessions. The raw label prevalence is 21.42% and
+  raw after-cost mean net R is -0.529; every unfiltered geometry is negative. All 788
+  exclusions are retained. This is consumed development evidence, not selector
+  accuracy, and it does not improve the 21.50% canonical baseline.
+- [ ] Run the frozen 12-specification OSR chronological walk-forward selector race.
+  Reject every candidate that misses even one accuracy, confidence, availability,
+  economics, matched-random, or concentration gate; do not tune the event contract or
+  geometries after inspecting this population.
 
 For each completed item, attach its artifact/run identifier, date, sample size and
 pass/fail result. Update this checklist at checkpoints. The 70–80% objective remains
