@@ -164,12 +164,22 @@ def test_a_fully_proven_setup_is_eligible_and_alertable() -> None:
     assert score.alertable and score.no_trade_reasons == ()
 
 
+def test_win_rate_is_not_a_default_gate_but_a_configured_floor_still_rejects() -> None:
+    # Win rate is exit geometry, not skill: a 40% winner with real net edge over random is
+    # eligible by default, while an explicitly configured floor still rejects.
+    kw = dict(trades=600, oos_trades=150, expectancy_r=0.40, random_baseline_r=0.10)
+    assert eligibility(win_rate=0.40, **kw)[0]  # type: ignore[arg-type]
+    ok, reasons = eligibility(
+        win_rate=0.55, policy=EligibilityPolicy(min_win_rate=0.80), **kw  # type: ignore[arg-type]
+    )
+    assert not ok and any("win rate" in r for r in reasons)
+
+
 @pytest.mark.parametrize(
     ("override", "expect"),
     [
         ({"trades": 100}, "resolved trades"),
         ({"oos_trades": 10}, "out-of-sample"),
-        ({"win_rate": 0.55}, "win rate"),
         ({"expectancy_r": -0.10}, "expectancy"),
         ({"random_baseline_r": None}, "random-timing baseline"),
     ],

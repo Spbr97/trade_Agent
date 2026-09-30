@@ -23,7 +23,9 @@
 # of +2R. Worth +0.114R/trade. It does not make these setups profitable (nothing does - see
 # the header above); it stops giving away 0.11R on every trade that is taken.
 setups:
+  # RETIRED on crypto 2026-09-30 by self-review item crypto:2026-09-29T00:20:21.604586+05:30: sustained failure; still enabled elsewhere and shadow-tracked on crypto (see docs/self-review-applied-log.md)
   base_breakout:
+    retired_markets: [crypto]
     enabled: true
     base_len_sessions: {min: 5, max: 25}
     close_within_pct_of_base_high: 0.03
@@ -32,14 +34,20 @@ setups:
     partial_at_r: 2.0
     partial_fraction: 1.0
     trail: ema10_close
+  # RETIRED on crypto 2026-09-30 by self-review item crypto:2026-09-29T00:20:22.555511+05:30: sustained failure; still enabled elsewhere and shadow-tracked on crypto (see docs/self-review-applied-log.md)
+  # RETIRED on nse 2026-09-30 by self-review item nse:2026-09-30T16:25:05.246791+05:30: sustained failure; still enabled elsewhere and shadow-tracked on nse (see docs/self-review-applied-log.md)
   trend_pullback:
+    retired_markets: [crypto, nse]
     enabled: true
     pullback_len_sessions: {min: 2, max: 5}
     rs_percentile_min: 75
     partial_at_r: 2.0
     partial_fraction: 1.0
     trail: ema10_close
+  # RETIRED on crypto 2026-09-30 by self-review item crypto:2026-09-29T00:20:22.236687+05:30: sustained failure; still enabled elsewhere and shadow-tracked on crypto (see docs/self-review-applied-log.md)
+  # RETIRED on nse 2026-09-30 by self-review item nse:2026-09-30T16:25:05.240258+05:30: sustained failure; still enabled elsewhere and shadow-tracked on nse (see docs/self-review-applied-log.md)
   nr7_breakout:
+    retired_markets: [crypto, nse]
     enabled: true
     within_pct_of_recent_high: 0.05
     partial_at_r: 2.0
@@ -47,6 +55,9 @@ setups:
     trail_atr_multiple: 2.0
 
 # Shared entry rules (PLAN.md §6.6)
+  r_donchian55_rsi_momentum_trend_trail:
+    enabled: true
+    markets: [crypto]
 entry:
   confirm_timeframe_minutes: 15
   chased_atr_multiple: 1.0
@@ -70,6 +81,9 @@ eligibility:
   min_score: 85            # SDD section 9: only A/A+ eligible for live consideration
   min_trades: 500          # SDD section 18 minimum evidence
   min_oos_trades: 100      # SDD section 18: out-of-sample, not just in-sample
-  min_win_rate: 0.80       # SDD section 23 target configuration
+  min_win_rate: 0.0        # was 0.80 (SDD 23). Lowered 2026-09-30 by user decision: win rate is set by exit
+                           # geometry (break-even = (1+costs)/(1+target R)), so 80% blocks every trend rule
+                           # while admitting small-target net-losers. The evidence bar is positive net
+                           # expectancy + beating random timing by must_beat_random_by_r, both unchanged.
   min_expectancy_r: 0.0    # must at least not lose money, after costs
   must_beat_random_by_r: 0.10
