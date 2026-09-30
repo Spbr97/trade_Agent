@@ -78,6 +78,10 @@ def plan_starts(
     return out
 
 
+INVALID_SCRIP = "invalid scrip"
+"""Lower-cased fragment of the API's HTTP 400 message for a code it does not know."""
+
+
 async def load_history(
     client: MarketDataClient,
     store: CandleStore,
@@ -109,20 +113,32 @@ async def load_history(
     summary = LoadSummary()
     sem = asyncio.Semaphore(concurrency)
 
+    async def attempt(batch_start: datetime, batch: list[str]) -> list[LoadResult]:
+        results = [LoadResult(c, batch_start, end) for c in batch]
+        try:
+            if batch_start >= end:
+                got: dict[str, list[Candle]] = {c: [] for c in batch}
+            else:
+                got = await client.candles_history(interval, batch, batch_start, end)
+            for r in results:
+                candles = got.get(r.scrip_code, [])
+                r.fetched = store.upsert_candles(candles)
+        except error_types as exc:
+            # One invalid code fails the whole batch of up to 5, which would starve its
+            # healthy neighbours of every update. Bisect to isolate the bad code(s); a
+            # lone code that still fails is genuinely invalid and keeps the error.
+            if len(batch) > 1 and INVALID_SCRIP in str(exc).lower():
+                mid = len(batch) // 2
+                return await attempt(batch_start, batch[:mid]) + await attempt(
+                    batch_start, batch[mid:]
+                )
+            for r in results:
+                r.error = str(exc)
+        return results
+
     async def run(batch_start: datetime, batch: list[str]) -> None:
         async with sem:
-            results = [LoadResult(c, batch_start, end) for c in batch]
-            try:
-                if batch_start >= end:
-                    got: dict[str, list[Candle]] = {c: [] for c in batch}
-                else:
-                    got = await client.candles_history(interval, batch, batch_start, end)
-                for r in results:
-                    candles = got.get(r.scrip_code, [])
-                    r.fetched = store.upsert_candles(candles)
-            except error_types as exc:
-                for r in results:
-                    r.error = str(exc)
+            results = await attempt(batch_start, batch)
             summary.results.extend(results)
             if progress:
                 for r in results:

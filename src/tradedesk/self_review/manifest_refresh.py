@@ -25,7 +25,6 @@ import shutil
 import subprocess
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from pathlib import Path
 
 from tradedesk_lab import artifacts
 
@@ -98,4 +97,6 @@ def refresh_if_explained(now: datetime | None = None) -> RefreshResult:
     }
     with (artifacts.OUTPUT / "manifest_refreshes.jsonl").open("a", encoding="utf-8") as fh:
         fh.write(json.dumps(record) + "\n")
-    return RefreshResult(True, "refreshed: every drifted file is committed history", state["changed"])
+    return RefreshResult(
+        True, "refreshed: every drifted file is committed history", state["changed"]
+    )

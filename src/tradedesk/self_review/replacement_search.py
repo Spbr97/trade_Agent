@@ -43,6 +43,7 @@ from tradedesk.self_review.detector_authoring import (
     load_real_daily_frames,
     market_bundle,
 )
+from tradedesk.self_review.manifest_refresh import refresh_if_explained
 from tradedesk.signal_tracker import load_log
 
 DEFAULT_TIME_BUDGET_S = 20 * 60
@@ -271,6 +272,11 @@ def run_replacement_search(
         candidates_by_name=by_name,
     )
 
+    if root == ROOT:  # real run only; a test's temp root never touches the manifest
+        try:  # narrow auto-refresh: only when every drifted file is committed history
+            refresh_if_explained()
+        except Exception:  # noqa: BLE001 - a refresh failure must only leave the run blocked
+            pass
     base_state = verify_base()
     if not base_state["unchanged"]:
         outcome.status = "blocked"

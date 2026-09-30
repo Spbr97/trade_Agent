@@ -176,6 +176,7 @@ def run_gauntlet(
         sample_size=len(trades),
         max_drawdown_pct=max_drawdown(equity),
         losing_streak=longest_losing_streak(net_rs),
+        loss_rate=sum(1 for r in net_rs if r <= 0) / len(net_rs) if len(net_rs) else None,
     )
     report.kill_criteria = {
         "passed": result.passed,

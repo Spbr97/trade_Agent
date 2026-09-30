@@ -22,7 +22,8 @@ def _git(repo: Path, *args: str) -> None:
 
 def _commit(repo: Path, msg: str, when: float) -> None:
     _git(repo, "add", "-A")
-    env = {**os.environ, "GIT_COMMITTER_DATE": f"{int(when)} +0000", "GIT_AUTHOR_DATE": f"{int(when)} +0000"}
+    stamp = f"{int(when)} +0000"
+    env = {**os.environ, "GIT_COMMITTER_DATE": stamp, "GIT_AUTHOR_DATE": stamp}
     subprocess.run(
         ["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", msg],
         cwd=repo, check=True, capture_output=True, env=env,

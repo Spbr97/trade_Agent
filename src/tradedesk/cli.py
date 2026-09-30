@@ -758,6 +758,17 @@ def data_load(
             targets = list(codes) if codes else store.instrument_codes(
                 kind="equity", exch=exch, series=series
             )  # fmt: skip
+            from tradedesk.data import dead_scrips
+
+            dead_path = Path(db).with_name("dead_scrips.json")
+            if not codes:  # an explicit code list is always honoured
+                skipped = dead_scrips.skip_set(dead_path, date.today())
+                if skipped:
+                    targets = [t for t in targets if t not in skipped]
+                    typer.echo(
+                        f"skipping {len(skipped)} codes the API keeps rejecting as invalid "
+                        f"({dead_path.name}; retried every {dead_scrips.RETRY_DAYS} days)"
+                    )
             settings = load_config(root)
             benchmark_name = settings.bse_market.benchmark if market == "bse" else settings.universe.benchmark  # noqa: E501
             vix_name = None if market == "bse" else settings.universe.volatility_index
@@ -795,6 +806,17 @@ def data_load(
             typer.echo(f"fetched {summary.fetched} bars; {len(summary.errors)} errors")
             for r in summary.errors[:20]:
                 typer.echo(f"  ERROR {r.scrip_code}: {r.error}")
+            if not codes:
+                dead_scrips.record(
+                    dead_path,
+                    date.today(),
+                    invalid=[
+                        r.scrip_code
+                        for r in summary.results
+                        if r.error and "invalid scrip" in r.error.lower()
+                    ],
+                    succeeded=[r.scrip_code for r in summary.results if not r.error],
+                )
 
             # Straggler sweep. A pass can leave codes behind the newest bar while
             # reporting fetched=0 and NO error - the loader cannot tell "no new bar
