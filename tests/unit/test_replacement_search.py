@@ -213,3 +213,12 @@ def test_select_for_submission_keeps_the_best_per_idea_and_caps_the_run() -> Non
     passed = [r("a1", 0.10), r("a2", 0.135), r("b", 0.07), r("c", 0.09), r("d", 0.05)]
     chosen = [x.name for x in select_for_submission(passed, cands)]
     assert chosen == ["a2", "c", "b"] and len(chosen) == MAX_NEW_DETECTORS_PER_RUN
+
+
+def test_is_repo_root_accepts_the_relative_root_the_cli_passes(tmp_path) -> None:
+    import os
+    from pathlib import Path
+
+    assert rs.is_repo_root(rs.ROOT)
+    assert rs.is_repo_root(Path(os.path.relpath(rs.ROOT)))  # relative form, like "."
+    assert not rs.is_repo_root(tmp_path)

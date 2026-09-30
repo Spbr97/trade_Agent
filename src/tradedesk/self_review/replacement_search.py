@@ -185,6 +185,12 @@ def _history(market: str, registry_path: Path) -> dict[str, dict[str, Any]]:
     return latest
 
 
+def is_repo_root(root: Path) -> bool:
+    """True when `root` is this checkout. The CLI passes a relative root (`.`), so a plain
+    `root == ROOT` never matched a real run and the auto-refresh silently never fired."""
+    return Path(root).resolve() == Path(ROOT).resolve()
+
+
 def streak_rule_outdated(row: dict[str, Any]) -> bool:
     """True when this candidate's stored result failed ONLY the old fixed losing-streak cap.
 
@@ -304,7 +310,7 @@ def run_replacement_search(
         candidates_by_name=by_name,
     )
 
-    if root == ROOT:  # real run only; a test's temp root never touches the manifest
+    if is_repo_root(root):  # real run only; a test's temp root never touches the manifest
         try:  # narrow auto-refresh: only when every drifted file is committed history
             refresh_if_explained()
         except Exception:  # noqa: BLE001 - a refresh failure must only leave the run blocked
