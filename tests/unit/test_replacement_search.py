@@ -161,3 +161,55 @@ def test_everything_recently_tested_means_an_empty_batch(monkeypatch, tmp_path: 
     later = _run(tmp_path, time_budget_s=600, now=NOW + timedelta(days=20))
     assert calls == ["a", "a"]  # ...but it IS re-tested on fresher data later
     assert later.tested_this_run
+
+
+def _evidence(tmp_path, name: str, failures: list[str], *, scaled: bool = False) -> str:
+    import json
+
+    measured = {"losing_streak": 18.0}
+    if scaled:
+        measured["allowed_losing_streak"] = 23.0
+    path = tmp_path / f"{name}.json"
+    path.write_text(json.dumps({"kill_criteria": {"failures": failures, "measured": measured}}))
+    return str(path)
+
+
+def test_streak_only_failures_under_the_old_cap_are_retested_first_best_first(tmp_path) -> None:
+    space = [_c("new"), _c("s1"), _c("s2"), _c("size"), _c("done")]
+    recent = (NOW - timedelta(days=1)).isoformat()
+
+    def row(name, failures, net_r, scaled=False):
+        return {
+            "started_at": recent,
+            "metrics": {"net_r": net_r},
+            "artifact_path": _evidence(tmp_path, name, failures, scaled=scaled),
+        }
+
+    history = {
+        "s1": row("s1", ["losing_streak 18 > allowed 10"], 0.05),
+        "s2": row("s2", ["losing_streak 13 > allowed 10"], 0.13),
+        "size": row(
+            "size", ["sample_size 183 < required 300", "losing_streak 15 > allowed 10"], 0.15
+        ),
+        "done": row("done", ["losing_streak 18 > allowed 23"], 0.05, scaled=True),
+    }
+    batch = rs.plan_batch(space, history, now=NOW, retest_after_days=14)
+    # Streak-only under the old cap first (best net R first), then untested; a result that
+    # also failed sample size, or was already judged under the scaled cap, is left alone.
+    assert [c.name for c in batch] == ["s2", "s1", "new"]
+
+
+def test_select_for_submission_keeps_the_best_per_idea_and_caps_the_run() -> None:
+    from tradedesk.self_review.orchestrate import MAX_NEW_DETECTORS_PER_RUN, select_for_submission
+
+    def r(name, net):
+        return SimpleNamespace(name=name, net_r=net)
+
+    cands = {
+        n: SimpleNamespace(trigger=t)
+        for n, t in [("a1", "donchian20"), ("a2", "donchian20"), ("b", "tsmom20"),
+                     ("c", "high52_break"), ("d", "ibs_low")]
+    }  # fmt: skip
+    passed = [r("a1", 0.10), r("a2", 0.135), r("b", 0.07), r("c", 0.09), r("d", 0.05)]
+    chosen = [x.name for x in select_for_submission(passed, cands)]
+    assert chosen == ["a2", "c", "b"] and len(chosen) == MAX_NEW_DETECTORS_PER_RUN
