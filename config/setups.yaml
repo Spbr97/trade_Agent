@@ -76,6 +76,9 @@ eligibility:
   min_score: 85            # SDD section 9: only A/A+ eligible for live consideration
   min_trades: 500          # SDD section 18 minimum evidence
   min_oos_trades: 100      # SDD section 18: out-of-sample, not just in-sample
-  min_win_rate: 0.80       # SDD section 23 target configuration
+  min_win_rate: 0.0        # was 0.80 (SDD 23). Lowered 2026-09-30 by user decision: win rate is set by exit
+                           # geometry (break-even = (1+costs)/(1+target R)), so 80% blocks every trend rule
+                           # while admitting small-target net-losers. The evidence bar is positive net
+                           # expectancy + beating random timing by must_beat_random_by_r, both unchanged.
   min_expectancy_r: 0.0    # must at least not lose money, after costs
   must_beat_random_by_r: 0.10

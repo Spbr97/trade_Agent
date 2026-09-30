@@ -32,7 +32,13 @@ already imports TrackRecord from this module, so it re-exports this for its own 
 class EligibilityPolicy:
     """The evidence a setup must show before it may alert at all (SDD sections 18 and 23).
 
-    Defaults are the SDD's recommended initial configuration. They are deliberately strict:
+    Defaults are the SDD's recommended initial configuration, except `min_win_rate`, which is
+    0.0 here instead of the SDD's 0.80 (2026-09-30, user decision). Win rate is set by exit
+    geometry - break-even is (1 + costs) / (1 + target in R) - so a floor on it blocks every
+    trend-following rule (35-45% winners, profitable through payoff size) while admitting
+    small-target, net-negative ones. The bar that carries the evidence is positive net
+    expectancy after costs AND beating matched-random timing by `must_beat_random_by_r`; the
+    field stays so a floor can still be set explicitly. They are otherwise deliberately strict:
     on the numbers measured 2026-09-13 no setup in this project clears them, and the correct
     output is then NO TRADE rather than a lowered bar - SDD section 25, "reduce or stop
     signals rather than lowering the standards just to produce trades". Loosening any of
@@ -47,7 +53,7 @@ class EligibilityPolicy:
     min_score: int = 85
     min_trades: int = 500
     min_oos_trades: int = 100
-    min_win_rate: float = 0.80
+    min_win_rate: float = 0.0
     min_expectancy_r: float = 0.0
     must_beat_random_by_r: float = 0.10
 

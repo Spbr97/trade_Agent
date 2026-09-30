@@ -8,3 +8,24 @@ holding the before/after file hashes and the full gauntlet report that justified
 safety boundary.
 
 Nothing is written here by hand; this file is append-only from `apply()`'s own code.
+
+## RETIRE base_breakout on crypto
+
+- item: `crypto:2026-09-29T00:20:21.604586+05:30`
+- applied: 2026-09-30T10:04:11.446952+00:00
+- commit: `b6f53f14372d9855dd6b83fcdd795ea2a33a95b0`
+- files: config\setups.yaml
+
+## RETIRE nr7_breakout on crypto
+
+- item: `crypto:2026-09-29T00:20:22.236687+05:30`
+- applied: 2026-09-30T10:04:15.534856+00:00
+- commit: `2529c6c8bf13738170ad7b798e137c8d533060d7`
+- files: config\setups.yaml
+
+## RETIRE trend_pullback on crypto
+
+- item: `crypto:2026-09-29T00:20:22.555511+05:30`
+- applied: 2026-09-30T10:04:18.147635+00:00
+- commit: `262591a9ba21d47df76171aedab00768eb4a6758`
+- files: config\setups.yaml
