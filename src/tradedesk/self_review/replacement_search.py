@@ -185,6 +185,31 @@ def _history(market: str, registry_path: Path) -> dict[str, dict[str, Any]]:
     return latest
 
 
+def streak_rule_outdated(row: dict[str, Any]) -> bool:
+    """True when this candidate's stored result failed ONLY the old fixed losing-streak cap.
+
+    The kill criteria's streak limit now scales with sample size and loss rate
+    (harness/spec.py::chance_streak_limit). A result recorded before that carries no
+    `allowed_losing_streak`, so its verdict was made under a bar that no longer exists and
+    is re-tested once instead of waiting out the 14-day stale window. Every other failure
+    (sample size, drawdown, expectancy, an earlier gauntlet stage) is unaffected by the
+    change, so those results stay as they were."""
+    path = row.get("artifact_path")
+    if not path or not Path(path).exists():
+        return False
+    try:
+        evidence = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    kill = evidence.get("kill_criteria") or {}
+    failures = kill.get("failures") or []
+    return (
+        bool(failures)
+        and all(str(f).startswith("losing_streak") for f in failures)
+        and "allowed_losing_streak" not in (kill.get("measured") or {})
+    )
+
+
 def plan_batch(
     space: list[Any],
     history: dict[str, dict[str, Any]],
@@ -192,20 +217,27 @@ def plan_batch(
     now: datetime,
     retest_after_days: int = DEFAULT_RETEST_AFTER_DAYS,
 ) -> list[Any]:
-    """Untested candidates first, in `space`'s priority order; then previously-tested ones
-    whose last test is older than `retest_after_days`, stalest first. Anything tested more
-    recently is left alone."""
+    """Results whose only failure was the superseded fixed streak cap first (best net R
+    first); then untested candidates in `space`'s priority order; then previously-tested
+    ones whose last test is older than `retest_after_days`, stalest first. Anything tested
+    more recently is left alone."""
 
+    outdated = [c for c in space if c.name in history and streak_rule_outdated(history[c.name])]
+    outdated.sort(
+        key=lambda c: -float((history[c.name].get("metrics") or {}).get("net_r") or 0.0)
+    )
+    skip = {c.name for c in outdated}
     untested = [c for c in space if c.name not in history]
     cutoff = now - timedelta(days=retest_after_days)
     stale = [
         c
         for c in space
         if c.name in history
+        and c.name not in skip
         and datetime.fromisoformat(history[c.name]["started_at"]) < cutoff
     ]
     stale.sort(key=lambda c: history[c.name]["started_at"])
-    return untested + stale
+    return outdated + untested + stale
 
 
 def leaderboard(

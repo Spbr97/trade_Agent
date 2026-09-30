@@ -33,6 +33,7 @@ import json
 from dataclasses import asdict, dataclass, field, replace
 from datetime import date, datetime
 from pathlib import Path
+from typing import Any
 
 from tradedesk_lab.artifacts import ROOT, digest
 
@@ -130,6 +131,28 @@ def _valid_setups(names: list[str]) -> list[str]:
     return valid
 
 
+MAX_NEW_DETECTORS_PER_RUN = 3
+"""Cap on NEW_DETECTOR items one run may submit. Passing candidates are usually variants of
+one idea (Donchian-20 with different filters and exits); each needs its own human approval
+and they are highly correlated, so the queue takes the best few, never the whole family."""
+
+
+def select_for_submission(passed: list[Any], by_name: dict[str, Any]) -> list[Any]:
+    """Best net R first, at most one per trigger (the idea), at most MAX per run. Only ever
+    FEWER items than before - no candidate that failed a bar is added by this."""
+    chosen: list[Any] = []
+    seen: set[str] = set()
+    for found in sorted(passed, key=lambda r: -(r.net_r if r.net_r is not None else -1e9)):
+        idea = getattr(by_name.get(found.name), "trigger", None) or found.name
+        if idea in seen:
+            continue
+        seen.add(idea)
+        chosen.append(found)
+        if len(chosen) >= MAX_NEW_DETECTORS_PER_RUN:
+            break
+    return chosen
+
+
 def run_self_review(
     market: str,
     *,
@@ -173,7 +196,7 @@ def run_self_review(
         time_budget_s=search_time_budget_s,
     )
     result.search = search
-    for found in search.passed:
+    for found in select_for_submission(search.passed, search.candidates_by_name):
         candidate = search.candidates_by_name[found.name]
         evidence = json.loads(Path(found.artifact_path).read_text(encoding="utf-8"))
         item = submit_for_review(
