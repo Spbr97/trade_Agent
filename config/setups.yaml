@@ -34,7 +34,9 @@ setups:
     partial_at_r: 2.0
     partial_fraction: 1.0
     trail: ema10_close
+  # RETIRED on crypto 2026-09-30 by self-review item crypto:2026-09-29T00:20:22.555511+05:30: sustained failure; still enabled elsewhere and shadow-tracked on crypto (see docs/self-review-applied-log.md)
   trend_pullback:
+    retired_markets: [crypto]
     enabled: true
     pullback_len_sessions: {min: 2, max: 5}
     rs_percentile_min: 75
