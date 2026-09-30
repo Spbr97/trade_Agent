@@ -1,7 +1,7 @@
 # Accuracy-first checkbox roadmap
 
-Updated: 30 September 2026. Current checkpoint branch:
-`codex/aem-context-m2-integrity`.
+Updated: 30 September 2026. The governing forward plan is the
+[absolute baseline-accuracy improvement plan](plan-absolute-baseline-accuracy.md).
 
 Primary objective: maintain and improve the reliability of executable NSE calls,
 working toward 70–80% successful calls within sessions. Prioritize anticipatory
@@ -16,7 +16,8 @@ improvement. Fewer calls cannot hide losses, unresolved outcomes or worse econom
 
 `[x]` means the stated work has supporting evidence. `[ ]` means work or evidence is
 still required. Completing an engineering task does not complete an accuracy goal.
-This checklist updates the execution sequence in the earlier
+This checklist is the historical execution ledger. The absolute plan now governs new
+work and updates the execution sequence in the earlier
 [master roadmap](trading-agent-master-roadmap.md) and
 [reliability plan](reliability-70-80-plan.md); their historical status sections remain
 dated records. Proposed future production changes in those documents remain deferred.
@@ -332,14 +333,16 @@ fresh evidence; missed targets remain visible.
   failed result as evidence rather than promoting a weak or test-selected rule.
 - [x] Register the first information-quality experiments from the frozen baseline's
   failure taxonomy and evaluate one selected rule on the later chronological cohort.
-- [ ] Add point-in-time intraday benchmark and sector context, then freeze a new
-  bounded trial set for later unconsumed sessions or prospective shadow evidence.
+- [x] Test the leakage-safe index-price context mechanism before any selector.
   Collection now covers 359/360 index-sessions (134,987/135,000 bars); the sole
   repeated source gap is frozen. The leakage-safe index-only hypothesis is registered
   in the [AEM index-context accuracy plan](plan-aem-index-context-accuracy.md). The
   [causal join integrity checkpoint](aem-index-context-integrity-checkpoint.md) passed
-  for all 1,397 decisions. Next is the price-only mechanism/placebo stop gate before
-  any model race; VWAP is excluded because only 16 decisions have complete volume.
+  for all 1,397 decisions. The committed mechanism run tested four rules once. All
+  improved pooled raw accuracy, but every rule remained negative after costs and none
+  passed the complete fold/shuffle/economic gates. The best raw subset was 72/278
+  (25.90%) at -0.19418R. The track stopped before a selector; see the
+  [mechanism result checkpoint](aem-index-context-mechanism-result-checkpoint.md).
 - [x] Freeze the AEM v2 custom-algorithm contract, feature registry, entry modes,
   geometry grid, trial budget and evidence gates with immutable fingerprints.
 - [x] Build Milestone 1: the causal event and outcome engine with conservative fills,
