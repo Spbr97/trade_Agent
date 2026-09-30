@@ -45,8 +45,9 @@ setups:
     partial_fraction: 1.0
     trail: ema10_close
   # RETIRED on crypto 2026-09-30 by self-review item crypto:2026-09-29T00:20:22.236687+05:30: sustained failure; still enabled elsewhere and shadow-tracked on crypto (see docs/self-review-applied-log.md)
+  # RETIRED on nse 2026-09-30 by self-review item nse:2026-09-30T16:25:05.240258+05:30: sustained failure; still enabled elsewhere and shadow-tracked on nse (see docs/self-review-applied-log.md)
   nr7_breakout:
-    retired_markets: [crypto]
+    retired_markets: [crypto, nse]
     enabled: true
     within_pct_of_recent_high: 0.05
     partial_at_r: 2.0
