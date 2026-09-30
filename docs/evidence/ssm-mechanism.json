@@ -71,7 +71,9 @@
   },
   "implementation_sha256": "93a5bed49ff40ee3795236bafd5085ddb196ffae58b568a5e14320d40fbe2b80",
   "tests_sha256": "0cfa09e56a868c675debcb24f1bffbbe9be99aeb802730862d660efd971caf21",
-  "cli_sha256": "75925b17fd9b617cc3a363e3a45450726cb7e710aa2e9868c9f99fce8f93bf13",
+  "cli_sha256": "df2f2adbde143fff96775f7fc166224db5e206345d81d1fefd72ecba4a00d8a5",
+  "cli_sha256_at_freeze": "75925b17fd9b617cc3a363e3a45450726cb7e710aa2e9868c9f99fce8f93bf13",
+  "cli_sha256_note": "re-recorded 2026-09-30: later AEM commits (8407f0a, ae8c785) added 81 lines to tradedesk_lab/__main__.py; the value at the SSM freeze commit 3c3e2ee is kept in cli_sha256_at_freeze",
   "canonical_baseline": {
     "name": "AEM_v1_frozen_50_stock_cohort",
     "strict_wins": 149,
