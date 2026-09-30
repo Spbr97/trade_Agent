@@ -24,6 +24,10 @@ dated records. Proposed future production changes in those documents remain defe
 
 ## Current position
 
+- [x] Implement Checkpoint 1's fail-closed data manifest and complete the feasibility
+  audit. It stopped because point-in-time membership, Cohort B, announcement history
+  and execution evidence are unavailable. No signal family or Checkpoint 2 work is
+  authorized; the baseline remains 21.50%.
 - [x] Complete absolute-plan Checkpoint 0: freeze the two scoreboards, Levels 0–4,
   evidence classes, trial budgets and hash-chained trial ledger. Ten prior research
   tracks accounting for 916 trials are consumed development evidence; this is

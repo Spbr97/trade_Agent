@@ -400,10 +400,17 @@ Gate: protocol/code/tests committed before new outcome analysis.
 
 ### Checkpoint 1 — data feasibility and point-in-time manifest
 
-- [ ] Inventory obtainable dates/symbols for all mandatory layers.
+- [x] Inventory obtainable dates/symbols for all mandatory layers.
 - [ ] Freeze Cohorts A/B, sessions, membership source, gaps and request budget.
 - [ ] Validate announcement timestamps, sector membership and execution data.
-- [ ] Publish coverage by symbol/session/layer before building a signal.
+- [x] Publish currently known coverage and every unavailable layer before building a
+  signal.
+
+Feasibility audit 30 September 2026: **stopped**. Cohort A price coverage is partial
+but historical membership is unverified; Cohort B, announcements and execution data
+are unavailable. The request budget is frozen at zero, D2 remains unopened, and
+Checkpoint 2 is not authorized. The unchecked items require acquisition rather than
+another OHLCV experiment.
 
 Gate: no silent survivorship, timestamp, adjustment, gap or source-version failure.
 

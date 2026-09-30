@@ -79,6 +79,7 @@ def main() -> None:
     context_mechanism.add_argument("--dataset-id", required=True)
     context_mechanism.add_argument("--integrity-run-id", required=True)
     sub.add_parser("accuracy-program-audit")
+    sub.add_parser("accuracy-data-feasibility-audit")
     pilot = sub.add_parser("aem-universe-plan")
     pilot.add_argument("--dataset-id", required=True)
     pilot.add_argument("--shortlist-size", type=int, default=50)
@@ -102,6 +103,33 @@ def main() -> None:
     forward.add_argument("--watch", action="store_true")
     forward.add_argument("--interval-seconds", type=int, default=900)
     args = parser.parse_args()
+    if args.command == "accuracy-data-feasibility-audit":
+        from tradedesk_lab.accuracy_data_manifest import run_data_feasibility_audit
+
+        report = run_data_feasibility_audit()
+        print(
+            json.dumps(
+                {
+                    key: report[key]
+                    for key in (
+                        "id",
+                        "status",
+                        "artifact_path",
+                        "protocol_sha256",
+                        "checkpoint_passed",
+                        "checkpoint_2_authorized",
+                        "new_outcomes_opened",
+                        "model_trained",
+                        "baseline_improved",
+                        "eligible_for_live",
+                        "canonical_strict_success_rate",
+                        "required_next_action",
+                    )
+                },
+                indent=2,
+            )
+        )
+        return
     if args.command == "accuracy-program-audit":
         from tradedesk_lab.accuracy_program_checkpoint import run_accuracy_program_checkpoint
 

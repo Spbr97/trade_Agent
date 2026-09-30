@@ -1,0 +1,73 @@
+{
+  "id": "452321acfd1a4537a685c9315e66b037",
+  "created_at": "2026-09-30T13:32:11.520088+00:00",
+  "version": "accuracy-data-manifest-v1",
+  "status": "checkpoint_1_stopped_data_infeasible",
+  "protocol_sha256": "d4929dddaa597149c7d7ed2c18a68aa0ff2ade0d0324cff5f63f4feb060f09cf",
+  "accuracy_program_sha256": "532cd6478efdd0298b877ffe3076a565b07f07fe2e0b127532bfad755f97a959",
+  "implementation_sha256": "fa1f4d3d072390fc0bc2bf57054bf747b230337151840ba7770bfdc1f1aa4d6d",
+  "tests_sha256": "e942625b0e06b9b96e998169328dcea6a8c9e9bde0ba72afc46577d6492aad7a",
+  "cohort_a": {
+    "status": "partial_not_point_in_time_membership",
+    "selection_freeze": "2026-03-24",
+    "evaluation_through": "2026-09-18",
+    "evidence_class": "consumed_historical_development",
+    "symbol_count": 50,
+    "evaluation_sessions": 120,
+    "symbols": [
+      "NSE_10604", "NSE_10999", "NSE_11006", "NSE_11195", "NSE_11483",
+      "NSE_11532", "NSE_11536", "NSE_11630", "NSE_12092", "NSE_1333",
+      "NSE_1363", "NSE_1394", "NSE_14366", "NSE_14428", "NSE_14977",
+      "NSE_15083", "NSE_1594", "NSE_1624", "NSE_1660", "NSE_17433",
+      "NSE_17939", "NSE_1901", "NSE_1922", "NSE_19585", "NSE_2031",
+      "NSE_20374", "NSE_21131", "NSE_21690", "NSE_2303", "NSE_2475",
+      "NSE_25907", "NSE_2885", "NSE_3045", "NSE_3063", "NSE_31181",
+      "NSE_317", "NSE_3351", "NSE_3499", "NSE_383", "NSE_4306",
+      "NSE_4963", "NSE_509", "NSE_5097", "NSE_526", "NSE_5900",
+      "NSE_6364", "NSE_759782", "NSE_8080", "NSE_910", "NSE_9590"
+    ],
+    "point_in_time_membership_verified": false,
+    "sector_intervals_available": false
+  },
+  "cohort_b": {
+    "status": "unavailable",
+    "target_symbol_count": 200,
+    "symbol_count": 0,
+    "point_in_time_membership_verified": false
+  },
+  "known_coverage": {
+    "cohort_a_stock_symbol_sessions": 6000,
+    "cohort_a_stock_symbol_sessions_available": 5999,
+    "broad_index_code_sessions": 360,
+    "broad_index_code_sessions_available": 359,
+    "complete_coordinate_table_available": false
+  },
+  "layer_status": {
+    "stock_prices": "partial",
+    "market_context": "partial",
+    "symbol_master": "unavailable",
+    "cross_section": "unavailable",
+    "announcements": "unavailable",
+    "corporate_actions": "partial",
+    "execution": "unavailable",
+    "provenance": "partial"
+  },
+  "request_budget": {
+    "maximum_requests": 0,
+    "requests_made": 0,
+    "ledger_path": "docs/evidence/accuracy-data-acquisition-ledger.jsonl",
+    "tracked_ledger_sha256": "76cfac47b18cc5527050cd05318040c7d877b9d286ed4dddbf35e5387117aa71",
+    "runtime_ledger_sha256": "d09afadc44e5ca0589ab97fe8c4b8858ba9f077228c15b338b22fde4eb54e185"
+  },
+  "d2_declared": false,
+  "d2_opened": false,
+  "checkpoint_passed": false,
+  "checkpoint_2_authorized": false,
+  "authorized_signal_families": [],
+  "new_outcomes_opened": false,
+  "model_trained": false,
+  "candidate_nominated": false,
+  "baseline_improved": false,
+  "eligible_for_live": false,
+  "canonical_strict_success_rate": 0.215007215007215
+}
