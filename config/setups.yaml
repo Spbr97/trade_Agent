@@ -55,6 +55,9 @@ setups:
     trail_atr_multiple: 2.0
 
 # Shared entry rules (PLAN.md §6.6)
+  r_donchian55_rsi_momentum_trend_trail:
+    enabled: true
+    markets: [crypto]
 entry:
   confirm_timeframe_minutes: 15
   chased_atr_multiple: 1.0
