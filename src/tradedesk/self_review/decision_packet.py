@@ -99,6 +99,43 @@ def _open_duplicate(
     return None
 
 
+def evidence_lines(gauntlet_report: dict[str, Any]) -> str:
+    """One readable line of the evidence a human should weigh before approving: how many
+    walk-forward test folds were positive (an edge from one period is not an edge), and the
+    sample, drawdown and losing streak against what chance allows. Empty when the report has
+    none of it (config patches carry their own shape)."""
+    stages = gauntlet_report.get("stages") or {}
+    parts: list[str] = []
+    folds = stages.get("walk_forward")
+    if isinstance(folds, list) and folds:
+        nets = [f.get("test_expectancy_r") for f in folds if isinstance(f, dict)]
+        nets = [n for n in nets if isinstance(n, int | float)]
+        if nets:
+            positive = sum(1 for n in nets if n > 0)
+            listed = ", ".join(f"{n:+.2f}R" for n in nets)
+            parts.append(f"walk-forward test folds {positive}/{len(nets)} positive ({listed})")
+            if positive < len(nets):
+                parts.append("WARNING: edge is not consistent across periods")
+    measured = (gauntlet_report.get("kill_criteria") or {}).get("measured") or {}
+    if measured:
+        bits = []
+        if "sample_size" in measured:
+            bits.append(f"n={int(measured['sample_size'])}")
+        if "max_drawdown_pct" in measured:
+            bits.append(f"max drawdown {measured['max_drawdown_pct']:.0%}")
+        if "losing_streak" in measured:
+            allowed = measured.get("allowed_losing_streak")
+            bits.append(
+                f"losing streak {int(measured['losing_streak'])}"
+                + (f" (chance allows {int(allowed)})" if allowed else "")
+            )
+        parts.append(", ".join(bits))
+    after_tax = gauntlet_report.get("after_tax_r")
+    if isinstance(after_tax, int | float):
+        parts.append(f"after-tax expectancy {after_tax:+.3f}R (30% VDA tax, TDS credited)")
+    return "; ".join(p for p in parts if p)
+
+
 def _proposal_text(
     kind: ProposalKind,
     payload: ConfigPatch | RetireSetup | NewDetectorCode,
@@ -117,7 +154,9 @@ def _proposal_text(
     kill = gauntlet_report.get("kill_criteria") or {}
     passed = gauntlet_report.get("stopped_at") is None and kill.get("passed")
     verdict = "PASSED" if passed else "FAILED"
-    return f"{payload!r} - gauntlet {verdict} ({gauntlet_artifact_path})"
+    text = f"{payload!r} - gauntlet {verdict} ({gauntlet_artifact_path})"
+    evidence = evidence_lines(gauntlet_report)
+    return f"{text}. Evidence: {evidence}" if evidence else text
 
 
 def refresh_retirement_plan(

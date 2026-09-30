@@ -141,3 +141,28 @@ def test_approved_proposal_is_not_in_cooldown(tmp_path: Path) -> None:
         proposals_dir=proposals_dir,
     )
     assert again is not None
+
+
+def test_evidence_lines_flags_an_edge_that_only_one_period_has() -> None:
+    from tradedesk.self_review.decision_packet import evidence_lines
+
+    report = {
+        "stages": {
+            "walk_forward": [
+                {"test_expectancy_r": 0.36}, {"test_expectancy_r": -0.05},
+                {"test_expectancy_r": -0.09},
+            ]
+        },
+        "kill_criteria": {
+            "measured": {
+                "sample_size": 881, "max_drawdown_pct": 0.11, "losing_streak": 14,
+                "allowed_losing_streak": 22,
+            }
+        },
+    }  # fmt: skip
+    text = evidence_lines(report)
+    assert "1/3 positive" in text and "not consistent" in text
+    assert "n=881" in text and "chance allows 22" in text
+    consistent = {"stages": {"walk_forward": [{"test_expectancy_r": 0.1}] * 3}}
+    assert "WARNING" not in evidence_lines(consistent)
+    assert evidence_lines({}) == ""

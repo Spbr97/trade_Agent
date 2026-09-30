@@ -158,6 +158,25 @@ def _client() -> IndstocksClient:
     return IndstocksClient(TokenProvider(http=http))
 
 
+def _log_scheduled_failure(what: str) -> None:
+    """Append the traceback of a failed unattended command to data/reports/scheduled_failures.log.
+
+    Task Scheduler only records "result 1"; without this the cause (auth clash, network,
+    API change) is lost the moment the console closes."""
+    import traceback
+
+    from tradedesk.broker.indstocks.models import IST
+
+    try:
+        path = Path("data/reports/scheduled_failures.log")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as fh:
+            fh.write(f"--- {datetime.now(IST):%Y-%m-%d %H:%M:%S} {what} ---\n")
+            fh.write(traceback.format_exc() + "\n")
+    except OSError:
+        pass
+
+
 async def _with_client[R](fn: Callable[[IndstocksClient], Awaitable[R]]) -> R:
     client = _client()
     try:
@@ -847,7 +866,11 @@ def data_load(
 
             typer.echo(f"data-API calls today: {c.limiter.used_today(Category.DATA)}")
 
-    asyncio.run(_with_client(go))
+    try:
+        asyncio.run(_with_client(go))
+    except BaseException:
+        _log_scheduled_failure("data load")
+        raise
 
 
 @data_app.command("import-actions")

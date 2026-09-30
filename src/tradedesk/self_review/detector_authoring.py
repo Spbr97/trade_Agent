@@ -38,6 +38,7 @@ from tradedesk.data.candle_store import CandleStore
 from tradedesk.engine.indicators import daily_features
 from tradedesk.engine.signals import SetupKind
 from tradedesk.markets import Market, bse_market, crypto_market, nse_market
+from tradedesk.markets.tax import mean_after_tax_r, tds_share_of_costs
 from tradedesk.proposals import NewDetectorCode
 
 
@@ -163,12 +164,15 @@ def candidate_verdict(
     *,
     baseline_net_r: float | None = None,
     max_null_p_value: float | None = None,
+    after_tax_r: float | None = None,
 ) -> tuple[bool, list[str]]:
     """The one pass/fail definition for a lab candidate: full gauntlet, kill criteria, the
     +0.10R-over-random margin every live setup's eligibility() requires, and - for a
     replacement - a random-benchmark p-value tightened for how many candidates the search
     has tried (multiple-testing guard) and a net expectancy that beats the retired setup's
-    own measured result. Returns (passed, reasons it failed)."""
+    own measured result. Where a market has a tax model (crypto: 30% VDA tax, no loss
+    set-off - markets/tax.py), `after_tax_r` must also be positive: a pattern that only
+    works before tax is not kept. Returns (passed, reasons it failed)."""
 
     reasons: list[str] = []
     if report.stopped_at is not None:
@@ -186,6 +190,8 @@ def candidate_verdict(
         reasons.append(
             f"net {net_r:+.3f}R does not beat the retired setup's {baseline_net_r:+.3f}R"
         )
+    if after_tax_r is not None and after_tax_r <= 0:
+        reasons.append(f"after-tax expectancy {after_tax_r:+.3f}R is not positive")
     return not reasons, reasons
 
 
@@ -228,6 +234,22 @@ def already_authored_today(
             if started[:10] == as_of:
                 return True
     return False
+
+
+def _after_tax_expectancy(mkt: Any, harness_trades: list[Any]) -> float | None:
+    """Mean after-tax R for a market whose tax is modelled (crypto), else None (no gate).
+    Equities are left ungated: their capital-gains treatment (with loss set-off) is not
+    modelled here and the gate must not invent one."""
+    schedule = getattr(mkt.costs, "schedule", None)
+    if schedule is None or not hasattr(schedule, "tds_pct"):
+        return None
+    share = tds_share_of_costs(
+        maker_taker_pct=float(schedule.maker_taker_pct),
+        tds_pct=float(schedule.tds_pct),
+        gst_pct=float(schedule.gst_pct),
+        slippage_pct=float(schedule.slippage_pct),
+    )
+    return mean_after_tax_r(harness_trades, share)
 
 
 def author_and_validate(
@@ -325,11 +347,13 @@ def author_and_validate(
                 null_mean = stage.get("null_mean_gross_r")
                 if setup_mean is not None and null_mean is not None:
                     beats_random_margin = (setup_mean - null_mean) >= MUST_BEAT_RANDOM_BY_R
+            after_tax = _after_tax_expectancy(mkt, harness_trades)
             passed, fail_reasons = candidate_verdict(
                 report,
                 beats_random_margin,
                 baseline_net_r=baseline_net_r,
                 max_null_p_value=max_null_p_value,
+                after_tax_r=after_tax,
             )
             # Mean net R over every realised trade, reported even when the gauntlet stopped
             # before its in-sample stage - the search ranks near-misses by it.
@@ -359,6 +383,7 @@ def author_and_validate(
                     "passed": passed,
                     "fail_reasons": fail_reasons,
                     "net_r": net_r,
+                    "after_tax_r": after_tax,
                     "win_rate": win_rate,
                     "baseline_net_r": baseline_net_r,
                     "max_null_p_value": max_null_p_value,
@@ -383,6 +408,7 @@ def author_and_validate(
                 },
                 {
                     "net_r": net_r,
+                    "after_tax_r": after_tax,
                     "win_rate": win_rate,
                     "passed_gauntlet": passed,
                     "beats_random_margin": beats_random_margin,
@@ -413,6 +439,7 @@ def propose_new_detector(
     *,
     baseline_net_r: float | None = None,
     max_null_p_value: float | None = None,
+    after_tax_r: float | None = None,
 ) -> NewDetectorCode | None:
     """Only builds a proposal payload if the run actually passed (`candidate_verdict`, with
     the same baseline/p-value bar the run was judged against). Target files are the exact
@@ -424,6 +451,7 @@ def propose_new_detector(
         beats_random_margin,
         baseline_net_r=baseline_net_r,
         max_null_p_value=max_null_p_value,
+        after_tax_r=after_tax_r,
     )
     if not passed:
         return None

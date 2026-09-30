@@ -207,6 +207,7 @@ def run_self_review(
                 "stopped_at": evidence.get("stopped_at"),
                 "stages": evidence.get("stages"),
                 "kill_criteria": evidence.get("kill_criteria"),
+                "after_tax_r": evidence.get("after_tax_r"),
             },
             gauntlet_artifact_path=found.artifact_path,
             gauntlet_artifact_sha256=digest(Path(found.artifact_path)),
