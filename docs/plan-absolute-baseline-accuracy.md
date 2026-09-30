@@ -386,10 +386,15 @@ prospective evidence.
 
 ### Checkpoint 0 — accuracy-program contract
 
-- [ ] Freeze the two scoreboards, qualification ladder and evidence classes in code.
-- [ ] Create the append-only trial ledger and trial-budget enforcement.
-- [ ] Mark all existing periods/runs as consumed development evidence.
-- [ ] Add artifact identity and “missing evidence never passes” tests.
+- [x] Freeze the two scoreboards, qualification ladder and evidence classes in code.
+- [x] Create the append-only trial ledger and trial-budget enforcement.
+- [x] Mark all existing periods/runs as consumed development evidence.
+- [x] Add artifact identity and “missing evidence never passes” tests.
+
+Completed 30 September 2026 on `accuracy-program-v1`: governance-only audit passed,
+with ten prior research tracks and 916 registered trials marked as consumed
+development evidence. No new outcomes were opened, no model was trained, and the
+canonical baseline remains 21.50%.
 
 Gate: protocol/code/tests committed before new outcome analysis.
 

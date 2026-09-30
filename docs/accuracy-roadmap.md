@@ -24,6 +24,10 @@ dated records. Proposed future production changes in those documents remain defe
 
 ## Current position
 
+- [x] Complete absolute-plan Checkpoint 0: freeze the two scoreboards, Levels 0–4,
+  evidence classes, trial budgets and hash-chained trial ledger. Ten prior research
+  tracks accounting for 916 trials are consumed development evidence; this is
+  governance, not an accuracy improvement. The canonical baseline remains 21.50%.
 - [x] Preserve production call, risk and management behavior; conduct strategy work
   in the separate lab and branch. The dashboard addition is read-only and exposes
   research evidence without changing call eligibility.

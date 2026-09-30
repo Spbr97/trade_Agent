@@ -1,0 +1,33 @@
+{
+  "id": "4f003ec011d74cc89908072b203e5ac5",
+  "created_at": "2026-09-30T12:48:58.117881+00:00",
+  "status": "checkpoint_0_passed",
+  "milestone": "accuracy_program_v1_checkpoint_0",
+  "protocol_sha256": "532cd6478efdd0298b877ffe3076a565b07f07fe2e0b127532bfad755f97a959",
+  "required_artifacts": {
+    "docs/plan-absolute-baseline-accuracy.md": "5fd15bf1a8a70130177dff2b5ef364a6f21489b80a18679407f6d3a382edd5a4",
+    "docs/accuracy-data-feasibility-spec.md": "f5d4cf51f75774f34d5f7d47236a8e6a4aeabd60ece903d57e3afcf9ec4a163d",
+    "docs/evidence/accuracy-trial-ledger.jsonl": "c6ca5bb364ee8e808fd5bb9384e5d68f28895470f527f48d6b5e52f23140b82a",
+    "tradedesk_lab/accuracy_program_contract.py": "0d7185869843b30ec37d73244a99a48414a0cdd01c2c50c7de1b4926973d59d0",
+    "tradedesk_lab/accuracy_trial_ledger.py": "1e36cf9e537c9b568aad0d5645964cb5d4438f60fd2b5bdb0caf87b867d1f39e",
+    "tests_lab/test_accuracy_program_contract.py": "c1392ad25743dc298ebd211bc47f6293110f062597456aa426245e355ef1db58",
+    "tests_lab/test_accuracy_trial_ledger.py": "5c3186baccbfb333a1167d5a2c273cda4c1f549e044784803fcef688445f6570"
+  },
+  "ledger": {
+    "path": "docs/evidence/accuracy-trial-ledger.jsonl",
+    "sha256": "c6ca5bb364ee8e808fd5bb9384e5d68f28895470f527f48d6b5e52f23140b82a",
+    "record_count": 10,
+    "registered_trial_count": 916,
+    "registered_control_count": 1652,
+    "all_consumed_development": true
+  },
+  "new_outcomes_opened": false,
+  "model_trained": false,
+  "dashboard_changed": false,
+  "production_changed": false,
+  "candidate_nominated": false,
+  "baseline_improved": false,
+  "eligible_for_live": false,
+  "canonical_strict_success_rate": 0.215007215007215,
+  "next_checkpoint": "data_feasibility_and_point_in_time_manifest"
+}
