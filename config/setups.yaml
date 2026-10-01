@@ -64,6 +64,9 @@ setups:
   r_tsmom252_rsi_momentum_trend_trail:
     enabled: true
     markets: [nse]
+  r_high52_break_strong_trend_trend_trail:
+    enabled: true
+    markets: [nse]
 entry:
   confirm_timeframe_minutes: 15
   chased_atr_multiple: 1.0
