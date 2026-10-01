@@ -11,6 +11,11 @@ from tradedesk.prediction.predict import (
     latest_bundles_by_setup,
     probability,
 )
+from tradedesk.prediction.selective import (
+    AccuracySelectorPolicy,
+    accuracy_coverage_curve,
+    select_accuracy_operating_point,
+)
 from tradedesk.prediction.train import (
     ModelBundle,
     TrainReport,
@@ -24,11 +29,13 @@ from tradedesk.prediction.train import (
 __all__ = [
     "FEATURE_NAMES",
     "FEATURE_VERSION",
+    "AccuracySelectorPolicy",
     "DriftReport",
     "Label",
     "ModelBundle",
     "TrainReport",
     "apply_probability",
+    "accuracy_coverage_curve",
     "build_dataset",
     "check_and_flag_drift",
     "compare_strategies",
@@ -38,6 +45,7 @@ __all__ = [
     "latest_bundles_by_setup",
     "probability",
     "select_threshold",
+    "select_accuracy_operating_point",
     "signal_features",
     "train",
     "train_per_setup",

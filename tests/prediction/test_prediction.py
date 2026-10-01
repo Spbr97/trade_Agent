@@ -533,7 +533,8 @@ def test_artifact_json_has_every_field_the_bundle_promises(tmp_path: Path) -> No
         "version", "kind", "threshold", "oos", "trained_on", "notes", "feature_list",
         "training_data_range", "feature_version", "target_definition", "hyperparameters",
         "random_seed", "final_test", "threshold_grid", "feature_importance",
-        "per_setup", "feature_stability",
+        "per_setup", "feature_stability", "accuracy_selector_curve",
+        "accuracy_operating_point",
     ):  # fmt: skip
         assert key in payload, f"missing artifact field: {key}"
     assert payload["target_definition"]["max_hold"] == 10

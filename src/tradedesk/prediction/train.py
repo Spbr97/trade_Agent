@@ -30,6 +30,10 @@ from tradedesk.broker.indstocks.models import IST
 from tradedesk.engine.lifecycle import SignalState
 from tradedesk.prediction.features import FEATURE_NAMES, FEATURE_VERSION, signal_features
 from tradedesk.prediction.labeling import label_signal
+from tradedesk.prediction.selective import (
+    accuracy_coverage_curve,
+    select_accuracy_operating_point,
+)
 
 META_COLUMNS = [
     "signal_id",
@@ -576,6 +580,8 @@ class ModelBundle:
     threshold_grid: list[dict[str, Any]] = field(default_factory=list)
     per_setup: dict[str, dict[str, Any]] | None = None
     feature_stability: dict[str, list[float]] | None = None
+    accuracy_selector_curve: list[dict[str, Any]] = field(default_factory=list)
+    accuracy_operating_point: dict[str, Any] | None = None
 
     def predict_proba(self, X: pd.DataFrame) -> np.ndarray:
         return np.asarray(self.model.predict_proba(X[self.features].to_numpy(dtype=float))[:, 1])
@@ -615,6 +621,8 @@ class ModelBundle:
                     "final_test": self.final_test,
                     "threshold_grid": self.threshold_grid,
                     "per_setup": self.per_setup,
+                    "accuracy_selector_curve": self.accuracy_selector_curve,
+                    "accuracy_operating_point": self.accuracy_operating_point,
                     "feature_importance": (
                         dict(list((importance or {}).items())[:10])
                     ),
@@ -719,6 +727,8 @@ class TrainReport:
     final_test: Metrics | None = None
     threshold_grid: list[dict[str, Any]] | None = None
     per_setup: dict[str, dict[str, Any]] | None = None
+    accuracy_selector_curve: list[dict[str, Any]] | None = None
+    accuracy_operating_point: dict[str, Any] | None = None
 
     def text(self) -> str:
         lines = [f"folds: {len(self.folds)}"]
@@ -740,6 +750,19 @@ class TrainReport:
                     f"expectancy_above_r={m['expectancy_above_r']:+.3f} "
                     f"n_above={m['n_above']} has_edge={m['has_edge']}"
                 )
+        if self.accuracy_operating_point:
+            a = self.accuracy_operating_point
+            lines.append(
+                "accuracy selector (validation only): "
+                f"p>={a['threshold']:.2f}, top-{a['top_k']}/session, "
+                f"success={a['observed_success']:.1%}, "
+                f"Wilson LB={a['wilson_lower_bound']:.1%}, "
+                f"session coverage={a['session_coverage']:.1%}"
+            )
+        elif self.accuracy_selector_curve:
+            lines.append(
+                "accuracy selector (validation only): ABSTAIN - no point cleared every gate"
+            )
         if self.final_test:
             lines.append(f"FINAL TEST (locked, scored once): {self.final_test.to_dict()}")
         if self.plain_expectancy_above_r is not None:
@@ -879,6 +902,31 @@ def train(
 
     oos = evaluate(y[mask], oos_p[mask], r[mask], chosen_threshold) if mask.any() else None
 
+    # Accuracy and profitability are separate policies. The existing threshold above is
+    # retained for research/economic comparison; this curve asks whether a selective
+    # top-1/2/3-per-session policy clears the frozen accuracy, confidence, availability and
+    # economics gates. It uses only development walk-forward OOS predictions, never the
+    # locked final tail. No qualified point means explicit abstention, not a fallback.
+    accuracy_curve: list[dict[str, Any]] = []
+    accuracy_point: dict[str, Any] | None = None
+    if mask.any():
+        dev_sessions = np.asarray(dates, dtype=object)
+        accuracy_curve = accuracy_coverage_curve(
+            y[mask], oos_p[mask], r[mask], list(dev_sessions[mask])
+        )
+        accuracy_point = select_accuracy_operating_point(accuracy_curve)
+        if accuracy_point is None:
+            notes.append(
+                "accuracy selector abstains: no validation threshold/top-k point cleared "
+                "the complete accuracy, Wilson, coverage, sample and economics gates"
+            )
+        else:
+            notes.append(
+                "accuracy selector nominated on validation only: "
+                f"p>={accuracy_point['threshold']:.2f}, "
+                f"top-{accuracy_point['top_k']}/session"
+            )
+
     # Per-setup breakdown (Phase 1.2): the pooled `oos` above can hide a real edge in one
     # setup under noise from another - see per_setup_breakdown()'s docstring.
     per_setup = (
@@ -930,6 +978,8 @@ def train(
         threshold_grid=threshold_grid,
         per_setup=per_setup,
         feature_stability=stability or None,
+        accuracy_selector_curve=accuracy_curve,
+        accuracy_operating_point=accuracy_point,
     )
     coefs = bundle.coefficients()
     if coefs is not None:
@@ -939,7 +989,12 @@ def train(
                     f"sanity: coefficient of {name} has an unexpected sign ({coefs[name]:+.3f})"
                 )
     bundle.notes = notes
-    return TrainReport(rows, oos, plain_above, bundle, notes, final_test=final_metrics, threshold_grid=threshold_grid, per_setup=per_setup)  # noqa: E501
+    return TrainReport(
+        rows, oos, plain_above, bundle, notes, final_test=final_metrics,
+        threshold_grid=threshold_grid, per_setup=per_setup,
+        accuracy_selector_curve=accuracy_curve,
+        accuracy_operating_point=accuracy_point,
+    )
 
 
 def train_per_setup(

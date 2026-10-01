@@ -16,6 +16,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Streamin
 from tradedesk.dashboard.state import DashboardState
 
 STATIC = Path(__file__).with_name("static")
+MODELS_DIR = Path("data/models")
 
 
 def _read_call_log(log_path: Path, limit: int) -> list[dict[str, Any]]:
@@ -86,6 +87,73 @@ def create_app(
                 "min_expectancy_r": gate.min_expectancy_r,
                 "must_beat_random_by_r": gate.must_beat_random_by_r,
                 "research_only": research_only,
+            }
+        )
+
+    @app.get("/api/accuracy-selector")
+    async def api_accuracy_selector() -> JSONResponse:
+        """Latest saved accuracy-selector evidence; absence is never presented as a pass."""
+        from tradedesk.prediction.selective import AccuracySelectorPolicy
+
+        artifacts: list[dict[str, Any]] = []
+        if MODELS_DIR.exists():
+            for path in sorted(MODELS_DIR.glob("20*.json")):
+                try:
+                    payload = json.loads(path.read_text(encoding="utf-8"))
+                except (OSError, ValueError):
+                    continue
+                if "accuracy_selector_curve" not in payload:
+                    continue
+                artifacts.append(
+                    {
+                        "artifact": path.name,
+                        "version": payload.get("version"),
+                        "model_kind": payload.get("kind"),
+                        "trained_on": payload.get("trained_on"),
+                        "operating_point": payload.get("accuracy_operating_point"),
+                        "curve": payload.get("accuracy_selector_curve") or [],
+                    }
+                )
+        if not artifacts:
+            return JSONResponse(
+                {
+                    "status": "not_trained",
+                    "latest": None,
+                    "detail": (
+                        "selector code is ready; no compatible model artifact has been trained"
+                    ),
+                }
+            )
+
+        latest = artifacts[-1]
+        operating = latest["operating_point"]
+        policy = AccuracySelectorPolicy()
+        adequately_sampled = [
+            row for row in latest["curve"]
+            if row.get("n_selected", 0) >= policy.min_calls
+            and row.get("active_sessions", 0) >= policy.min_active_sessions
+        ]
+        best_observed = max(
+            adequately_sampled,
+            key=lambda row: (
+                row.get("wilson_lower_bound", 0.0), row.get("observed_success", 0.0)
+            ),
+            default=None,
+        )
+        return JSONResponse(
+            {
+                "status": "qualified_shadow" if operating else "abstain",
+                "latest": {
+                    key: value for key, value in latest.items() if key != "curve"
+                },
+                "best_adequately_sampled": best_observed,
+                "detail": (
+                    "validation nomination only; still shadow and subject to "
+                    "locked/prospective gates"
+                    if operating
+                    else "no validation operating point cleared every accuracy and "
+                    "availability gate"
+                ),
             }
         )
 

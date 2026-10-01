@@ -662,6 +662,13 @@
       <div class="card"><div class="label">Shadow-only detectors</div><div class="value" id="accuracy-shadow-count">-</div></div>
     </div>
     <div class="muted" id="accuracy-shadow-list" style="margin-top:8px;"></div>
+    <div class="cards" style="margin-top:10px;">
+      <div class="card"><div class="label">Selector state</div><div class="value" id="selector-status">-</div></div>
+      <div class="card"><div class="label">Validation success</div><div class="value" id="selector-success">-</div></div>
+      <div class="card"><div class="label">Wilson / session coverage</div><div class="value" id="selector-confidence">-</div></div>
+      <div class="card"><div class="label">Operating point</div><div class="value" id="selector-operating-point">-</div></div>
+    </div>
+    <div class="muted" id="selector-detail" style="margin-top:8px;"></div>
   </section>
 
 <div id="tab-learning" class="subtab">
@@ -1040,9 +1047,12 @@ setInterval(loadAgentReliability, 60000);
 // ---------------------------------------------------------------- Accuracy qualification
 async function loadAccuracyPolicy() {
   try {
-    const r = await fetch('/api/accuracy-policy');
-    if (!r.ok) throw new Error('policy unavailable');
-    const p = await r.json();
+    const [policyR, selectorR] = await Promise.all([
+      fetch('/api/accuracy-policy'), fetch('/api/accuracy-selector'),
+    ]);
+    if (!policyR.ok || !selectorR.ok) throw new Error('accuracy evidence unavailable');
+    const p = await policyR.json();
+    const selector = await selectorR.json();
     $('accuracy-min-win').textContent = pct(p.min_win_rate);
     $('accuracy-min-lb').textContent = pct(p.min_win_rate_wilson_lb);
     $('accuracy-evidence').innerHTML = `${p.min_trades} total<br><span class="muted" style="font-size:13px;">${p.min_oos_trades} OOS</span>`;
@@ -1050,9 +1060,21 @@ async function loadAccuracyPolicy() {
     $('accuracy-shadow-list').textContent = p.research_only.length
       ? `Shadow-only: ${p.research_only.join(', ')}`
       : 'No installed detector is currently marked research-only.';
+    const point = selector.latest && selector.latest.operating_point;
+    const best = point || selector.best_adequately_sampled;
+    $('selector-status').textContent = selector.status === 'qualified_shadow'
+      ? 'shadow nomination' : selector.status === 'abstain' ? 'abstain' : 'not trained';
+    $('selector-status').className = 'value ' + (selector.status === 'qualified_shadow' ? 'planned' : '');
+    $('selector-success').textContent = best ? pct(best.observed_success) : '-';
+    $('selector-confidence').innerHTML = best
+      ? `${pct(best.wilson_lower_bound)} / ${pct(best.session_coverage)}` : '-';
+    $('selector-operating-point').textContent = point
+      ? `p>=${fmt(point.threshold, 2)}, top-${point.top_k}` : 'none';
+    $('selector-detail').textContent = selector.detail || '';
   } catch (e) {
-    for (const id of ['accuracy-min-win', 'accuracy-min-lb', 'accuracy-evidence', 'accuracy-shadow-count']) $(id).textContent = 'n/a';
+    for (const id of ['accuracy-min-win', 'accuracy-min-lb', 'accuracy-evidence', 'accuracy-shadow-count', 'selector-status', 'selector-success', 'selector-confidence', 'selector-operating-point']) $(id).textContent = 'n/a';
     $('accuracy-shadow-list').textContent = 'Accuracy policy unavailable.';
+    $('selector-detail').textContent = 'Selector evidence unavailable.';
   }
 }
 loadAccuracyPolicy();
