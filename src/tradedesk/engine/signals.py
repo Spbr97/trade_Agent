@@ -15,6 +15,7 @@ class SetupKind(StrEnum):
     NR7_BREAKOUT = "nr7_breakout"
     R_DONCHIAN55_RSI_MOMENTUM_TREND_TRAIL = "r_donchian55_rsi_momentum_trend_trail"
     R_TSMOM252_RSI_MOMENTUM_TREND_TRAIL = "r_tsmom252_rsi_momentum_trend_trail"
+    R_TSMOM252_RSI_MOMENTUM_TREND_TRAIL = "r_tsmom252_rsi_momentum_trend_trail"
 
 
 class ExitPlan(BaseModel):

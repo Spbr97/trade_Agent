@@ -6,6 +6,7 @@ from tradedesk.setups.base_breakout import BaseBreakout
 from tradedesk.setups.nr7_breakout import Nr7Breakout
 from tradedesk.setups.r_donchian55_rsi_momentum_trend_trail import RDonchian55RsiMomentumTrendTrail
 from tradedesk.setups.r_tsmom252_rsi_momentum_trend_trail import RTsmom252RsiMomentumTrendTrail
+from tradedesk.setups.r_tsmom252_rsi_momentum_trend_trail import RTsmom252RsiMomentumTrendTrail
 from tradedesk.setups.trend_pullback import TrendPullback
 
 REGISTRY: dict[SetupKind, Setup] = {
@@ -13,6 +14,7 @@ REGISTRY: dict[SetupKind, Setup] = {
     SetupKind.TREND_PULLBACK: TrendPullback(),
     SetupKind.NR7_BREAKOUT: Nr7Breakout(),
     SetupKind.R_DONCHIAN55_RSI_MOMENTUM_TREND_TRAIL: RDonchian55RsiMomentumTrendTrail(),
+    SetupKind.R_TSMOM252_RSI_MOMENTUM_TREND_TRAIL: RTsmom252RsiMomentumTrendTrail(),
     SetupKind.R_TSMOM252_RSI_MOMENTUM_TREND_TRAIL: RTsmom252RsiMomentumTrendTrail(),
 }
 
