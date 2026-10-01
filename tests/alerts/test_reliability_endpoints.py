@@ -28,6 +28,11 @@ async def test_reliability_overall_and_history_endpoints(tmp_path: Path, monkeyp
     app = create_app(DashboardState())
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+        dashboard = (await c.get("/")).text
+        assert "evaluated-call confidence" in dashboard
+        assert 'id="agent-reliability-overall"' in dashboard
+        assert "scope=all" not in dashboard  # historical backfill must stay excluded
+
         overall = (await c.get("/api/reliability/overall")).json()
         assert overall["n"] == 1 and overall["wins"] == 1
         assert overall["by_market"]["crypto"]["wins"] == 1
