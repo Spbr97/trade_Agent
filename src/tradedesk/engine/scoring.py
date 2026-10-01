@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import StrEnum
+from math import sqrt
 from typing import Any
 
 from tradedesk.engine.signals import Signal
@@ -32,17 +33,11 @@ already imports TrackRecord from this module, so it re-exports this for its own 
 class EligibilityPolicy:
     """The evidence a setup must show before it may alert at all (SDD sections 18 and 23).
 
-    Defaults are the SDD's recommended initial configuration, except `min_win_rate`, which is
-    0.0 here instead of the SDD's 0.80 (2026-09-30, user decision). Win rate is set by exit
-    geometry - break-even is (1 + costs) / (1 + target in R) - so a floor on it blocks every
-    trend-following rule (35-45% winners, profitable through payoff size) while admitting
-    small-target, net-negative ones. The bar that carries the evidence is positive net
-    expectancy after costs AND beating matched-random timing by `must_beat_random_by_r`; the
-    field stays so a floor can still be set explicitly. They are otherwise deliberately strict:
-    on the numbers measured 2026-09-13 no setup in this project clears them, and the correct
-    output is then NO TRADE rather than a lowered bar - SDD section 25, "reduce or stop
-    signals rather than lowering the standards just to produce trades". Loosening any of
-    these is a visible edit to config/setups.yaml, never a silent drift.
+    Research profitability and live accuracy are deliberately separate. A detector may be
+    worth studying at a 35-45% win rate because of its payoff geometry, but it must not issue
+    an accuracy-qualified live call until it has at least 80% observed wins and a 70% Wilson
+    lower bound. Positive expectancy after costs and a real edge over matched-random timing
+    remain mandatory as well; a small-target rule cannot pass on hit rate alone.
 
     `must_beat_random_by_r` is not in the SDD and is the stronger test: a win rate alone
     cannot distinguish a real edge from one that merely tracks a rising market. The live
@@ -53,12 +48,26 @@ class EligibilityPolicy:
     min_score: int = 85
     min_trades: int = 500
     min_oos_trades: int = 100
-    min_win_rate: float = 0.0
+    min_win_rate: float = 0.80
+    min_win_rate_wilson_lb: float = 0.70
     min_expectancy_r: float = 0.0
     must_beat_random_by_r: float = 0.10
 
 
 DEFAULT_POLICY = EligibilityPolicy()
+
+
+def wilson_lower_bound(wins: int, trials: int, *, z: float = 1.959963984540054) -> float:
+    """Two-sided 95% Wilson lower bound for a binomial success rate."""
+    if trials <= 0:
+        return 0.0
+    wins = max(0, min(wins, trials))
+    p = wins / trials
+    z2 = z * z
+    denominator = 1.0 + z2 / trials
+    centre = p + z2 / (2.0 * trials)
+    margin = z * sqrt((p * (1.0 - p) + z2 / (4.0 * trials)) / trials)
+    return max(0.0, (centre - margin) / denominator)
 
 
 def eligibility(
@@ -87,6 +96,13 @@ def eligibility(
         reasons.append(f"only {oos_trades} out-of-sample trades, need {policy.min_oos_trades}")
     if win_rate < policy.min_win_rate:
         reasons.append(f"win rate {win_rate:.1%} < required {policy.min_win_rate:.1%}")
+    wins = round(max(0.0, min(1.0, win_rate)) * trades)
+    win_rate_lb = wilson_lower_bound(wins, trades)
+    if win_rate_lb < policy.min_win_rate_wilson_lb:
+        reasons.append(
+            f"win-rate Wilson lower bound {win_rate_lb:.1%} < required "
+            f"{policy.min_win_rate_wilson_lb:.1%}"
+        )
     if expectancy_r < policy.min_expectancy_r:
         reasons.append(
             f"expectancy {expectancy_r:+.3f}R < required {policy.min_expectancy_r:+.3f}R"

@@ -58,21 +58,23 @@ setups:
   r_donchian55_rsi_momentum_trend_trail:
     enabled: true
     markets: [crypto]
+    research_only_markets: [crypto]
   r_tsmom252_rsi_momentum_trend_trail:
     enabled: true
     markets: [nse]
-  r_tsmom252_rsi_momentum_trend_trail:
-    enabled: true
-    markets: [nse]
+    research_only_markets: [nse]
   r_high52_break_strong_trend_trend_trail:
     enabled: true
     markets: [nse]
+    research_only_markets: [nse]
   r_tsmom20_strong_trend_trend_trail:
     enabled: true
     markets: [nse]
+    research_only_markets: [nse]
   r_adx_thrust_tsmom_up_trend_trail:
     enabled: true
     markets: [crypto]
+    research_only_markets: [crypto]  # 43.75% historical; shadow until 80%/70%-LB gate
 entry:
   confirm_timeframe_minutes: 15
   chased_atr_multiple: 1.0
@@ -96,9 +98,7 @@ eligibility:
   min_score: 85            # SDD section 9: only A/A+ eligible for live consideration
   min_trades: 500          # SDD section 18 minimum evidence
   min_oos_trades: 100      # SDD section 18: out-of-sample, not just in-sample
-  min_win_rate: 0.0        # was 0.80 (SDD 23). Lowered 2026-09-30 by user decision: win rate is set by exit
-                           # geometry (break-even = (1+costs)/(1+target R)), so 80% blocks every trend rule
-                           # while admitting small-target net-losers. The evidence bar is positive net
-                           # expectancy + beating random timing by must_beat_random_by_r, both unchanged.
+  min_win_rate: 0.80       # accuracy-first live target; lower-rate research stays shadow-only
+  min_win_rate_wilson_lb: 0.70  # 95% lower confidence bound; blocks lucky small samples
   min_expectancy_r: 0.0    # must at least not lose money, after costs
   must_beat_random_by_r: 0.10

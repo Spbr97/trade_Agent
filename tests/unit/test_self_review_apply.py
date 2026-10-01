@@ -314,14 +314,21 @@ def test_apply_new_detector_writes_all_five_wiring_points(tmp_path: Path) -> Non
     assert "SetupKind.NR7_BREAKOUT: Nr7Breakout()," in init_text  # untouched
 
     yaml_text = (root / "config" / "setups.yaml").read_text(encoding="utf-8")
-    # Scoped to the market it was validated on - never switched on everywhere.
+    # Scoped to the validated market and installed for shadow research, not live calls.
     assert "mean_reversion_v1:\n    enabled: true\n    markets: [nse]" in yaml_text
+    assert "research_only_markets: [nse]" in yaml_text
 
     assert result.git_commit_sha is not None
     log = subprocess.run(
         ["git", "log", "-1", "--format=%s"], cwd=root, check=True, capture_output=True, text=True
     ).stdout
     assert "[self-review] add new detector mean_reversion_v1" in log
+
+    with pytest.raises(ap.ApplyRefused, match="already installed"):
+        ap.apply(
+            item.id, root=root, lab_output=lab_output, review_path=review_path,
+            applied_dir=tmp_path / "applied", applied_log=tmp_path / "log.md",
+        )
 
 
 def test_apply_new_detector_refuses_without_a_pre_generated_source(tmp_path: Path) -> None:

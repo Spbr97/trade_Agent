@@ -229,11 +229,11 @@ def _insert_registry_entry(path: Path, module_name: str, class_name: str, enum_m
 
 
 def _append_setup_block(path: Path, setup: str, market: str) -> None:
-    """Adds a new `  <setup>:\\n    enabled: true\\n    markets: [<market>]` block to
-    config/setups.yaml, right before the first top-level key after `setups:` (e.g.
-    `entry:`) - scoped to the one market it was validated on, and inheriting the global
-    `eligibility:` policy (an approved new setup starts enabled; `eligibility()` still fails
-    closed on live alerting regardless, exactly like the three existing setups today)."""
+    """Add a market-scoped, research-only setup block to ``setups.yaml``.
+
+    Approval installs the detector for forward shadow measurement; it does not grant
+    live-call rights. Removing ``research_only_markets`` requires a later accuracy review.
+    """
 
     text = path.read_text(encoding="utf-8")
     lines = text.splitlines(keepends=True)
@@ -250,7 +250,11 @@ def _append_setup_block(path: Path, setup: str, market: str) -> None:
             break
     if insert_at is None:
         raise ApplyRefused(f"could not find where the setups: block ends in {path}")
-    lines.insert(insert_at, f"  {setup}:\n    enabled: true\n    markets: [{market}]\n")
+    lines.insert(
+        insert_at,
+        f"  {setup}:\n    enabled: true\n    markets: [{market}]\n"
+        f"    research_only_markets: [{market}]\n",
+    )
     path.write_text("".join(lines), encoding="utf-8")
 
 
@@ -263,6 +267,12 @@ def _apply_new_detector(
     new_setup_py = root / "src" / "tradedesk" / "setups" / f"{payload.setup_kind}.py"
     for path in (signals_py, setups_init, setups_yaml, new_setup_py):
         _guard_path(path, root)
+
+    # A repeated approval used to insert the same enum member, import, registry entry and
+    # YAML block twice, leaving Python unable to import SetupKind at all. Detector install
+    # is deliberately one-shot; an already-present module must be reviewed, not re-added.
+    if new_setup_py.exists():
+        raise ApplyRefused(f"detector {payload.setup_kind!r} is already installed")
 
     production_source_path = (
         lab_output / "candidates" / payload.lab_experiment_id / "production_setup.py"

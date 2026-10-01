@@ -34,7 +34,12 @@ from tradedesk.data.candle_store import CandleStore
 from tradedesk.engine.signals import Signal
 from tradedesk.markets import Market
 from tradedesk.prediction.labeling import triple_barrier
-from tradedesk.scan.evening_scan import RETIRED_REASON_PREFIX, Watchlist, build_watchlist
+from tradedesk.scan.evening_scan import (
+    RESEARCH_ONLY_REASON_PREFIX,
+    RETIRED_REASON_PREFIX,
+    Watchlist,
+    build_watchlist,
+)
 
 
 @dataclass
@@ -307,7 +312,10 @@ def log_new_signals(
             entry=sig.trigger, stop=sig.stop, t1=sig.t1, t2=sig.t2,
             net_rr_t1=e.net_rr_t1, net_rr_t2=e.net_rr_t2, rejected_for=list(e.rejected_for),
             probability=e.probability, logged_at=datetime.now(IST).isoformat(), source=source,
-            shadow=any(r.startswith(RETIRED_REASON_PREFIX) for r in e.rejected_for),
+            shadow=any(
+                r.startswith((RETIRED_REASON_PREFIX, RESEARCH_ONLY_REASON_PREFIX))
+                for r in e.rejected_for
+            ),
         )  # fmt: skip
         rows[sig.id] = row
         new_rows.append(row)

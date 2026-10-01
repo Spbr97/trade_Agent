@@ -206,12 +206,14 @@ def _eligibility_policy(settings: Settings) -> EligibilityPolicy:
         min_trades=e.min_trades,
         min_oos_trades=e.min_oos_trades,
         min_win_rate=e.min_win_rate,
+        min_win_rate_wilson_lb=e.min_win_rate_wilson_lb,
         min_expectancy_r=e.min_expectancy_r,
         must_beat_random_by_r=e.must_beat_random_by_r,
     )
 
 
 RETIRED_REASON_PREFIX = "retired by self-review on"
+RESEARCH_ONLY_REASON_PREFIX = "research-only on"
 
 
 def build_watchlist(
@@ -310,6 +312,11 @@ def build_watchlist(
         setup_cfg = settings.setups.setups.get(sig.setup.value)
         if setup_cfg is not None and market.name in setup_cfg.retired_markets:
             rejected.append(f"{RETIRED_REASON_PREFIX} {market.name} (shadow-tracked only)")
+        if setup_cfg is not None and market.name in setup_cfg.research_only_markets:
+            rejected.append(
+                f"{RESEARCH_ONLY_REASON_PREFIX} {market.name} "
+                "(awaiting accuracy qualification; shadow-tracked only)"
+            )
         entries.append(
             WatchlistEntry(
                 signal=sig,

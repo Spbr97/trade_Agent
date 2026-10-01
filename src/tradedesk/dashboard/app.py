@@ -62,6 +62,33 @@ def create_app(
     async def api_state() -> JSONResponse:
         return JSONResponse(state.snapshot())
 
+    @app.get("/api/accuracy-policy")
+    async def api_accuracy_policy() -> JSONResponse:
+        """The live-call evidence gate and detectors still restricted to shadow research.
+
+        This is configuration truth, not a performance estimate. Keeping it in the API
+        prevents the dashboard from claiming that an installed research detector is live.
+        """
+        from tradedesk.config import load_config
+
+        settings = load_config(".")
+        gate = settings.setups.eligibility
+        research_only = sorted(
+            {f"{market}:{name}" for name, setup in settings.setups.setups.items()
+             for market in setup.research_only_markets}
+        )
+        return JSONResponse(
+            {
+                "min_win_rate": gate.min_win_rate,
+                "min_win_rate_wilson_lb": gate.min_win_rate_wilson_lb,
+                "min_trades": gate.min_trades,
+                "min_oos_trades": gate.min_oos_trades,
+                "min_expectancy_r": gate.min_expectancy_r,
+                "must_beat_random_by_r": gate.must_beat_random_by_r,
+                "research_only": research_only,
+            }
+        )
+
     @app.get("/api/state/bse")
     async def api_state_bse() -> JSONResponse:
         if bse_state is None:

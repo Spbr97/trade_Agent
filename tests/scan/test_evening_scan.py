@@ -164,15 +164,22 @@ def test_a_fully_proven_setup_is_eligible_and_alertable() -> None:
     assert score.alertable and score.no_trade_reasons == ()
 
 
-def test_win_rate_is_not_a_default_gate_but_a_configured_floor_still_rejects() -> None:
-    # Win rate is exit geometry, not skill: a 40% winner with real net edge over random is
-    # eligible by default, while an explicitly configured floor still rejects.
+def test_accuracy_first_default_rejects_below_80_percent() -> None:
     kw = dict(trades=600, oos_trades=150, expectancy_r=0.40, random_baseline_r=0.10)
-    assert eligibility(win_rate=0.40, **kw)[0]  # type: ignore[arg-type]
-    ok, reasons = eligibility(
-        win_rate=0.55, policy=EligibilityPolicy(min_win_rate=0.80), **kw  # type: ignore[arg-type]
-    )
+    ok, reasons = eligibility(win_rate=0.55, **kw)  # type: ignore[arg-type]
     assert not ok and any("win rate" in r for r in reasons)
+
+
+def test_wilson_floor_rejects_a_lucky_small_sample() -> None:
+    policy = EligibilityPolicy(
+        min_trades=10, min_oos_trades=0, min_win_rate=0.80,
+        min_win_rate_wilson_lb=0.70,
+    )
+    ok, reasons = eligibility(
+        trades=10, oos_trades=10, win_rate=0.90, expectancy_r=0.40,
+        random_baseline_r=0.10, policy=policy,
+    )
+    assert not ok and any("Wilson lower bound" in r for r in reasons)
 
 
 @pytest.mark.parametrize(
@@ -288,6 +295,14 @@ def _with_retired(settings: Settings, setup: str, markets: list[str]) -> Setting
     )
 
 
+def _with_research_only(settings: Settings, setup: str, markets: list[str]) -> Settings:
+    patched = dict(settings.setups.setups)
+    patched[setup] = patched[setup].model_copy(update={"research_only_markets": markets})
+    return settings.model_copy(
+        update={"setups": settings.setups.model_copy(update={"setups": patched})}
+    )
+
+
 def test_a_setup_retired_on_one_market_stays_active_on_the_others() -> None:
     """Real bug (2026-09-29): setups.yaml has one `enabled` flag per setup for every market,
     so approving a crypto-only retirement used to switch the setup off on NSE and BSE too -
@@ -314,6 +329,18 @@ def test_everything_retired_on_a_market_does_not_trigger_the_run_everything_fall
         settings = _with_retired(settings, kind.value, ["crypto"])
     cfg = scan_config(settings, date(2026, 3, 2), market=crypto_market(settings))
     assert cfg.setups == []  # retired means retired, not "fall back to all of them"
+
+
+def test_research_only_setup_is_excluded_live_but_included_for_shadow_tracking() -> None:
+    from tradedesk.markets import crypto_market
+
+    settings = _with_research_only(load_config(ROOT), "base_breakout", ["crypto"])
+    live_cfg = scan_config(settings, date(2026, 3, 2), market=crypto_market(settings))
+    shadow_cfg = scan_config(
+        settings, date(2026, 3, 2), market=crypto_market(settings), include_retired=True
+    )
+    assert SetupKind.BASE_BREAKOUT not in live_cfg.setups
+    assert SetupKind.BASE_BREAKOUT in shadow_cfg.setups
 
 
 def test_explicit_setup_list_is_respected_regardless_of_fallback_flag() -> None:
@@ -398,6 +425,22 @@ def test_a_retired_setup_is_rejected_never_alerts_and_is_logged_as_shadow(world)
     rows: dict = {}
     logged = log_new_signals(wl, rows)
     assert logged and all(r.shadow for r in logged)  # graded, so the loop keeps learning
+
+
+def test_a_research_only_setup_is_rejected_and_logged_as_shadow(world) -> None:  # type: ignore[no-untyped-def]
+    from tradedesk.signal_tracker import log_new_signals
+
+    store, cfg, md, res, settings = world
+    d = sorted({ts.signal.armed_on for ts in res.signals})[-1]
+    s = _with_research_only(_settings_for(settings, cfg), "base_breakout", ["nse"])
+    wl = build_watchlist(md, cfg, s, d)
+    assert wl.entries and wl.active == []
+    assert all(
+        any(r.startswith("research-only on nse") for r in e.rejected_for)
+        for e in wl.entries
+    )
+    logged = log_new_signals(wl, {})
+    assert logged and all(r.shadow for r in logged)
 
 
 def test_watchlist_entries_are_priced_scored_and_serialisable(world, tmp_path: Path) -> None:  # type: ignore[no-untyped-def]

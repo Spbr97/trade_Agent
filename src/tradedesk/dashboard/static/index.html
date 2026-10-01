@@ -106,8 +106,8 @@
 </nav>
 
 <details id="status-banner" class="banner">
-  <summary class="banner-summary">Live NSE alerts: <b>off</b> - no live setup has cleared the evidence gate <span class="muted" style="margin-left:auto; text-transform:none;">details</span></summary>
-  <div class="banner-full">The three built-in setups (base_breakout / trend_pullback / nr7_breakout) have not cleared the evidence gate (measured worse than random entry timing), so no live buy alert will fire. The <b>Research</b> view tracks forward, out-of-sample candidate ideas that cannot alert on their own - if one ever clears the same evidence bar, it shows up automatically in <b>Review</b> for you to look at.</div>
+  <summary class="banner-summary">Accuracy-qualified alerts: <b>off</b> - no setup has cleared the 80% live gate <span class="muted" style="margin-left:auto; text-transform:none;">details</span></summary>
+  <div class="banner-full">Research approval installs a detector for shadow measurement only. Live calls require at least <b>80% observed success</b>, a <b>70% Wilson lower bound</b>, sufficient total and out-of-sample evidence, positive expectancy after costs, and an edge over matched random timing. Lower-accuracy detectors remain visible for learning but cannot alert.</div>
 </details>
 
 <div class="perf-strip" id="perf-strip">
@@ -653,6 +653,17 @@
     </div>
   </section>
 
+  <section>
+    <h2>Accuracy qualification <span class="info-ic" title="Configuration gate for live calls, not a claim that current performance has reached it.">ⓘ</span></h2>
+    <div class="cards">
+      <div class="card"><div class="label">Observed success required</div><div class="value" id="accuracy-min-win">-</div></div>
+      <div class="card"><div class="label">95% Wilson lower bound</div><div class="value" id="accuracy-min-lb">-</div></div>
+      <div class="card"><div class="label">Evidence required</div><div class="value" id="accuracy-evidence">-</div></div>
+      <div class="card"><div class="label">Shadow-only detectors</div><div class="value" id="accuracy-shadow-count">-</div></div>
+    </div>
+    <div class="muted" id="accuracy-shadow-list" style="margin-top:8px;"></div>
+  </section>
+
 <div id="tab-learning" class="subtab">
   <section class="perf-controls">
     <div class="group">
@@ -1026,6 +1037,27 @@ async function loadAgentReliability() {
 loadAgentReliability();
 setInterval(loadAgentReliability, 60000);
 
+// ---------------------------------------------------------------- Accuracy qualification
+async function loadAccuracyPolicy() {
+  try {
+    const r = await fetch('/api/accuracy-policy');
+    if (!r.ok) throw new Error('policy unavailable');
+    const p = await r.json();
+    $('accuracy-min-win').textContent = pct(p.min_win_rate);
+    $('accuracy-min-lb').textContent = pct(p.min_win_rate_wilson_lb);
+    $('accuracy-evidence').innerHTML = `${p.min_trades} total<br><span class="muted" style="font-size:13px;">${p.min_oos_trades} OOS</span>`;
+    $('accuracy-shadow-count').textContent = p.research_only.length;
+    $('accuracy-shadow-list').textContent = p.research_only.length
+      ? `Shadow-only: ${p.research_only.join(', ')}`
+      : 'No installed detector is currently marked research-only.';
+  } catch (e) {
+    for (const id of ['accuracy-min-win', 'accuracy-min-lb', 'accuracy-evidence', 'accuracy-shadow-count']) $(id).textContent = 'n/a';
+    $('accuracy-shadow-list').textContent = 'Accuracy policy unavailable.';
+  }
+}
+loadAccuracyPolicy();
+setInterval(loadAccuracyPolicy, 60000);
+
 // ---------------------------------------------------------------- Review tab
 function reviewCard(item) {
   const isSelfReview = !!item.proposal_ref;
@@ -1115,7 +1147,7 @@ function describeDecision(kind, payload) {
     return `Retire <b>${payload.setup}</b> on ${payload.market} only - other markets keep it, and it stays shadow-tracked here (graded, not a call).${repl}${plan}`;
   }
   if (kind === 'new_detector') {
-    return `Author a new setup '<b>${payload.setup_kind}</b>' on ${payload.market}, from lab candidate <code>${payload.lab_module_path}</code> (experiment ${payload.lab_experiment_id})`;
+    return `Install '<b>${payload.setup_kind}</b>' on ${payload.market} for shadow research, from lab candidate <code>${payload.lab_module_path}</code> (experiment ${payload.lab_experiment_id}). Live calls require a separate accuracy qualification.`;
   }
   return JSON.stringify(payload);
 }
