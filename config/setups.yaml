@@ -58,6 +58,9 @@ setups:
   r_donchian55_rsi_momentum_trend_trail:
     enabled: true
     markets: [crypto]
+  r_tsmom252_rsi_momentum_trend_trail:
+    enabled: true
+    markets: [nse]
 entry:
   confirm_timeframe_minutes: 15
   chased_atr_multiple: 1.0
