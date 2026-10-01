@@ -18,6 +18,7 @@ class SetupKind(StrEnum):
     R_TSMOM252_RSI_MOMENTUM_TREND_TRAIL = "r_tsmom252_rsi_momentum_trend_trail"
     R_HIGH52_BREAK_STRONG_TREND_TREND_TRAIL = "r_high52_break_strong_trend_trend_trail"
     R_TSMOM20_STRONG_TREND_TREND_TRAIL = "r_tsmom20_strong_trend_trend_trail"
+    R_ADX_THRUST_TSMOM_UP_TREND_TRAIL = "r_adx_thrust_tsmom_up_trend_trail"
 
 
 class ExitPlan(BaseModel):

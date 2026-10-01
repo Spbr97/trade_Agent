@@ -70,6 +70,9 @@ setups:
   r_tsmom20_strong_trend_trend_trail:
     enabled: true
     markets: [nse]
+  r_adx_thrust_tsmom_up_trend_trail:
+    enabled: true
+    markets: [crypto]
 entry:
   confirm_timeframe_minutes: 15
   chased_atr_multiple: 1.0
