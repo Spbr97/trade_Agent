@@ -92,7 +92,10 @@
   <span class="light">regime <b id="regime">-</b></span>
   <span class="light muted" id="updated"></span>
   <span class="light" id="agent-reliability" style="margin-left:auto; gap:10px;" title="95% Wilson lower-bound confidence across all resolved calls evaluated during actual agent runs. Includes executable, rejected and shadow evaluations; excludes historical backfill and research replay. This display does not change the separate live-accuracy gate.">
-    <span>evaluated-call confidence <b id="agent-reliability-overall">-</b></span>
+    <span class="muted">evaluated confidence</span>
+    <span>nse <b id="agent-reliability-nse">-</b></span>
+    <span>crypto <b id="agent-reliability-crypto">-</b></span>
+    <span>bse <b id="agent-reliability-bse">-</b></span>
   </span>
 </header>
 
@@ -1007,19 +1010,22 @@ loadAgentPerformanceStrip();
 setInterval(loadAgentPerformanceStrip, 60000);
 
 // --------------------------------------------------------- top-right evaluated-call confidence
-// One whole confidence percentage across resolved calls observed during actual agent runs.
-// This includes executable, rejected and shadow evaluations, but excludes historical
+// One confidence percentage per market across resolved calls observed during actual agent
+// runs. This includes executable, rejected and shadow evaluations, but excludes historical
 // backfill and research replay. It is descriptive; the live accuracy gate remains separate.
 async function loadAgentReliability() {
-  $('agent-reliability-overall').textContent = '-';
+  for (const m of ['nse', 'crypto', 'bse']) $(`agent-reliability-${m}`).textContent = '-';
   try {
-    const curR = await fetch('/api/reliability/overall');
+    const curR = await fetch('/api/reliability/evaluated');
     const cur = curR.ok ? await curR.json() : null;
     if (!cur) return;
-    const el = $('agent-reliability-overall');
-    el.textContent = cur.n > 0 ? `${pct(cur.confidence)} (n=${cur.n})` : 'n/a (0)';
+    for (const m of ['nse', 'crypto', 'bse']) {
+      const mc = cur.by_market[m];
+      const el = $(`agent-reliability-${m}`);
+      el.textContent = mc && mc.n > 0 ? `${pct(mc.confidence)} (n=${mc.n})` : 'n/a (0)';
+    }
   } catch (e) {
-    $('agent-reliability-overall').textContent = 'n/a';
+    for (const m of ['nse', 'crypto', 'bse']) $(`agent-reliability-${m}`).textContent = 'n/a';
   }
 }
 loadAgentReliability();

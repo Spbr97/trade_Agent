@@ -454,6 +454,18 @@ def create_app(
 
         return JSONResponse(overall_reliability_now())
 
+    @app.get("/api/reliability/evaluated")
+    async def api_reliability_evaluated() -> JSONResponse:
+        """Per-market confidence from all resolved forward agent evaluations.
+
+        Includes executable, rejected, and shadow tracker rows; excludes backfill and
+        research replay. This endpoint feeds the dashboard header only and does not alter
+        the accuracy-qualification policy.
+        """
+        from tradedesk.reliability_sources import evaluated_reliability_now
+
+        return JSONResponse(evaluated_reliability_now())
+
     @app.get("/api/reliability/history")
     async def api_reliability_history() -> JSONResponse:
         """Daily-logged trend for the top-right number, so it can be watched for whether it

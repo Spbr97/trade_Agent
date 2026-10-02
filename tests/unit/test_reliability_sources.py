@@ -19,7 +19,9 @@ from tradedesk.reliability_sources import (
     crypto_bse_backfill_pnl,
     crypto_bse_live_counts,
     crypto_bse_symbol_confidence,
+    evaluated_reliability_now,
     log_daily_reliability_snapshot,
+    nse_evaluated_counts,
     nse_live_counts,
     nse_symbol_confidence,
     overall_reliability_now,
@@ -143,6 +145,16 @@ def test_nse_reads_return_empty_when_no_journal_file_exists(tmp_path: Path) -> N
     assert nse_live_counts(missing) == (0, 0)
 
 
+def test_nse_evaluated_counts_reads_forward_tracker_rows(tmp_path: Path) -> None:
+    log = tmp_path / "nse_calls.jsonl"
+    _write_jsonl(log, [
+        _call_row("RELIANCE", label=1, source="live"),
+        _call_row("TCS", label=0, source="live"),
+        {"signal_id": "open", "symbol": "INFY", "label": None},
+    ])  # fmt: skip
+    assert nse_evaluated_counts(log) == (1, 2)
+
+
 def test_overall_reliability_now_pools_all_three_markets(tmp_path: Path, monkeypatch) -> None:  # noqa: ANN001
     import tradedesk.reliability_sources as rs
 
@@ -162,6 +174,31 @@ def test_overall_reliability_now_pools_all_three_markets(tmp_path: Path, monkeyp
     assert result["by_market"]["nse"]["n"] == 1
     assert result["by_market"]["crypto"]["wins"] == 1
     assert result["by_market"]["bse"]["wins"] == 0
+
+
+def test_evaluated_reliability_uses_trackers_and_excludes_backfill(
+    tmp_path: Path, monkeypatch
+) -> None:  # noqa: ANN001
+    import tradedesk.reliability_sources as rs
+
+    nse_log = tmp_path / "nse.jsonl"
+    crypto_log = tmp_path / "crypto.jsonl"
+    bse_log = tmp_path / "bse.jsonl"
+    _write_jsonl(nse_log, [_call_row("RELIANCE", label=1, source="live")])
+    _write_jsonl(crypto_log, [
+        _call_row("BTC", label=0, source="live"),
+        _call_row("BTC", label=1, source="backfill"),
+    ])  # fmt: skip
+    _write_jsonl(bse_log, [_call_row("SENSEX", label=1, source="live")])
+    monkeypatch.setattr(rs, "NSE_LOG", nse_log)
+    monkeypatch.setattr(rs, "CRYPTO_LOG", crypto_log)
+    monkeypatch.setattr(rs, "BSE_LOG", bse_log)
+
+    result = evaluated_reliability_now()
+    assert (result["wins"], result["n"]) == (2, 3)
+    assert result["by_market"]["nse"]["n"] == 1
+    assert result["by_market"]["crypto"]["n"] == 1
+    assert result["by_market"]["bse"]["wins"] == 1
 
 
 def test_daily_snapshot_is_idempotent_within_a_day(tmp_path: Path, monkeypatch) -> None:  # noqa: ANN001

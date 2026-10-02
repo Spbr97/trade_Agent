@@ -20,6 +20,11 @@ async def test_reliability_overall_and_history_endpoints(tmp_path: Path, monkeyp
         json.dumps({"symbol": "BTC", "label": 1, "source": "live"}) + "\n", encoding="utf-8"
     )
     monkeypatch.setattr(rs, "NSE_JOURNAL", tmp_path / "no_journal.sqlite")
+    nse_log = tmp_path / "nse.jsonl"
+    nse_log.write_text(
+        json.dumps({"symbol": "RELIANCE", "label": 0}) + "\n", encoding="utf-8"
+    )
+    monkeypatch.setattr(rs, "NSE_LOG", nse_log)
     monkeypatch.setattr(rs, "CRYPTO_LOG", crypto_log)
     monkeypatch.setattr(rs, "BSE_LOG", tmp_path / "no_bse.jsonl")
     history_path = tmp_path / "history.jsonl"
@@ -29,13 +34,19 @@ async def test_reliability_overall_and_history_endpoints(tmp_path: Path, monkeyp
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
         dashboard = (await c.get("/")).text
-        assert "evaluated-call confidence" in dashboard
-        assert 'id="agent-reliability-overall"' in dashboard
+        assert "evaluated confidence" in dashboard
+        for market in ("nse", "crypto", "bse"):
+            assert f'id="agent-reliability-{market}"' in dashboard
         assert "scope=all" not in dashboard  # historical backfill must stay excluded
 
         overall = (await c.get("/api/reliability/overall")).json()
         assert overall["n"] == 1 and overall["wins"] == 1
         assert overall["by_market"]["crypto"]["wins"] == 1
+
+        evaluated = (await c.get("/api/reliability/evaluated")).json()
+        assert evaluated["n"] == 2 and evaluated["wins"] == 1
+        assert evaluated["by_market"]["nse"]["n"] == 1
+        assert evaluated["by_market"]["crypto"]["n"] == 1
 
         assert (await c.get("/api/reliability/history")).json() == []
         rs.log_daily_reliability_snapshot(history_path)

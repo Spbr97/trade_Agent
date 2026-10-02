@@ -20,7 +20,7 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from tradedesk.analysis import BSE_LOG, CRYPTO_LOG, NSE_JOURNAL
+from tradedesk.analysis import BSE_LOG, CRYPTO_LOG, NSE_JOURNAL, NSE_LOG
 from tradedesk.reliability import (
     HISTORY_PATH,
     SymbolConfidence,
@@ -134,10 +134,41 @@ def nse_live_counts(journal_path: Path = NSE_JOURNAL) -> tuple[int, int]:
     return wins, len(rows)
 
 
+def nse_evaluated_counts(log_path: Path = NSE_LOG) -> tuple[int, int]:
+    """(wins, n) for resolved NSE calls produced by real forward agent runs.
+
+    Unlike the NSE paper book, this tracker population includes rejected and shadow calls,
+    matching the crypto/BSE ``source=live`` tracker population. NSE's tracker has no
+    backfill rows, so every resolved row is an agent evaluation.
+    """
+    resolved = [r for r in _read_jsonl(log_path) if r.get("label") is not None]
+    wins = sum(1 for r in resolved if r["label"] == 1)
+    return wins, len(resolved)
+
+
 def overall_reliability_now() -> dict[str, Any]:
     """The one top-line number: Wilson lower bound pooled across every real, live resolved
     call across all three markets, plus the per-market breakdown behind it."""
     nse_wins, nse_n = nse_live_counts(NSE_JOURNAL)
+    crypto_wins, crypto_n = crypto_bse_live_counts(CRYPTO_LOG)
+    bse_wins, bse_n = crypto_bse_live_counts(BSE_LOG)
+    total = overall_reliability(nse_wins + crypto_wins + bse_wins, nse_n + crypto_n + bse_n)
+    total["by_market"] = {
+        "nse": overall_reliability(nse_wins, nse_n),
+        "crypto": overall_reliability(crypto_wins, crypto_n),
+        "bse": overall_reliability(bse_wins, bse_n),
+    }
+    return total
+
+
+def evaluated_reliability_now() -> dict[str, Any]:
+    """Wilson confidence across forward agent-evaluated calls, split by market.
+
+    This deliberately includes executable, rejected, and shadow tracker rows because each
+    was evaluated during an actual run. Historical backfill and research replay are excluded.
+    It is a dashboard evidence view, not a substitute for the stricter live-promotion gate.
+    """
+    nse_wins, nse_n = nse_evaluated_counts(NSE_LOG)
     crypto_wins, crypto_n = crypto_bse_live_counts(CRYPTO_LOG)
     bse_wins, bse_n = crypto_bse_live_counts(BSE_LOG)
     total = overall_reliability(nse_wins + crypto_wins + bse_wins, nse_n + crypto_n + bse_n)
