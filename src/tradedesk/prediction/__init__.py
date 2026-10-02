@@ -11,6 +11,12 @@ from tradedesk.prediction.predict import (
     latest_bundles_by_setup,
     probability,
 )
+from tradedesk.prediction.race import (
+    AccuracyRaceProtocol,
+    audit_accuracy_race_dataset,
+    run_accuracy_race,
+    save_accuracy_race,
+)
 from tradedesk.prediction.selective import (
     AccuracySelectorPolicy,
     accuracy_coverage_curve,
@@ -46,6 +52,10 @@ __all__ = [
     "probability",
     "select_threshold",
     "select_accuracy_operating_point",
+    "AccuracyRaceProtocol",
+    "audit_accuracy_race_dataset",
+    "run_accuracy_race",
+    "save_accuracy_race",
     "signal_features",
     "train",
     "train_per_setup",

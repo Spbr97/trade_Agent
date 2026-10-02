@@ -68,3 +68,43 @@ async def test_accuracy_selector_exposes_shadow_nomination(tmp_path, monkeypatch
     assert body["status"] == "qualified_shadow"
     assert body["latest"]["operating_point"] == point
     assert "shadow" in body["detail"]
+
+
+@pytest.mark.asyncio
+async def test_accuracy_race_exposes_blockers_without_treating_them_as_pass(
+    tmp_path, monkeypatch
+) -> None:
+    race_dir = tmp_path / "accuracy-race"
+    race_dir.mkdir()
+    (race_dir / "latest.json").write_text(
+        json.dumps(
+            {
+                "created_at": "2026-10-03T00:02:55+05:30",
+                "status": "blocked",
+                "detail": "race blocked before fitting: cohort readiness failed",
+                "cohort": {
+                    "rows": 29964,
+                    "sessions": 751,
+                    "feature_version": "v4",
+                    "economics_coverage": 0.0204,
+                    "rule_score_coverage": 0.0,
+                    "blockers": ["feature schema is not v4"],
+                },
+                "nominee": None,
+                "locked_test": {"status": "not_opened"},
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(dashboard_app, "MODELS_DIR", tmp_path)
+    app = create_app(DashboardState())
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        response = await client.get("/api/accuracy-race")
+
+    body = response.json()
+    assert body["status"] == "blocked"
+    assert body["cohort"]["economics_coverage"] == 0.0204
+    assert body["nominee"] is None
+    assert body["locked_test"]["status"] == "not_opened"

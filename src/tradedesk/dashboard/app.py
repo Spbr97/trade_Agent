@@ -157,6 +157,42 @@ def create_app(
             }
         )
 
+    @app.get("/api/accuracy-race")
+    async def api_accuracy_race() -> JSONResponse:
+        """Frozen Milestone-3 challenger-race status; missing evidence never passes."""
+        path = MODELS_DIR / "accuracy-race" / "latest.json"
+        if not path.exists():
+            return JSONResponse(
+                {
+                    "status": "not_run",
+                    "detail": "no frozen accuracy-race readiness artifact exists",
+                }
+            )
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return JSONResponse(
+                {"status": "invalid", "detail": "accuracy-race artifact is unreadable"}
+            )
+        cohort = payload.get("cohort") or {}
+        return JSONResponse(
+            {
+                "status": payload.get("status", "invalid"),
+                "detail": payload.get("detail"),
+                "created_at": payload.get("created_at"),
+                "cohort": {
+                    "rows": cohort.get("rows"),
+                    "sessions": cohort.get("sessions"),
+                    "feature_version": cohort.get("feature_version"),
+                    "economics_coverage": cohort.get("economics_coverage"),
+                    "rule_score_coverage": cohort.get("rule_score_coverage"),
+                    "blockers": cohort.get("blockers") or [],
+                },
+                "nominee": payload.get("nominee"),
+                "locked_test": payload.get("locked_test"),
+            }
+        )
+
     @app.get("/api/state/bse")
     async def api_state_bse() -> JSONResponse:
         if bse_state is None:

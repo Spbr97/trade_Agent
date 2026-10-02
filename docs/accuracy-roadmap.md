@@ -421,6 +421,20 @@ fresh evidence; missed targets remain visible.
   placebo. SSM is therefore rejected before any selector race; the canonical 21.50%
   baseline does not change. See the
   [SSM Milestone-2 mechanism checkpoint](ssm-mechanism-checkpoint.md).
+- [x] Restore the fail-closed 80% observed / 70% Wilson live qualification gate and
+  explicitly keep newly installed detectors research-only until they earn evidence.
+  This restores governance, not measured accuracy; see the
+  [accuracy-recovery Milestone-1 checkpoint](accuracy-recovery-m1-checkpoint.md).
+- [x] Implement the high-precision top-1/top-2/top-3 selector curve with accuracy,
+  Wilson, session coverage, sample and complete-economics gates. No compatible model
+  has qualified; see the
+  [accuracy-recovery Milestone-2 checkpoint](accuracy-selector-m2-checkpoint.md).
+- [x] Freeze Milestone 3's transparent-score/logistic/tree challenger race and run its
+  fail-closed readiness audit. The 29,964-row saved cohort is blocked before fitting:
+  13 v4 features are missing, economics coverage is 612/29,964 (2.04%), and rule-score
+  coverage is zero. The locked tail remains unopened and the 21.50% canonical baseline
+  is unchanged; see the
+  [Milestone-3 checkpoint](accuracy-selector-m3-checkpoint.md).
 
 For each completed item, attach its artifact/run identifier, date, sample size and
 pass/fail result. Update this checklist at checkpoints. The 70–80% objective remains

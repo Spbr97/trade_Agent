@@ -1,0 +1,69 @@
+{
+  "created_at": "2026-10-03T00:02:55.185155+05:30",
+  "status": "blocked",
+  "protocol": {
+    "version": "accuracy-race-v1",
+    "seed": 20260101,
+    "n_splits": 4,
+    "embargo_sessions": 10,
+    "final_test_frac": 0.2,
+    "candidates": [
+      "rule_score",
+      "logistic",
+      "hist_gradient_boosting"
+    ]
+  },
+  "selector_policy": {
+    "min_calls": 100,
+    "min_active_sessions": 30,
+    "min_session_coverage": 0.4,
+    "min_observed_success": 0.8,
+    "min_wilson_lower_bound": 0.7,
+    "session_success_target": 0.7,
+    "min_sessions_meeting_target": 0.7,
+    "min_expectancy_r": 0.0
+  },
+  "cohort": {
+    "ready": false,
+    "protocol_version": "accuracy-race-v1",
+    "feature_version": "v4",
+    "rows": 29964,
+    "sessions": 751,
+    "date_start": "2023-09-01",
+    "date_end": "2026-09-10",
+    "classes": 2,
+    "economics_complete": 612,
+    "economics_coverage": 0.02042450941129355,
+    "rule_score_complete": 0,
+    "rule_score_coverage": 0.0,
+    "missing_features": [
+      "atr_pct_rank",
+      "bb_width",
+      "di_spread",
+      "dist_52w_high_atr",
+      "dist_ema10_atr",
+      "dist_high20_atr",
+      "macd_hist_atr",
+      "pct_in_52w_range",
+      "range_contraction",
+      "roc20",
+      "roc5",
+      "rsi2",
+      "vol_dryup"
+    ],
+    "feature_null_rows": 29964,
+    "fingerprint_sha256": "85c0ea02eca3006338838a4fd05e60778fff0e2b93b2d0420d6c7b23f70589a0",
+    "blockers": [
+      "feature schema is not v4: 13 columns missing",
+      "29964 rows have missing decision-time features",
+      "complete realised economics available for only 612/29964 rows",
+      "transparent rule score available for only 0/29964 rows"
+    ]
+  },
+  "candidates": [],
+  "nominee": null,
+  "locked_test": {
+    "status": "not_opened"
+  },
+  "detail": "race blocked before fitting: cohort readiness failed"
+}
