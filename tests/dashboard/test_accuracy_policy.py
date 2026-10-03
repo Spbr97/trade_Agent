@@ -422,3 +422,60 @@ async def test_prospective_control_exposes_compact_selection_evidence(
     assert body["summary"]["satisfies_broader_random_timing_gate"] is False
     assert body["outcome_parity"]["passed"] is True
     assert "cohort_assignments" not in body["sessions"][0]
+
+
+@pytest.mark.asyncio
+async def test_prospective_timing_exposes_compact_same_stock_evidence(
+    tmp_path, monkeypatch
+) -> None:
+    state = tmp_path / "timing.json"
+    state.write_text(
+        json.dumps(
+            {
+                "version": "accuracy-prospective-timing-v1",
+                "registered_at": "2026-10-05T00:00:00+00:00",
+                "seed": 20261005,
+                "n_cohorts": 1000,
+                "offset_sessions": [1, 20],
+                "scope": "prospective_same_stock_random_future_session_timing",
+                "summary": {
+                    "status": "collecting_insufficient_evidence",
+                    "paired_resolved_calls": 2,
+                    "active_sessions": 1,
+                    "is_broader_random_timing_control": True,
+                    "random_timing_gate_passed": False,
+                    "eligible_for_live": False,
+                },
+                "source_integrity": {"passed": True, "errors": 0},
+                "records": [
+                    {
+                        "signal_id": "x",
+                        "scrip_code": "NSE_X",
+                        "symbol": "X",
+                        "armed_on": "2026-10-05",
+                        "assigned_at": "2026-10-05T12:00:00+00:00",
+                        "score_deadline": "2026-10-06T03:45:00+00:00",
+                        "prospective_eligible": True,
+                        "cohort_offsets": ["large-payload-must-not-leak"],
+                        "placebos": ["large-payload-must-not-leak"],
+                    }
+                ],
+                "errors": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(dashboard_app, "ACCURACY_PROSPECTIVE_TIMING", state)
+    app = create_app(DashboardState())
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        response = await client.get("/api/accuracy-prospective-timing")
+
+    body = response.json()
+    assert body["status"] == "collecting_insufficient_evidence"
+    assert body["summary"]["is_broader_random_timing_control"] is True
+    assert body["summary"]["random_timing_gate_passed"] is False
+    assert body["source_integrity"]["passed"] is True
+    assert "cohort_offsets" not in body["records"][0]
+    assert "placebos" not in body["records"][0]

@@ -27,6 +27,9 @@ ACCURACY_PROSPECTIVE_MONITOR = Path(
 ACCURACY_PROSPECTIVE_CONTROL = Path(
     "data/m14_m18/accuracy_prospective_control/state.json"
 )
+ACCURACY_PROSPECTIVE_TIMING = Path(
+    "data/m14_m18/accuracy_prospective_timing/state.json"
+)
 CRYPTO_ACCURACY_STATE = Path("data/m14_m18/crypto_accuracy_program/state.json")
 
 
@@ -464,6 +467,68 @@ def create_app(
                 "detail": (
                     "same-session random candidate selection only; the broader "
                     "random-timing gate remains pending"
+                ),
+            }
+        )
+
+    @app.get("/api/accuracy-prospective-timing")
+    async def api_accuracy_prospective_timing() -> JSONResponse:
+        """M11 prospective same-stock timing control; never grants live authority."""
+        if not ACCURACY_PROSPECTIVE_TIMING.exists():
+            return JSONResponse(
+                {
+                    "status": "not_run",
+                    "summary": None,
+                    "detail": "prospective same-stock timing control has not run",
+                }
+            )
+        try:
+            payload = json.loads(ACCURACY_PROSPECTIVE_TIMING.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return JSONResponse(
+                {
+                    "status": "invalid",
+                    "summary": None,
+                    "detail": "prospective same-stock timing control is unreadable",
+                }
+            )
+        summary = payload.get("summary") or {}
+        records = [
+            {
+                key: record.get(key)
+                for key in (
+                    "signal_id",
+                    "scrip_code",
+                    "symbol",
+                    "armed_on",
+                    "assigned_at",
+                    "score_deadline",
+                    "prospective_eligible",
+                )
+            }
+            for record in payload.get("records", [])[-50:]
+        ]
+        return JSONResponse(
+            {
+                "status": summary.get("status", "invalid"),
+                "registration": {
+                    key: payload.get(key)
+                    for key in (
+                        "version",
+                        "registered_at",
+                        "seed",
+                        "n_cohorts",
+                        "offset_sessions",
+                        "scope",
+                    )
+                },
+                "summary": summary,
+                "source_integrity": payload.get("source_integrity"),
+                "records": records,
+                "errors": payload.get("errors", []),
+                "detail": (
+                    "same-stock daily placebo entries assigned 1-20 NSE sessions "
+                    "after each model signal; research-only"
                 ),
             }
         )

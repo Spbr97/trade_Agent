@@ -499,6 +499,15 @@ fresh evidence; missed targets remain visible.
   broader random-timing gate. Current evidence is empty and collecting; see the
   [Milestone-10 checkpoint](accuracy-prospective-control-m10-checkpoint.md) and
   [frozen protocol](accuracy-prospective-control-m10-protocol.md).
+- [x] Implement Milestone 11's preregistered prospective same-stock random-timing control.
+  Each fresh selected M8 call receives 1,000 frozen placebo timings drawn 1–20 NSE
+  sessions forward on the same stock. Placebos use causal ATR and M8's exact entry,
+  geometry, sizing and costs; resolved source candles are hash-checked. The gate requires
+  100 completely paired calls, 30 sessions, +0.10R advantage and p <= 0.05. Daily data has
+  no same-session timing alternative, so the reported scope is explicitly same-stock
+  random future-session timing. Current evidence is empty and collecting; see the
+  [Milestone-11 checkpoint](accuracy-prospective-timing-m11-checkpoint.md) and
+  [frozen protocol](accuracy-prospective-timing-m11-protocol.md).
 
 For each completed item, attach its artifact/run identifier, date, sample size and
 pass/fail result. Update this checklist at checkpoints. The 70–80% objective remains

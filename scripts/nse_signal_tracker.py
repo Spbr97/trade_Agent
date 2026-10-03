@@ -133,6 +133,19 @@ def main() -> None:
             )
         except Exception as exc:
             print(f"M10 selection control degraded: {type(exc).__name__}: {exc}")
+        try:
+            from tradedesk_lab.accuracy_prospective_timing import collect_timing
+
+            timing = collect_timing()
+            timing_summary = timing["summary"]
+            print(
+                "M11 same-stock random-timing control: "
+                f"{timing_summary['paired_resolved_calls']} paired calls, "
+                f"{timing_summary['active_sessions']} active sessions, "
+                f"status={timing_summary['status']}"
+            )
+        except Exception as exc:
+            print(f"M11 random-timing control degraded: {type(exc).__name__}: {exc}")
 
 
 if __name__ == "__main__":
