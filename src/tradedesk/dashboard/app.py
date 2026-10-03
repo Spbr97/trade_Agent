@@ -31,6 +31,7 @@ ACCURACY_PROSPECTIVE_TIMING = Path(
     "data/m14_m18/accuracy_prospective_timing/state.json"
 )
 CRYPTO_ACCURACY_STATE = Path("data/m14_m18/crypto_accuracy_program/state.json")
+CRYPTO_ACCURACY_TIMING = Path("data/m14_m18/crypto_accuracy_timing/state.json")
 
 
 def _read_call_log(log_path: Path, limit: int) -> list[dict[str, Any]]:
@@ -126,6 +127,58 @@ def create_app(
                 }
             )
         return JSONResponse(payload)
+
+    @app.get("/api/crypto/accuracy-timing")
+    async def api_crypto_accuracy_timing() -> JSONResponse:
+        """Forward-only same-coin timing evidence, separated by setup."""
+        if not CRYPTO_ACCURACY_TIMING.exists():
+            return JSONResponse(
+                {
+                    "status": "not_activated",
+                    "summary": None,
+                    "detail": "crypto prospective timing control has not been activated",
+                }
+            )
+        try:
+            payload = json.loads(CRYPTO_ACCURACY_TIMING.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return JSONResponse(
+                {
+                    "status": "invalid",
+                    "summary": None,
+                    "detail": "crypto prospective timing state is unreadable",
+                }
+            )
+        summary = payload.get("summary") or {}
+        records = [
+            {
+                key: record.get(key)
+                for key in (
+                    "signal_id",
+                    "scrip_code",
+                    "symbol",
+                    "setup",
+                    "armed_on",
+                    "assigned_at",
+                    "prospective_eligible",
+                )
+            }
+            for record in payload.get("records", [])[-50:]
+        ]
+        return JSONResponse(
+            {
+                "status": summary.get("status", "invalid"),
+                "activation": payload.get("activation"),
+                "summary": summary,
+                "source_integrity": payload.get("source_integrity"),
+                "records": records,
+                "errors": payload.get("errors", []),
+                "detail": (
+                    "forward-only same-coin timing evidence; each setup remains "
+                    "independent and live authority is false"
+                ),
+            }
+        )
 
     @app.get("/api/accuracy-selector")
     async def api_accuracy_selector() -> JSONResponse:

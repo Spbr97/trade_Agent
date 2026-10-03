@@ -30,6 +30,7 @@ from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from tradedesk.backtest.runner import prepare_market
 from tradedesk.broker.indstocks.models import IST, Interval
@@ -168,6 +169,21 @@ def main() -> None:
         print(f"dashboard: {DASHBOARD}")
         if flagged:
             print(f"flagged for review: {', '.join(flagged)}")
+
+    # Independent forward-only accuracy control.  It reads the saved crypto log and
+    # candles after the established tracker closes them; failures cannot stop tracking.
+    try:
+        from tradedesk_lab.crypto_accuracy_timing import collect_crypto_timing
+
+        timing = collect_crypto_timing()
+        summary = timing["summary"]
+        print(
+            "Crypto same-coin timing control: "
+            f"{summary['registered_calls']} forward calls across "
+            f"{summary['setups_monitored']} setups, status={summary['status']}"
+        )
+    except Exception as exc:
+        print(f"Crypto timing control degraded: {type(exc).__name__}: {exc}")
 
 
 if __name__ == "__main__":

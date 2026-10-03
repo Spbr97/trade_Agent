@@ -1,6 +1,6 @@
 # Crypto accuracy improvement program
 
-Status: **Checkpoint C0 implemented; research-only**
+Status: **C0 implemented; C1 prospective timing foundation activated; research-only**
 
 Market: **CoinDCX INR crypto pairs only**
 Evidence rule: **crypto is never pooled with NSE or BSE; historical backfill is never
@@ -22,8 +22,15 @@ reported separately because its no-loss-offset treatment can reverse the practic
 
 ## C1 — point-in-time dataset and label integrity
 
+- [x] Freeze all existing live crypto calls and exclude them from the new prospective
+  same-coin timing control.
+- [x] Register later calls before the first controllable entry; keep every setup's evidence
+  independent and apply 1,000 frozen timing cohorts.
+- [x] Use only fully closed candles for outcomes and hash resolved source windows.
+- [x] Apply crypto slippage, fee, GST and TDS to paired net-R timing comparisons.
 - [ ] Materialize all supported active INR pairs with delistings and missingness explicit.
-- [ ] Use only candles closed before each decision; mutation-test future-bar invariance.
+- [ ] Extend the closed-candle and mutation guarantees to the full materialized all-pair
+  research dataset.
 - [ ] Recompute outcomes for registered quick-profit geometries with gap and same-bar
   ambiguity rules frozen.
 - [ ] Attach fee/slippage economics and reporting-only VDA after-tax economics per trade.
@@ -68,3 +75,7 @@ reported separately because its no-loss-offset treatment can reverse the practic
 Checkpoint count: **7, C0 through C6**. The NSE program continues separately and neither
 market can borrow the other's wins, sample size, confidence, random advantage or promotion
 status.
+
+Evidence: [C0 baseline](crypto-accuracy-c0-checkpoint.md),
+[C1 timing checkpoint](crypto-accuracy-timing-c1-checkpoint.md), and
+[C1 timing protocol](crypto-accuracy-timing-c1-protocol.md).

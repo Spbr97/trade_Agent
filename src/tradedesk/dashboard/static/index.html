@@ -395,6 +395,13 @@
       <div class="card"><div class="label">Next checkpoint</div><div class="value" id="crypto-accuracy-next">-</div></div>
     </div>
     <div class="muted" id="crypto-accuracy-detail" style="margin-top:8px;"></div>
+    <div class="cards" style="margin-top:12px;">
+      <div class="card"><div class="label">Forward timing control</div><div class="value" id="crypto-timing-status">-</div></div>
+      <div class="card"><div class="label">Registered future calls</div><div class="value" id="crypto-timing-calls">-</div></div>
+      <div class="card"><div class="label">Setups independently monitored</div><div class="value" id="crypto-timing-setups">-</div></div>
+      <div class="card"><div class="label">Timing-qualified setups</div><div class="value" id="crypto-timing-qualified">-</div></div>
+    </div>
+    <div class="muted" id="crypto-timing-detail" style="margin-top:8px;"></div>
   </section>
   <section class="perf-controls">
     <div class="group">
@@ -1269,6 +1276,28 @@ async function loadCryptoAccuracyProgram() {
 }
 loadCryptoAccuracyProgram();
 setInterval(loadCryptoAccuracyProgram, 60000);
+
+async function loadCryptoAccuracyTiming() {
+  try {
+    const response = await fetch('/api/crypto/accuracy-timing');
+    if (!response.ok) throw new Error('crypto timing unavailable');
+    const value = await response.json();
+    if (value.status === 'not_activated' || value.status === 'invalid') throw new Error(value.detail);
+    const summary = value.summary || {};
+    $('crypto-timing-status').textContent = (value.status || 'not activated').replaceAll('_', ' ');
+    $('crypto-timing-status').className = 'value ' + (value.status === 'candidate_timing_pass' ? 'pos' : (value.status === 'candidate_timing_fail' ? 'neg' : 'planned'));
+    $('crypto-timing-calls').textContent = summary.registered_calls ?? 0;
+    $('crypto-timing-setups').textContent = summary.setups_monitored ?? 0;
+    $('crypto-timing-qualified').textContent = (summary.qualified_setups || []).length
+      ? summary.qualified_setups.join(', ') : 'none';
+    $('crypto-timing-detail').textContent = 'Only calls created after activation count. Setup evidence is separate; historical and NSE/BSE evidence are excluded.';
+  } catch (e) {
+    for (const id of ['crypto-timing-status', 'crypto-timing-calls', 'crypto-timing-setups', 'crypto-timing-qualified']) $(id).textContent = 'n/a';
+    $('crypto-timing-detail').textContent = 'Crypto prospective timing control has not completed activation.';
+  }
+}
+loadCryptoAccuracyTiming();
+setInterval(loadCryptoAccuracyTiming, 60000);
 
 // ---------------------------------------------------------------- Review tab
 function reviewCard(item) {

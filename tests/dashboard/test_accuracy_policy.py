@@ -59,6 +59,62 @@ async def test_crypto_accuracy_program_keeps_market_evidence_separate(
 
 
 @pytest.mark.asyncio
+async def test_crypto_accuracy_timing_is_forward_only_and_setup_separated(
+    tmp_path, monkeypatch
+) -> None:
+    state_path = tmp_path / "crypto-timing.json"
+    state_path.write_text(
+        json.dumps(
+            {
+                "activation": {
+                    "activated_at": "2026-10-04T00:00:00+00:00",
+                    "existing_live_calls": 54,
+                    "forward_only": True,
+                },
+                "summary": {
+                    "status": "collecting_insufficient_evidence",
+                    "registered_calls": 1,
+                    "setups_monitored": 1,
+                    "qualified_setups": [],
+                    "evidence_pooled_across_setups": False,
+                    "eligible_for_live": False,
+                },
+                "source_integrity": {"passed": True, "errors": 0},
+                "records": [
+                    {
+                        "signal_id": "x",
+                        "scrip_code": "CDX_XINR",
+                        "symbol": "XINR",
+                        "setup": "test_setup",
+                        "armed_on": "2026-10-04",
+                        "assigned_at": "2026-10-04T12:00:00+00:00",
+                        "prospective_eligible": True,
+                        "cohort_offsets": ["large-payload-must-not-leak"],
+                        "timings": ["large-payload-must-not-leak"],
+                    }
+                ],
+                "errors": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(dashboard_app, "CRYPTO_ACCURACY_TIMING", state_path)
+    app = create_app(DashboardState())
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        response = await client.get("/api/crypto/accuracy-timing")
+
+    body = response.json()
+    assert body["activation"]["forward_only"] is True
+    assert body["summary"]["evidence_pooled_across_setups"] is False
+    assert body["summary"]["eligible_for_live"] is False
+    assert body["source_integrity"]["passed"] is True
+    assert "cohort_offsets" not in body["records"][0]
+    assert "timings" not in body["records"][0]
+
+
+@pytest.mark.asyncio
 async def test_accuracy_selector_reports_missing_artifact_as_not_trained(
     tmp_path, monkeypatch
 ) -> None:

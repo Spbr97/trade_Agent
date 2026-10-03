@@ -522,4 +522,10 @@ anticipatory/quick-profit mechanisms, precision selection, locked evaluation, pr
 shadow evidence, and integrity/drift review. See the
 [crypto accuracy plan](plan-crypto-accuracy.md) and
 [C0 checkpoint](crypto-accuracy-c0-checkpoint.md). Crypto cannot borrow qualification from
-the NSE M1–M10 sequence, and NSE cannot borrow crypto evidence.
+the NSE M1–M11 sequence, and NSE cannot borrow crypto evidence.
+
+The crypto C1 prospective timing foundation is also active. It excludes all 54 existing
+live-tagged calls, registers only later unresolved calls, evaluates each setup independently
+against 1,000 same-coin random future timings, and applies crypto-specific slippage,
+fee/GST/TDS economics. Current evidence is empty and collecting; see the
+[crypto C1 timing checkpoint](crypto-accuracy-timing-c1-checkpoint.md).
