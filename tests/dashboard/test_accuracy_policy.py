@@ -159,3 +159,55 @@ async def test_crypto_universe_endpoint_distinguishes_not_run_from_zero(
     assert complete.json()["status"] == "complete"
     assert complete.json()["active_inr_pairs"] == 338
     assert complete.json()["tradeable_signals"] == 0
+
+
+@pytest.mark.asyncio
+async def test_accuracy_geometry_exposes_development_without_promoting_diagnostic(
+    tmp_path, monkeypatch
+) -> None:
+    folder = tmp_path / "accuracy-geometry"
+    folder.mkdir()
+    payload = {
+        "status": "abstain",
+        "detail": "no quick-profit geometry cleared every development gate",
+        "development": {"rows": 17908, "sessions": 600},
+        "candidates": [
+            {
+                "entry_mode": "next_session_open",
+                "stop_atr": 1.0,
+                "target_r": 0.5,
+                "max_hold": 3,
+                "n_selected": 17264,
+                "observed_success": 0.7393,
+                "wilson_lower_bound": 0.7327,
+                "expectancy_r": -0.0764,
+                "diagnostics": {
+                    "setup": [
+                        {
+                            "value": "trend_pullback",
+                            "n": 1811,
+                            "accuracy": 0.7935,
+                            "wilson_lower_bound": 0.7742,
+                            "expectancy_r": 0.0331,
+                        }
+                    ]
+                },
+            }
+        ],
+        "nominee": None,
+        "locked_test": {"status": "not_opened_no_nominee", "rows": 4848},
+    }
+    (folder / "latest.json").write_text(json.dumps(payload), encoding="utf-8")
+    monkeypatch.setattr(dashboard_app, "MODELS_DIR", tmp_path)
+    app = create_app(DashboardState())
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        response = await client.get("/api/accuracy-geometry")
+
+    body = response.json()
+    assert body["status"] == "abstain"
+    assert body["best"]["observed_success"] == 0.7393
+    assert body["best_positive_setup_diagnostic"]["accuracy"] == 0.7935
+    assert body["nominee"] is None
+    assert body["locked_test"]["status"] == "not_opened_no_nominee"

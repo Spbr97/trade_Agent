@@ -204,6 +204,64 @@ def create_app(
             }
         )
 
+    @app.get("/api/accuracy-geometry")
+    async def api_accuracy_geometry() -> JSONResponse:
+        """Latest quick-profit development evidence; diagnostics never imply promotion."""
+        path = MODELS_DIR / "accuracy-geometry" / "latest.json"
+        if not path.exists():
+            return JSONResponse(
+                {"status": "not_run", "detail": "quick-profit geometry has not run"}
+            )
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return JSONResponse(
+                {"status": "invalid", "detail": "accuracy-geometry artifact is unreadable"}
+            )
+        candidates = payload.get("candidates") or []
+        best = max(
+            candidates,
+            key=lambda row: (
+                row.get("wilson_lower_bound", 0.0),
+                row.get("observed_success", 0.0),
+            ),
+            default=None,
+        )
+        positive_subgroups = [
+            {
+                "entry_mode": row.get("entry_mode"),
+                "stop_atr": row.get("stop_atr"),
+                "target_r": row.get("target_r"),
+                "max_hold": row.get("max_hold"),
+                **subgroup,
+            }
+            for row in candidates
+            for subgroup in ((row.get("diagnostics") or {}).get("setup") or [])
+            if subgroup.get("n", 0) >= 500 and subgroup.get("expectancy_r", -1.0) >= 0
+        ]
+        best_positive_setup = max(
+            positive_subgroups,
+            key=lambda row: (
+                row.get("wilson_lower_bound", 0.0),
+                row.get("accuracy", 0.0),
+            ),
+            default=None,
+        )
+        return JSONResponse(
+            {
+                "status": payload.get("status", "invalid"),
+                "detail": payload.get("detail"),
+                "created_at": payload.get("created_at"),
+                "protocol": payload.get("protocol"),
+                "development": payload.get("development"),
+                "geometries_evaluated": len(candidates),
+                "best": best,
+                "best_positive_setup_diagnostic": best_positive_setup,
+                "nominee": payload.get("nominee"),
+                "locked_test": payload.get("locked_test"),
+            }
+        )
+
     @app.get("/api/crypto/universe")
     async def api_crypto_universe() -> JSONResponse:
         """Latest full-active-universe run; absence is shown as not run, never as zero."""

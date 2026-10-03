@@ -453,6 +453,15 @@ fresh evidence; missed targets remain visible.
   only a 23-call diagnostic, not a baseline. AEM v1 remains the 21.50% canonical
   baseline; see the
   [Milestone-5 checkpoint](accuracy-ranking-m5-checkpoint.md).
+- [x] Pivot Milestone 6 from classifiers to anticipatory entry and quick-profit
+  geometry. The frozen 54-cell development race improved the best complete result
+  from a 50.50% saved-fill control to 73.93% at next-session open, with a 73.27%
+  Wilson lower bound. It still failed with -0.076R expectancy and only 38.50% of
+  sessions reaching 80%, so no nominee existed and the 4,848-row tail stayed locked.
+  A development-only `trend_pullback` diagnostic reached 79.35% on 1,811 calls with
+  +0.033R; it becomes the next preregistered stability hypothesis, not a promoted
+  result. The canonical baseline remains 21.50%; see the
+  [Milestone-6 checkpoint](accuracy-geometry-m6-checkpoint.md).
 
 For each completed item, attach its artifact/run identifier, date, sample size and
 pass/fail result. Update this checklist at checkpoints. The 70–80% objective remains

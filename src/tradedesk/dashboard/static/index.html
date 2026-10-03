@@ -687,6 +687,10 @@
       <div class="card"><div class="label">Rule-score coverage</div><div class="value" id="race-rule-score">-</div></div>
       <div class="card"><div class="label">Models evaluated</div><div class="value" id="race-models">-</div></div>
       <div class="card"><div class="label">Best coverage-qualified accuracy</div><div class="value" id="race-best-coverage">-</div></div>
+      <div class="card"><div class="label">Quick-profit geometry</div><div class="value" id="geometry-status">-</div></div>
+      <div class="card"><div class="label">Best quick-profit development</div><div class="value" id="geometry-best">-</div></div>
+      <div class="card"><div class="label">Best positive setup diagnostic</div><div class="value" id="geometry-positive-setup">-</div></div>
+      <div class="card"><div class="label">Geometry locked tail</div><div class="value" id="geometry-locked">-</div></div>
     </div>
     <div class="muted" id="race-detail" style="margin-top:8px;"></div>
   </section>
@@ -1053,13 +1057,14 @@ setInterval(loadAgentReliability, 60000);
 // ---------------------------------------------------------------- Accuracy qualification
 async function loadAccuracyPolicy() {
   try {
-    const [policyR, selectorR, raceR] = await Promise.all([
-      fetch('/api/accuracy-policy'), fetch('/api/accuracy-selector'), fetch('/api/accuracy-race'),
+    const [policyR, selectorR, raceR, geometryR] = await Promise.all([
+      fetch('/api/accuracy-policy'), fetch('/api/accuracy-selector'), fetch('/api/accuracy-race'), fetch('/api/accuracy-geometry'),
     ]);
-    if (!policyR.ok || !selectorR.ok || !raceR.ok) throw new Error('accuracy evidence unavailable');
+    if (!policyR.ok || !selectorR.ok || !raceR.ok || !geometryR.ok) throw new Error('accuracy evidence unavailable');
     const p = await policyR.json();
     const selector = await selectorR.json();
     const race = await raceR.json();
+    const geometry = await geometryR.json();
     $('accuracy-min-win').textContent = pct(p.min_win_rate);
     $('accuracy-min-lb').textContent = pct(p.min_win_rate_wilson_lb);
     $('accuracy-evidence').innerHTML = `${p.min_trades} total<br><span class="muted" style="font-size:13px;">${p.min_oos_trades} OOS</span>`;
@@ -1095,8 +1100,20 @@ async function loadAccuracyPolicy() {
       ? `${pct(coverageBest.observed_success)}<br><span class="muted" style="font-size:13px;">${coverageBest.kind}, n=${coverageBest.n_selected}, LB ${pct(coverageBest.wilson_lower_bound)}</span>`
       : '-';
     $('race-detail').textContent = (cohort.blockers || []).join(' | ') || race.detail || '';
+    $('geometry-status').textContent = (geometry.status || 'not run').replaceAll('_', ' ');
+    $('geometry-status').className = 'value ' + (geometry.status === 'locked_pass' ? 'pos' : (geometry.status === 'abstain' ? 'neg' : ''));
+    const geometryBest = geometry.best;
+    $('geometry-best').innerHTML = geometryBest
+      ? `${pct(geometryBest.observed_success)}<br><span class="muted" style="font-size:13px;">n=${geometryBest.n_selected}, LB ${pct(geometryBest.wilson_lower_bound)}, ${Number(geometryBest.expectancy_r).toFixed(3)}R</span>`
+      : '-';
+    const positiveSetup = geometry.best_positive_setup_diagnostic;
+    $('geometry-positive-setup').innerHTML = positiveSetup
+      ? `${pct(positiveSetup.accuracy)}<br><span class="muted" style="font-size:13px;">${positiveSetup.value}, n=${positiveSetup.n}, ${Number(positiveSetup.expectancy_r).toFixed(3)}R · diagnostic only</span>`
+      : 'none';
+    $('geometry-locked').textContent = geometry.locked_test
+      ? (geometry.locked_test.status || 'unknown').replaceAll('_', ' ') : '-';
   } catch (e) {
-    for (const id of ['accuracy-min-win', 'accuracy-min-lb', 'accuracy-evidence', 'accuracy-shadow-count', 'selector-status', 'selector-success', 'selector-confidence', 'selector-operating-point', 'race-status', 'race-cohort', 'race-economics', 'race-rule-score', 'race-models', 'race-best-coverage']) $(id).textContent = 'n/a';
+    for (const id of ['accuracy-min-win', 'accuracy-min-lb', 'accuracy-evidence', 'accuracy-shadow-count', 'selector-status', 'selector-success', 'selector-confidence', 'selector-operating-point', 'race-status', 'race-cohort', 'race-economics', 'race-rule-score', 'race-models', 'race-best-coverage', 'geometry-status', 'geometry-best', 'geometry-positive-setup', 'geometry-locked']) $(id).textContent = 'n/a';
     $('accuracy-shadow-list').textContent = 'Accuracy policy unavailable.';
     $('selector-detail').textContent = 'Selector evidence unavailable.';
     $('race-detail').textContent = 'Frozen model-race evidence unavailable.';
