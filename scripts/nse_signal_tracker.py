@@ -120,6 +120,19 @@ def main() -> None:
             )
         except Exception as exc:
             print(f"M9 evidence monitor degraded: {type(exc).__name__}: {exc}")
+        try:
+            from tradedesk_lab.accuracy_prospective_control import collect_control
+
+            control = collect_control()
+            control_summary = control["summary"]
+            print(
+                "M10 matched-random selection control: "
+                f"{control_summary['resolved_model_calls']} paired model calls, "
+                f"{control_summary['mature_sessions']} mature sessions, "
+                f"status={control_summary['status']}"
+            )
+        except Exception as exc:
+            print(f"M10 selection control degraded: {type(exc).__name__}: {exc}")
 
 
 if __name__ == "__main__":

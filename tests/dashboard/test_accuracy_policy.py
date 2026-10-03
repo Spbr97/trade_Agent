@@ -369,3 +369,56 @@ async def test_prospective_monitor_is_read_only_and_surfaces_integrity(
     assert body["review_ready"] is False
     assert body["eligible_for_live"] is False
     assert body["authority"] == "read_only_evidence_monitor"
+
+
+@pytest.mark.asyncio
+async def test_prospective_control_exposes_compact_selection_evidence(
+    tmp_path, monkeypatch
+) -> None:
+    state = tmp_path / "control.json"
+    state.write_text(
+        json.dumps(
+            {
+                "version": "accuracy-prospective-control-v1",
+                "registered_at": "2026-10-04T00:00:00+00:00",
+                "seed": 20261004,
+                "n_cohorts": 1000,
+                "scope": "matched_random_candidate_selection_not_random_entry_timing",
+                "summary": {
+                    "status": "collecting_insufficient_evidence",
+                    "resolved_model_calls": 2,
+                    "mature_sessions": 1,
+                    "selection_advantage_r": 0.2,
+                    "satisfies_broader_random_timing_gate": False,
+                    "eligible_for_live": False,
+                },
+                "outcome_parity": {"checked_selected_calls": 2, "passed": True},
+                "sessions": [
+                    {
+                        "armed_on": "2026-10-03",
+                        "assigned_at": "2026-10-03T12:00:00+00:00",
+                        "score_deadline": "2026-10-04T03:45:00+00:00",
+                        "prospective_eligible": True,
+                        "candidate_count": 10,
+                        "model_call_count": 2,
+                        "cohort_assignments": [["large-payload-must-not-leak"]],
+                    }
+                ],
+                "errors": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(dashboard_app, "ACCURACY_PROSPECTIVE_CONTROL", state)
+    app = create_app(DashboardState())
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        response = await client.get("/api/accuracy-prospective-control")
+
+    body = response.json()
+    assert body["status"] == "collecting_insufficient_evidence"
+    assert body["summary"]["eligible_for_live"] is False
+    assert body["summary"]["satisfies_broader_random_timing_gate"] is False
+    assert body["outcome_parity"]["passed"] is True
+    assert "cohort_assignments" not in body["sessions"][0]

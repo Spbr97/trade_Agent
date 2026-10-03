@@ -713,9 +713,13 @@
       <div class="card"><div class="label">Selected-session coverage</div><div class="value" id="prospective-availability">-</div></div>
       <div class="card"><div class="label">Cluster lower bounds</div><div class="value" id="prospective-cluster">-</div></div>
       <div class="card"><div class="label">Double-slippage stress</div><div class="value" id="prospective-stress">-</div></div>
+      <div class="card"><div class="label">M10 selection control</div><div class="value" id="prospective-control-status">-</div></div>
+      <div class="card"><div class="label">Model / random expectancy</div><div class="value" id="prospective-control-expectancy">-</div></div>
+      <div class="card"><div class="label">Selection advantage / p-value</div><div class="value" id="prospective-control-advantage">-</div></div>
     </div>
     <div class="muted" id="race-detail" style="margin-top:8px;"></div>
     <div class="muted" id="prospective-detail" style="margin-top:8px;"></div>
+    <div class="muted" id="prospective-control-detail" style="margin-top:8px;"></div>
   </section>
 
 <div id="tab-learning" class="subtab">
@@ -1080,10 +1084,10 @@ setInterval(loadAgentReliability, 60000);
 // ---------------------------------------------------------------- Accuracy qualification
 async function loadAccuracyPolicy() {
   try {
-    const [policyR, selectorR, raceR, geometryR, stabilityR, prospectiveR, monitorR] = await Promise.all([
-      fetch('/api/accuracy-policy'), fetch('/api/accuracy-selector'), fetch('/api/accuracy-race'), fetch('/api/accuracy-geometry'), fetch('/api/accuracy-setup-stability'), fetch('/api/accuracy-prospective-shadow'), fetch('/api/accuracy-prospective-monitor'),
+    const [policyR, selectorR, raceR, geometryR, stabilityR, prospectiveR, monitorR, controlR] = await Promise.all([
+      fetch('/api/accuracy-policy'), fetch('/api/accuracy-selector'), fetch('/api/accuracy-race'), fetch('/api/accuracy-geometry'), fetch('/api/accuracy-setup-stability'), fetch('/api/accuracy-prospective-shadow'), fetch('/api/accuracy-prospective-monitor'), fetch('/api/accuracy-prospective-control'),
     ]);
-    if (!policyR.ok || !selectorR.ok || !raceR.ok || !geometryR.ok || !stabilityR.ok || !prospectiveR.ok || !monitorR.ok) throw new Error('accuracy evidence unavailable');
+    if (!policyR.ok || !selectorR.ok || !raceR.ok || !geometryR.ok || !stabilityR.ok || !prospectiveR.ok || !monitorR.ok || !controlR.ok) throw new Error('accuracy evidence unavailable');
     const p = await policyR.json();
     const selector = await selectorR.json();
     const race = await raceR.json();
@@ -1091,6 +1095,7 @@ async function loadAccuracyPolicy() {
     const stability = await stabilityR.json();
     const prospective = await prospectiveR.json();
     const monitor = await monitorR.json();
+    const control = await controlR.json();
     $('accuracy-min-win').textContent = pct(p.min_win_rate);
     $('accuracy-min-lb').textContent = pct(p.min_win_rate_wilson_lb);
     $('accuracy-evidence').innerHTML = `${p.min_trades} total<br><span class="muted" style="font-size:13px;">${p.min_oos_trades} OOS</span>`;
@@ -1180,12 +1185,25 @@ async function loadAccuracyPolicy() {
     $('prospective-stress').innerHTML = ms && ms.accuracy != null
       ? `${pct(ms.accuracy)} / ${Number(ms.expectancy_r).toFixed(3)}R<br><span class="muted" style="font-size:13px;">2x slippage</span>`
       : 'insufficient evidence';
+    const cs = control.summary;
+    $('prospective-control-status').innerHTML = cs
+      ? `${(control.status || 'not run').replaceAll('_', ' ')}<br><span class="muted" style="font-size:13px;">${cs.resolved_model_calls} calls · ${cs.mature_sessions} sessions</span>`
+      : 'not run';
+    $('prospective-control-status').className = 'value ' + (control.status === 'selection_control_pass' ? 'pos' : (control.status === 'selection_control_fail' ? 'neg' : 'planned'));
+    $('prospective-control-expectancy').textContent = cs && cs.model_expectancy_r != null
+      ? `${Number(cs.model_expectancy_r).toFixed(3)}R / ${Number(cs.random_expectancy_r_mean).toFixed(3)}R`
+      : 'insufficient evidence';
+    $('prospective-control-advantage').textContent = cs && cs.selection_advantage_r != null
+      ? `${Number(cs.selection_advantage_r).toFixed(3)}R / p=${Number(cs.p_value).toFixed(3)}`
+      : 'insufficient evidence';
+    $('prospective-control-detail').textContent = control.detail || '';
   } catch (e) {
-    for (const id of ['accuracy-min-win', 'accuracy-min-lb', 'accuracy-evidence', 'accuracy-shadow-count', 'selector-status', 'selector-success', 'selector-confidence', 'selector-operating-point', 'race-status', 'race-cohort', 'race-economics', 'race-rule-score', 'race-models', 'race-best-coverage', 'geometry-status', 'geometry-best', 'geometry-positive-setup', 'geometry-locked', 'stability-status', 'stability-development', 'stability-locked', 'stability-evidence', 'prospective-status', 'prospective-counts', 'prospective-accuracy', 'prospective-session', 'prospective-integrity', 'prospective-availability', 'prospective-cluster', 'prospective-stress']) $(id).textContent = 'n/a';
+    for (const id of ['accuracy-min-win', 'accuracy-min-lb', 'accuracy-evidence', 'accuracy-shadow-count', 'selector-status', 'selector-success', 'selector-confidence', 'selector-operating-point', 'race-status', 'race-cohort', 'race-economics', 'race-rule-score', 'race-models', 'race-best-coverage', 'geometry-status', 'geometry-best', 'geometry-positive-setup', 'geometry-locked', 'stability-status', 'stability-development', 'stability-locked', 'stability-evidence', 'prospective-status', 'prospective-counts', 'prospective-accuracy', 'prospective-session', 'prospective-integrity', 'prospective-availability', 'prospective-cluster', 'prospective-stress', 'prospective-control-status', 'prospective-control-expectancy', 'prospective-control-advantage']) $(id).textContent = 'n/a';
     $('accuracy-shadow-list').textContent = 'Accuracy policy unavailable.';
     $('selector-detail').textContent = 'Selector evidence unavailable.';
     $('race-detail').textContent = 'Frozen model-race evidence unavailable.';
     $('prospective-detail').textContent = 'Prospective evidence unavailable.';
+    $('prospective-control-detail').textContent = 'Prospective selection control unavailable.';
   }
 }
 loadAccuracyPolicy();

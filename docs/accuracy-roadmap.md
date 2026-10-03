@@ -490,6 +490,15 @@ fresh evidence; missed targets remain visible.
   authority remains false. Current performance is unavailable because no post-activation
   calls exist; see the
   [Milestone-9 checkpoint](accuracy-prospective-integrity-m9-checkpoint.md).
+- [x] Implement Milestone 10's preregistered prospective matched-random selection control.
+  Each fresh M8 session receives 1,000 deterministic same-session random selections from
+  the exact candidate population with the model's call count; assignments are frozen
+  before entry, outcomes are recomputed under identical geometry/costs, and selected-call
+  parity with M8 is mandatory. The gate requires 100 paired calls, 30 sessions, +0.10R
+  advantage and p <= 0.05. This isolates ranking value but explicitly does not satisfy the
+  broader random-timing gate. Current evidence is empty and collecting; see the
+  [Milestone-10 checkpoint](accuracy-prospective-control-m10-checkpoint.md) and
+  [frozen protocol](accuracy-prospective-control-m10-protocol.md).
 
 For each completed item, attach its artifact/run identifier, date, sample size and
 pass/fail result. Update this checklist at checkpoints. The 70–80% objective remains

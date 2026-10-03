@@ -24,6 +24,9 @@ ACCURACY_PROSPECTIVE_STATE = Path(
 ACCURACY_PROSPECTIVE_MONITOR = Path(
     "data/m14_m18/accuracy_prospective_monitor/latest.json"
 )
+ACCURACY_PROSPECTIVE_CONTROL = Path(
+    "data/m14_m18/accuracy_prospective_control/state.json"
+)
 CRYPTO_ACCURACY_STATE = Path("data/m14_m18/crypto_accuracy_program/state.json")
 
 
@@ -402,6 +405,66 @@ def create_app(
             {
                 "status": (payload.get("integrity") or {}).get("status", "invalid"),
                 **payload,
+            }
+        )
+
+    @app.get("/api/accuracy-prospective-control")
+    async def api_accuracy_prospective_control() -> JSONResponse:
+        """M10 random-selection control; not the broader random-timing gate."""
+        if not ACCURACY_PROSPECTIVE_CONTROL.exists():
+            return JSONResponse(
+                {
+                    "status": "not_run",
+                    "summary": None,
+                    "detail": "prospective matched-random control has not run",
+                }
+            )
+        try:
+            payload = json.loads(ACCURACY_PROSPECTIVE_CONTROL.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return JSONResponse(
+                {
+                    "status": "invalid",
+                    "summary": None,
+                    "detail": "prospective matched-random control is unreadable",
+                }
+            )
+        summary = payload.get("summary") or {}
+        sessions = [
+            {
+                key: session.get(key)
+                for key in (
+                    "armed_on",
+                    "assigned_at",
+                    "score_deadline",
+                    "prospective_eligible",
+                    "candidate_count",
+                    "model_call_count",
+                )
+            }
+            for session in payload.get("sessions", [])[-50:]
+        ]
+        return JSONResponse(
+            {
+                "status": summary.get("status", "invalid"),
+                "registration": {
+                    key: payload.get(key)
+                    for key in (
+                        "version",
+                        "registered_at",
+                        "seed",
+                        "n_cohorts",
+                        "scope",
+                    )
+                },
+                "summary": summary,
+                "outcome_parity": payload.get("outcome_parity"),
+                "sessions": sessions,
+                "errors": payload.get("errors", []),
+                "detail": (
+                    "same-session random candidate selection only; the broader "
+                    "random-timing gate remains pending"
+                ),
             }
         )
 
