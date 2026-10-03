@@ -107,6 +107,19 @@ def main() -> None:
         print("M8 prospective shadow: not activated")
     except Exception as exc:
         print(f"M8 prospective shadow degraded: {type(exc).__name__}: {exc}")
+    else:
+        try:
+            from tradedesk_lab.accuracy_prospective_monitor import run_monitor
+
+            monitor = run_monitor()
+            print(
+                "M9 evidence monitor: "
+                f"integrity={monitor['integrity']['status']}, "
+                f"audit_events={monitor['audit']['events']}, "
+                f"review_ready={monitor['review_ready']}"
+            )
+        except Exception as exc:
+            print(f"M9 evidence monitor degraded: {type(exc).__name__}: {exc}")
 
 
 if __name__ == "__main__":

@@ -482,6 +482,14 @@ fresh evidence; missed targets remain visible.
   resolved calls across 30 sessions. See the
   [Milestone-8 checkpoint](accuracy-prospective-shadow-m8-checkpoint.md) and
   [frozen protocol](accuracy-prospective-shadow-m8-protocol.md).
+- [x] Implement Milestone 9's independent evidence-integrity and stress observer without
+  changing the frozen M8 cohort. It hash-chains prediction/outcome events, verifies every
+  pinned artifact and source watchlist, retains zero-call sessions in availability,
+  computes session/week clustered uncertainty when sample sizes permit, and reprices
+  mature calls at doubled slippage. The dashboard exposes every result while live
+  authority remains false. Current performance is unavailable because no post-activation
+  calls exist; see the
+  [Milestone-9 checkpoint](accuracy-prospective-integrity-m9-checkpoint.md).
 
 For each completed item, attach its artifact/run identifier, date, sample size and
 pass/fail result. Update this checklist at checkpoints. The 70–80% objective remains

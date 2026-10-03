@@ -303,3 +303,37 @@ async def test_prospective_shadow_reports_fresh_evidence_without_live_authority(
     assert body["summary"]["eligible_for_live"] is False
     assert body["activation"]["forward_after"] == "2026-10-02"
     assert "features" not in body["records"][0]
+
+
+@pytest.mark.asyncio
+async def test_prospective_monitor_is_read_only_and_surfaces_integrity(
+    tmp_path, monkeypatch
+) -> None:
+    report = tmp_path / "latest.json"
+    report.write_text(
+        json.dumps(
+            {
+                "integrity": {"status": "healthy", "passed": True, "failures": []},
+                "audit": {"events": 1},
+                "availability": {"observed_sessions": 0},
+                "uncertainty": {"session_cluster_lower_95": None},
+                "double_slippage_stress": {"status": "insufficient_evidence"},
+                "review_ready": False,
+                "eligible_for_live": False,
+                "authority": "read_only_evidence_monitor",
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(dashboard_app, "ACCURACY_PROSPECTIVE_MONITOR", report)
+    app = create_app(DashboardState())
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        response = await client.get("/api/accuracy-prospective-monitor")
+
+    body = response.json()
+    assert body["status"] == "healthy"
+    assert body["review_ready"] is False
+    assert body["eligible_for_live"] is False
+    assert body["authority"] == "read_only_evidence_monitor"

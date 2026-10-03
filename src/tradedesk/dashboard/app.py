@@ -21,6 +21,9 @@ CRYPTO_UNIVERSE_REPORT = Path("data/reports/crypto_universe_latest.json")
 ACCURACY_PROSPECTIVE_STATE = Path(
     "data/m14_m18/accuracy_prospective_shadow/state.json"
 )
+ACCURACY_PROSPECTIVE_MONITOR = Path(
+    "data/m14_m18/accuracy_prospective_monitor/latest.json"
+)
 
 
 def _read_call_log(log_path: Path, limit: int) -> list[dict[str, Any]]:
@@ -347,6 +350,34 @@ def create_app(
                 "detail": (
                     "shadow-only forward evidence; live eligibility remains unchanged"
                 ),
+            }
+        )
+
+    @app.get("/api/accuracy-prospective-monitor")
+    async def api_accuracy_prospective_monitor() -> JSONResponse:
+        """Independent M9 integrity/stress report; never a live-promotion endpoint."""
+        if not ACCURACY_PROSPECTIVE_MONITOR.exists():
+            return JSONResponse(
+                {
+                    "status": "not_run",
+                    "integrity": None,
+                    "detail": "prospective integrity monitor has not run",
+                }
+            )
+        try:
+            payload = json.loads(ACCURACY_PROSPECTIVE_MONITOR.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return JSONResponse(
+                {
+                    "status": "invalid",
+                    "integrity": None,
+                    "detail": "prospective integrity report is unreadable",
+                }
+            )
+        return JSONResponse(
+            {
+                "status": (payload.get("integrity") or {}).get("status", "invalid"),
+                **payload,
             }
         )
 
