@@ -376,6 +376,16 @@
 </main>
 
 <main id="tab-crypto" hidden>
+  <section>
+    <h2>Monitoring universe <span class="info-ic" title="All active CoinDCX INR pairs are monitored; liquidity, data quality and accuracy gates still decide whether a call is allowed.">ⓘ</span></h2>
+    <div class="cards">
+      <div class="card"><div class="label">Active INR pairs</div><div class="value" id="crypto-universe-active">-</div></div>
+      <div class="card"><div class="label">Scanned pairs</div><div class="value" id="crypto-universe-scanned">-</div></div>
+      <div class="card"><div class="label">Closed-session coverage</div><div class="value" id="crypto-universe-fresh">-</div></div>
+      <div class="card"><div class="label">Fetch errors</div><div class="value" id="crypto-universe-errors">-</div></div>
+    </div>
+    <div class="muted" id="crypto-universe-detail" style="margin-top:8px;"></div>
+  </section>
   <section class="perf-controls">
     <div class="group">
       <label for="crypto-live-view-select">View</label>
@@ -675,6 +685,7 @@
       <div class="card"><div class="label">Race cohort</div><div class="value" id="race-cohort">-</div></div>
       <div class="card"><div class="label">Economics coverage</div><div class="value" id="race-economics">-</div></div>
       <div class="card"><div class="label">Rule-score coverage</div><div class="value" id="race-rule-score">-</div></div>
+      <div class="card"><div class="label">Models evaluated</div><div class="value" id="race-models">-</div></div>
     </div>
     <div class="muted" id="race-detail" style="margin-top:8px;"></div>
   </section>
@@ -1072,9 +1083,11 @@ async function loadAccuracyPolicy() {
     $('race-cohort').textContent = cohort.rows != null ? `${cohort.rows} rows / ${cohort.sessions} sessions` : '-';
     $('race-economics').textContent = cohort.economics_coverage != null ? pct(cohort.economics_coverage) : '-';
     $('race-rule-score').textContent = cohort.rule_score_coverage != null ? pct(cohort.rule_score_coverage) : '-';
+    $('race-models').textContent = (race.candidates || []).length
+      ? race.candidates.map(row => row.kind).join(', ') : 'none';
     $('race-detail').textContent = (cohort.blockers || []).join(' | ') || race.detail || '';
   } catch (e) {
-    for (const id of ['accuracy-min-win', 'accuracy-min-lb', 'accuracy-evidence', 'accuracy-shadow-count', 'selector-status', 'selector-success', 'selector-confidence', 'selector-operating-point', 'race-status', 'race-cohort', 'race-economics', 'race-rule-score']) $(id).textContent = 'n/a';
+    for (const id of ['accuracy-min-win', 'accuracy-min-lb', 'accuracy-evidence', 'accuracy-shadow-count', 'selector-status', 'selector-success', 'selector-confidence', 'selector-operating-point', 'race-status', 'race-cohort', 'race-economics', 'race-rule-score', 'race-models']) $(id).textContent = 'n/a';
     $('accuracy-shadow-list').textContent = 'Accuracy policy unavailable.';
     $('selector-detail').textContent = 'Selector evidence unavailable.';
     $('race-detail').textContent = 'Frozen model-race evidence unavailable.';
@@ -1082,6 +1095,26 @@ async function loadAccuracyPolicy() {
 }
 loadAccuracyPolicy();
 setInterval(loadAccuracyPolicy, 60000);
+
+async function loadCryptoUniverse() {
+  try {
+    const response = await fetch('/api/crypto/universe');
+    if (!response.ok) throw new Error('universe unavailable');
+    const value = await response.json();
+    if (value.status !== 'complete') throw new Error(value.detail || 'universe not run');
+    $('crypto-universe-active').textContent = value.active_inr_pairs;
+    $('crypto-universe-scanned').textContent = value.scanned_pairs;
+    $('crypto-universe-fresh').textContent = `${value.pairs_with_closed_session}/${value.active_inr_pairs}`;
+    $('crypto-universe-errors').textContent = value.fetch_errors;
+    $('crypto-universe-errors').className = 'value ' + (value.fetch_errors ? 'neg' : 'pos');
+    $('crypto-universe-detail').textContent = `Session ${value.session}; ${value.signals_detected} signals detected, ${value.tradeable_signals} tradeable.`;
+  } catch (e) {
+    for (const id of ['crypto-universe-active', 'crypto-universe-scanned', 'crypto-universe-fresh', 'crypto-universe-errors']) $(id).textContent = 'n/a';
+    $('crypto-universe-detail').textContent = 'Full-active-universe tracker has not completed a run yet.';
+  }
+}
+loadCryptoUniverse();
+setInterval(loadCryptoUniverse, 60000);
 
 // ---------------------------------------------------------------- Review tab
 function reviewCard(item) {

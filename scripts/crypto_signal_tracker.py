@@ -1,17 +1,18 @@
-"""Crypto signal tracker (M13 follow-up): "test a few coins and track to see if you're
-right" - crypto trades 24/7, but paper/book.py::PaperBook is deliberately NSE-only
+"""Full-active-universe crypto signal tracker.
+
+Crypto trades 24/7, but paper/book.py::PaperBook is deliberately NSE-only
 (CLAUDE.md M13 note: Portfolio.costs would need CryptoCostModel wiring through the paper
 book's sizing too, and risk/sizing.py's whole-unit assumption already breaks on BTC/ETH -
 see docs/signoff-crypto-phase4.md). Rather than force crypto through that, this is a
-lighter, honest tool: log every real signal the crypto scan produces on a fixed watchlist
-of liquid pairs, then later grade each one with the SAME triple-barrier rule the
+lighter, honest tool: discover every currently active CoinDCX INR pair, scan the whole
+universe, then log and grade every real signal with the SAME triple-barrier rule the
 prediction layer trains on (prediction/labeling.py) - hit target before stop, or not,
 gap-aware. It answers "was the setup right" without needing position sizing, a cost
 model wired into a portfolio, or fractional quantities at all.
 
 The generic log/resolve/render machinery lives in tradedesk/signal_tracker.py, shared with
 scripts/bse_signal_tracker.py (same underlying problem: no paper book). This script supplies
-only what's crypto-specific: which client refreshes candles, and the watchlist.
+only what's crypto-specific: which client refreshes candles and the dynamic universe.
 
 Run daily (scheduled via Task Scheduler, crypto_daily task) - crypto's daily candle is a
 UTC-midnight bar, settled well before this runs at 07:00 IST.
@@ -23,6 +24,7 @@ outcomes resolve (rewrite-the-file style, small enough not to need anything fanc
 from __future__ import annotations
 
 import asyncio
+import json
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -35,6 +37,10 @@ from tradedesk.config import load_config
 from tradedesk.data.candle_store import CandleStore
 from tradedesk.data.history_loader import default_start, load_history
 from tradedesk.markets import crypto_market
+from tradedesk.markets.crypto_universe import (
+    active_crypto_codes,
+    crypto_codes_needing_daily_refresh,
+)
 from tradedesk.scan import build_watchlist, scan_config
 from tradedesk.signal_tracker import (
     flag_setup_failures,
@@ -53,10 +59,7 @@ DB = Path("data/crypto.duckdb")
 LOG = Path("data/reports/crypto_signal_tracking.jsonl")
 SESSIONS_DIR = Path("data/reports/crypto_sessions")
 DASHBOARD = Path("data/reports/crypto_dashboard.html")
-WATCHLIST = [
-    "CDX_BTCINR", "CDX_ETHINR", "CDX_SOLINR", "CDX_XRPINR", "CDX_DOGEINR",
-    "CDX_ADAINR", "CDX_TRXINR", "CDX_XLMINR", "CDX_HBARINR", "CDX_BNBINR",
-]  # fmt: skip
+UNIVERSE_REPORT = Path("data/reports/crypto_universe_latest.json")
 MAX_HOLD = 10  # sessions -> calendar days for a 24/7 market; matches config/risk.yaml
 
 
@@ -64,36 +67,84 @@ def main() -> None:
     settings = load_config(".")
     market = crypto_market(settings)
     with CandleStore(DB) as store:
-        # incremental load, watchlist coins only - keeps this fast and independent of
-        # the full 338-pair Task Scheduler load
+        # Refresh the public instrument master on every run. This is one lightweight
+        # request and means new/delisted pairs change the monitored population explicitly
+        # instead of leaving a hard-coded ten-coin sample in place forever.
         from tradedesk.broker.coindcx import CoinDcxClient
         from tradedesk.broker.coindcx.rest import CoinDcxError
 
-        start = default_start(Interval.D1, datetime.now(IST))
+        now = datetime.now(IST)
+        start = default_start(Interval.D1, now)
 
-        async def refresh() -> None:
+        async def refresh() -> tuple[list[str], int, int]:
             async with CoinDcxClient() as c:
-                c.register_pairs(store.custom_symbols(WATCHLIST))
-                await load_history(
-                    c, store, WATCHLIST, Interval.D1, start=start,
+                instruments = await c.instruments()
+                universe = active_crypto_codes(instruments)
+                if not universe:
+                    raise RuntimeError("CoinDCX returned no active INR pairs")
+                store.upsert_instruments(instruments)
+                c.register_pairs(
+                    {
+                        instrument.scrip_code: str(instrument.custom_symbol)
+                        for instrument in instruments
+                        if instrument.custom_symbol
+                    }
+                )
+                refresh_codes = crypto_codes_needing_daily_refresh(store, universe, now)
+                summary = await load_history(
+                    c, store, refresh_codes, Interval.D1, start=start, end=now,
                     max_codes_per_call=1, error_types=(CoinDcxError,),
                 )  # fmt: skip
+                return universe, len(refresh_codes), len(summary.errors)
 
-        asyncio.run(refresh())
+        universe, refreshed_pairs, fetch_errors = asyncio.run(refresh())
+        reference = f"{market.code_prefix}{market.benchmark_name}"
+        if reference not in universe:
+            raise RuntimeError(f"crypto benchmark {reference} is not active")
 
         # last_closed_ts, not last_ts: CoinDCX continuously updates the currently-forming
         # UTC day's bar rather than only publishing it once closed (confirmed 2026-09-27 -
         # see CandleStore.last_closed_ts's own docstring), so evaluating against last_ts()
         # here would arm signals off a not-yet-final close.
-        today = store.last_closed_ts(WATCHLIST[0], Interval.D1)
+        today = store.last_closed_ts(reference, Interval.D1)
         if today is None:
             print("no fully-closed bar for the watchlist yet; aborting")
             return
         day = today.date()
 
         cfg = scan_config(settings, day, market=market, include_retired=True)
-        md = prepare_market(store, WATCHLIST, WATCHLIST[0], cfg)
+        # BTC is both the market reference and a tradeable pair. Keep it in the candidate
+        # list as the original ten-coin tracker did; using it as a benchmark must not make
+        # "all active pairs" silently mean "all except BTC".
+        scan_codes = list(universe)
+        md = prepare_market(store, scan_codes, reference, cfg)
         wl = build_watchlist(md, cfg, settings, day, market=market)
+
+        closed_on_day = sum(
+            1
+            for code in universe
+            if (closed := store.last_closed_ts(code, Interval.D1)) is not None
+            and closed.date() == day
+        )
+        UNIVERSE_REPORT.parent.mkdir(parents=True, exist_ok=True)
+        UNIVERSE_REPORT.write_text(
+            json.dumps(
+                {
+                    "generated_at": datetime.now(IST).isoformat(),
+                    "session": day.isoformat(),
+                    "active_inr_pairs": len(universe),
+                    "scanned_pairs": len(scan_codes),
+                    "pairs_with_closed_session": closed_on_day,
+                    "configured_exclusions": sorted(market.universe_rules.exclude_codes),
+                    "tracker_refreshed_pairs": refreshed_pairs,
+                    "fetch_errors": fetch_errors,
+                    "signals_detected": len(wl.entries),
+                    "tradeable_signals": len(wl.active),
+                },
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
 
         rows = load_log(LOG)
         new_rows = log_new_signals(wl, rows)
@@ -105,7 +156,10 @@ def main() -> None:
         report_path = save_session_report(day, report, SESSIONS_DIR, append=True)
         flagged = flag_setup_failures("crypto", rows)
         print(
-            f"{day} run at {run_at}: {len(wl.entries)} signals detected "
+            f"{day} run at {run_at}: monitored {len(universe)} active INR pairs "
+            f"({closed_on_day} with the closed session, {refreshed_pairs} needed refresh, "
+            f"{fetch_errors} fetch errors); "
+            f"{len(wl.entries)} signals detected "
             f"({len(wl.active)} would be tradeable, {len(new_rows)} new this run), "
             f"{len(newly_resolved)} newly resolved"
         )

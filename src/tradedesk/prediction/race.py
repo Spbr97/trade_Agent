@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Sequence
 from dataclasses import asdict, dataclass
 from datetime import date, datetime
 from pathlib import Path
@@ -42,11 +43,11 @@ class AccuracyRaceProtocol:
 DEFAULT_RACE_PROTOCOL = AccuracyRaceProtocol()
 
 
-def _cohort_fingerprint(df: pd.DataFrame) -> str:
+def _cohort_fingerprint(df: pd.DataFrame, feature_names: Sequence[str]) -> str:
     columns = [
         column
         for column in (
-            "signal_id", "armed_on", "label", "realised_r", "plain_score", *FEATURE_NAMES
+            "signal_id", "armed_on", "label", "realised_r", "plain_score", *feature_names
         )
         if column in df.columns
     ]
@@ -55,12 +56,21 @@ def _cohort_fingerprint(df: pd.DataFrame) -> str:
 
 
 def audit_accuracy_race_dataset(
-    df: pd.DataFrame, protocol: AccuracyRaceProtocol = DEFAULT_RACE_PROTOCOL
+    df: pd.DataFrame,
+    protocol: AccuracyRaceProtocol = DEFAULT_RACE_PROTOCOL,
+    *,
+    feature_names: Sequence[str] = FEATURE_NAMES,
+    feature_version: str = FEATURE_VERSION,
 ) -> dict[str, Any]:
     """Return a reproducible readiness manifest; missing evidence is always a blocker."""
     required_meta = {"signal_id", "armed_on", "label", "realised_r", "plain_score"}
     missing_meta = sorted(required_meta - set(df.columns))
-    missing_features = sorted(set(FEATURE_NAMES) - set(df.columns))
+    feature_names = list(feature_names)
+    if not feature_names:
+        raise ValueError("accuracy race requires at least one decision-time feature")
+    if len(feature_names) != len(set(feature_names)):
+        raise ValueError("accuracy race feature names must be unique")
+    missing_features = sorted(set(feature_names) - set(df.columns))
     n = len(df)
     economics_complete = (
         int(pd.to_numeric(df["realised_r"], errors="coerce").notna().sum())
@@ -72,7 +82,7 @@ def audit_accuracy_race_dataset(
     )
     feature_null_rows = n
     if not missing_features and n:
-        feature_null_rows = int(df[FEATURE_NAMES].isna().any(axis=1).sum())
+        feature_null_rows = int(df[feature_names].isna().any(axis=1).sum())
     dates: list[date] = []
     if "armed_on" in df:
         dates = [pd.Timestamp(value).date() for value in df["armed_on"].dropna()]
@@ -85,7 +95,7 @@ def audit_accuracy_race_dataset(
         blockers.append(f"missing metadata columns: {', '.join(missing_meta)}")
     if missing_features:
         blockers.append(
-            f"feature schema is not {FEATURE_VERSION}: {len(missing_features)} columns missing"
+            f"feature schema is not {feature_version}: {len(missing_features)} columns missing"
         )
     if feature_null_rows:
         blockers.append(f"{feature_null_rows} rows have missing decision-time features")
@@ -103,7 +113,9 @@ def audit_accuracy_race_dataset(
     return {
         "ready": not blockers,
         "protocol_version": protocol.version,
-        "feature_version": FEATURE_VERSION,
+        "feature_version": feature_version,
+        "feature_count": len(feature_names),
+        "feature_names": feature_names,
         "rows": n,
         "sessions": len(set(dates)),
         "date_start": min(dates).isoformat() if dates else None,
@@ -115,7 +127,7 @@ def audit_accuracy_race_dataset(
         "rule_score_coverage": rule_score_complete / n if n else 0.0,
         "missing_features": missing_features,
         "feature_null_rows": feature_null_rows,
-        "fingerprint_sha256": _cohort_fingerprint(df),
+        "fingerprint_sha256": _cohort_fingerprint(df, feature_names),
         "blockers": blockers,
     }
 
@@ -160,10 +172,18 @@ def run_accuracy_race(
     *,
     protocol: AccuracyRaceProtocol = DEFAULT_RACE_PROTOCOL,
     policy: AccuracySelectorPolicy | None = None,
+    feature_names: Sequence[str] = FEATURE_NAMES,
+    feature_version: str = FEATURE_VERSION,
 ) -> dict[str, Any]:
     """Run the frozen race or return a blocked artifact without fitting any model."""
     policy = policy or AccuracySelectorPolicy()
-    audit = audit_accuracy_race_dataset(df, protocol)
+    feature_names = list(feature_names)
+    audit = audit_accuracy_race_dataset(
+        df,
+        protocol,
+        feature_names=feature_names,
+        feature_version=feature_version,
+    )
     base: dict[str, Any] = {
         "created_at": datetime.now(IST).isoformat(),
         "status": "blocked" if not audit["ready"] else "running",
@@ -202,7 +222,7 @@ def run_accuracy_race(
         base["detail"] = "race blocked before fitting: no valid purged walk-forward folds"
         return base
 
-    X = dev[FEATURE_NAMES].to_numpy(dtype=float)
+    X = dev[feature_names].to_numpy(dtype=float)
     y = dev["label"].to_numpy(dtype=int)
     r = dev["realised_r"].to_numpy(dtype=float)
     sessions = list(dev["_armed_date"])
@@ -259,7 +279,7 @@ def run_accuracy_race(
     else:
         model = _model(kind, protocol.seed)
         model.fit(X, y)
-        final_p = model.predict_proba(final[FEATURE_NAMES].to_numpy(dtype=float))[:, 1]
+        final_p = model.predict_proba(final[feature_names].to_numpy(dtype=float))[:, 1]
     locked_curve = accuracy_coverage_curve(
         final["label"].to_numpy(dtype=int),
         final_p,

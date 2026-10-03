@@ -65,3 +65,23 @@ def test_readiness_manifest_is_deterministic() -> None:
     second = audit_accuracy_race_dataset(frame.copy())
     assert first["ready"] is True
     assert first["fingerprint_sha256"] == second["fingerprint_sha256"]
+
+
+def test_race_can_use_an_explicit_audited_causal_feature_contract() -> None:
+    frame = _dataset()
+    causal = [FEATURE_NAMES[0], FEATURE_NAMES[1]]
+
+    result = run_accuracy_race(
+        frame,
+        feature_names=causal,
+        feature_version="causal-test-v1",
+    )
+
+    assert result["cohort"]["ready"] is True
+    assert result["cohort"]["feature_version"] == "causal-test-v1"
+    assert result["cohort"]["feature_names"] == causal
+    assert [row["kind"] for row in result["candidates"]] == [
+        "rule_score",
+        "logistic",
+        "hist_gradient_boosting",
+    ]

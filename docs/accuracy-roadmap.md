@@ -435,6 +435,15 @@ fresh evidence; missed targets remain visible.
   coverage is zero. The locked tail remains unopened and the 21.50% canonical baseline
   is unchanged; see the
   [Milestone-3 checkpoint](accuracy-selector-m3-checkpoint.md).
+- [x] Complete Milestone 4's executable repair: rebuild 22,756 rows with 33 causal
+  features, 100% transparent-score coverage and 100% reconstructed after-cost economics,
+  then actually train/evaluate the rule-score, logistic and histogram-gradient-boosting
+  candidates on 13,305 identical walk-forward OOS rows. No candidate qualifies; the best
+  logistic sampled point is 47.83% on only 23 calls with a 29.24% Wilson lower bound,
+  2.92% session coverage and -0.056R expectancy, so the locked 4,848-row tail remains
+  unopened. Crypto monitoring is also expanded from ten hard-coded coins to the dynamic
+  active CoinDCX INR universe (339 pairs in the verified run). See the
+  [Milestone-4 checkpoint](accuracy-training-m4-checkpoint.md).
 
 For each completed item, attach its artifact/run identifier, date, sample size and
 pass/fail result. Update this checklist at checkpoints. The 70–80% objective remains

@@ -17,6 +17,7 @@ from tradedesk.dashboard.state import DashboardState
 
 STATIC = Path(__file__).with_name("static")
 MODELS_DIR = Path("data/models")
+CRYPTO_UNIVERSE_REPORT = Path("data/reports/crypto_universe_latest.json")
 
 
 def _read_call_log(log_path: Path, limit: int) -> list[dict[str, Any]]:
@@ -189,9 +190,35 @@ def create_app(
                     "blockers": cohort.get("blockers") or [],
                 },
                 "nominee": payload.get("nominee"),
+                "candidates": [
+                    {
+                        "kind": row.get("kind"),
+                        "oos_rows": row.get("oos_rows"),
+                        "qualified": row.get("operating_point") is not None,
+                    }
+                    for row in (payload.get("candidates") or [])
+                ],
                 "locked_test": payload.get("locked_test"),
             }
         )
+
+    @app.get("/api/crypto/universe")
+    async def api_crypto_universe() -> JSONResponse:
+        """Latest full-active-universe run; absence is shown as not run, never as zero."""
+        if not CRYPTO_UNIVERSE_REPORT.exists():
+            return JSONResponse(
+                {
+                    "status": "not_run",
+                    "detail": "the full-active-universe crypto tracker has not run yet",
+                }
+            )
+        try:
+            payload = json.loads(CRYPTO_UNIVERSE_REPORT.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return JSONResponse(
+                {"status": "invalid", "detail": "crypto universe report is unreadable"}
+            )
+        return JSONResponse({"status": "complete", **payload})
 
     @app.get("/api/state/bse")
     async def api_state_bse() -> JSONResponse:

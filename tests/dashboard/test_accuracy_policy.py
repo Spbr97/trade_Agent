@@ -108,3 +108,36 @@ async def test_accuracy_race_exposes_blockers_without_treating_them_as_pass(
     assert body["cohort"]["economics_coverage"] == 0.0204
     assert body["nominee"] is None
     assert body["locked_test"]["status"] == "not_opened"
+
+
+@pytest.mark.asyncio
+async def test_crypto_universe_endpoint_distinguishes_not_run_from_zero(
+    tmp_path, monkeypatch
+) -> None:
+    report = tmp_path / "crypto-universe.json"
+    monkeypatch.setattr(dashboard_app, "CRYPTO_UNIVERSE_REPORT", report)
+    app = create_app(DashboardState())
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        missing = await client.get("/api/crypto/universe")
+        report.write_text(
+            json.dumps(
+                {
+                    "active_inr_pairs": 338,
+                    "scanned_pairs": 337,
+                    "pairs_with_closed_session": 336,
+                    "fetch_errors": 2,
+                    "signals_detected": 3,
+                    "tradeable_signals": 0,
+                    "session": "2026-10-02",
+                }
+            ),
+            encoding="utf-8",
+        )
+        complete = await client.get("/api/crypto/universe")
+
+    assert missing.json()["status"] == "not_run"
+    assert complete.json()["status"] == "complete"
+    assert complete.json()["active_inr_pairs"] == 338
+    assert complete.json()["tradeable_signals"] == 0

@@ -34,6 +34,7 @@ from tradedesk.broker.indstocks.models import Interval  # noqa: E402
 from tradedesk.config import load_config  # noqa: E402
 from tradedesk.data.candle_store import CandleStore  # noqa: E402
 from tradedesk.markets import bse_market, crypto_market  # noqa: E402
+from tradedesk.markets.crypto_universe import stored_crypto_codes  # noqa: E402
 from tradedesk.scan import scan_config  # noqa: E402
 from tradedesk.signal_tracker import (  # noqa: E402
     backfill_watchlists,
@@ -58,17 +59,19 @@ def backfill(market: str) -> None:
     with CandleStore(mod.DB) as store:
         if market == "crypto":
             ref = f"{mkt.code_prefix}{mkt.benchmark_name}"
+            watchlist = stored_crypto_codes(store)
         else:
             ref = store.index_code(mkt.benchmark_name, exch="BSE")
             if ref is None:
                 raise SystemExit(f"benchmark {mkt.benchmark_name!r} not in instruments table")
-        codes = [c for c in mod.WATCHLIST if c != ref]
+            watchlist = list(mod.WATCHLIST)
+        codes = [c for c in watchlist if c != ref]
 
-        stamps = [t for c in mod.WATCHLIST if (t := store.first_ts(c, Interval.D1)) is not None]
+        stamps = [t for c in watchlist if (t := store.first_ts(c, Interval.D1)) is not None]
         if not stamps:
             raise SystemExit(f"no history loaded for {market}'s watchlist - run `data load` first")
         first = min(stamps)
-        last = max(t for c in mod.WATCHLIST if (t := store.last_ts(c, Interval.D1)) is not None)
+        last = max(t for c in watchlist if (t := store.last_ts(c, Interval.D1)) is not None)
 
         cfg = scan_config(settings, last.date(), market=mkt)
         cfg.start = first.date()
