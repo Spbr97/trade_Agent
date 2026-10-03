@@ -494,3 +494,14 @@ fresh evidence; missed targets remain visible.
 For each completed item, attach its artifact/run identifier, date, sample size and
 pass/fail result. Update this checklist at checkpoints. The 70–80% objective remains
 unachieved until the relevant evidence and session criteria pass.
+
+## Parallel crypto accuracy program
+
+Crypto now has an independent seven-checkpoint program, C0–C6. C0 freezes the
+source-separated forward and historical baselines without pooling either with NSE/BSE or
+with each other. Subsequent checkpoints cover point-in-time labels and economics,
+anticipatory/quick-profit mechanisms, precision selection, locked evaluation, prospective
+shadow evidence, and integrity/drift review. See the
+[crypto accuracy plan](plan-crypto-accuracy.md) and
+[C0 checkpoint](crypto-accuracy-c0-checkpoint.md). Crypto cannot borrow qualification from
+the NSE M1–M10 sequence, and NSE cannot borrow crypto evidence.

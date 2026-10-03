@@ -24,6 +24,7 @@ ACCURACY_PROSPECTIVE_STATE = Path(
 ACCURACY_PROSPECTIVE_MONITOR = Path(
     "data/m14_m18/accuracy_prospective_monitor/latest.json"
 )
+CRYPTO_ACCURACY_STATE = Path("data/m14_m18/crypto_accuracy_program/state.json")
 
 
 def _read_call_log(log_path: Path, limit: int) -> list[dict[str, Any]]:
@@ -96,6 +97,29 @@ def create_app(
                 "research_only": research_only,
             }
         )
+
+    @app.get("/api/crypto/accuracy-program")
+    async def api_crypto_accuracy_program() -> JSONResponse:
+        """Crypto-only C0+ evidence; never pooled with the NSE accuracy program."""
+        if not CRYPTO_ACCURACY_STATE.exists():
+            return JSONResponse(
+                {
+                    "status": "not_run",
+                    "checkpoint": "C0",
+                    "detail": "crypto accuracy baseline has not been generated",
+                }
+            )
+        try:
+            payload = json.loads(CRYPTO_ACCURACY_STATE.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return JSONResponse(
+                {
+                    "status": "invalid",
+                    "checkpoint": "C0",
+                    "detail": "crypto accuracy state is unreadable",
+                }
+            )
+        return JSONResponse(payload)
 
     @app.get("/api/accuracy-selector")
     async def api_accuracy_selector() -> JSONResponse:

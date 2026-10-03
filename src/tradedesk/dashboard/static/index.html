@@ -386,6 +386,16 @@
     </div>
     <div class="muted" id="crypto-universe-detail" style="margin-top:8px;"></div>
   </section>
+  <section>
+    <h2>Crypto accuracy program <span class="info-ic" title="Crypto-only evidence. Forward calls and historical backfill remain separate and are never pooled with NSE or BSE.">ⓘ</span></h2>
+    <div class="cards">
+      <div class="card"><div class="label">Checkpoint</div><div class="value" id="crypto-accuracy-checkpoint">-</div></div>
+      <div class="card"><div class="label">Forward accuracy</div><div class="value" id="crypto-accuracy-forward">-</div></div>
+      <div class="card"><div class="label">Forward confidence</div><div class="value" id="crypto-accuracy-confidence">-</div></div>
+      <div class="card"><div class="label">Next checkpoint</div><div class="value" id="crypto-accuracy-next">-</div></div>
+    </div>
+    <div class="muted" id="crypto-accuracy-detail" style="margin-top:8px;"></div>
+  </section>
   <section class="perf-controls">
     <div class="group">
       <label for="crypto-live-view-select">View</label>
@@ -1200,6 +1210,29 @@ async function loadCryptoUniverse() {
 }
 loadCryptoUniverse();
 setInterval(loadCryptoUniverse, 60000);
+
+async function loadCryptoAccuracyProgram() {
+  try {
+    const response = await fetch('/api/crypto/accuracy-program');
+    if (!response.ok) throw new Error('crypto accuracy unavailable');
+    const value = await response.json();
+    if (value.status === 'not_run' || value.status === 'invalid') throw new Error(value.detail);
+    const live = value.live_forward || {};
+    $('crypto-accuracy-checkpoint').textContent = `${value.checkpoint} · research only`;
+    $('crypto-accuracy-forward').innerHTML = live.accuracy == null
+      ? 'insufficient evidence'
+      : `${pct(live.accuracy)}<br><span class="muted" style="font-size:13px;">${live.wins}/${live.resolved_calls} resolved</span>`;
+    $('crypto-accuracy-confidence').textContent = live.wilson_lower_bound == null
+      ? 'insufficient evidence' : pct(live.wilson_lower_bound);
+    $('crypto-accuracy-next').textContent = (value.next_checkpoint || '-').replaceAll('_', ' ');
+    $('crypto-accuracy-detail').textContent = 'Crypto evidence is independent; backfill is development-only and live authority remains false.';
+  } catch (e) {
+    for (const id of ['crypto-accuracy-checkpoint', 'crypto-accuracy-forward', 'crypto-accuracy-confidence', 'crypto-accuracy-next']) $(id).textContent = 'n/a';
+    $('crypto-accuracy-detail').textContent = 'Crypto accuracy checkpoint has not completed.';
+  }
+}
+loadCryptoAccuracyProgram();
+setInterval(loadCryptoAccuracyProgram, 60000);
 
 // ---------------------------------------------------------------- Review tab
 function reviewCard(item) {

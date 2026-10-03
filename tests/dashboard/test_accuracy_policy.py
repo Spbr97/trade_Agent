@@ -27,6 +27,38 @@ async def test_accuracy_policy_exposes_live_gate_and_shadow_detectors() -> None:
 
 
 @pytest.mark.asyncio
+async def test_crypto_accuracy_program_keeps_market_evidence_separate(
+    tmp_path, monkeypatch
+) -> None:
+    state_path = tmp_path / "crypto-accuracy.json"
+    state_path.write_text(
+        json.dumps(
+            {
+                "status": "baseline_frozen_research_only",
+                "checkpoint": "C0",
+                "source_integrity": {"evidence_mixed": False},
+                "live_forward": {"resolved_calls": 47, "wins": 5, "accuracy": 5 / 47},
+                "historical_backfill": {"resolved_calls": 461, "wins": 68},
+                "qualification": {"eligible_for_live": False},
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(dashboard_app, "CRYPTO_ACCURACY_STATE", state_path)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=create_app(DashboardState())),
+        base_url="http://test",
+    ) as client:
+        response = await client.get("/api/crypto/accuracy-program")
+
+    body = response.json()
+    assert body["live_forward"]["resolved_calls"] == 47
+    assert body["historical_backfill"]["resolved_calls"] == 461
+    assert body["source_integrity"]["evidence_mixed"] is False
+    assert body["qualification"]["eligible_for_live"] is False
+
+
+@pytest.mark.asyncio
 async def test_accuracy_selector_reports_missing_artifact_as_not_trained(
     tmp_path, monkeypatch
 ) -> None:
