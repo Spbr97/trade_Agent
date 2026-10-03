@@ -24,8 +24,9 @@
 # the header above); it stops giving away 0.11R on every trade that is taken.
 setups:
   # RETIRED on crypto 2026-09-30 by self-review item crypto:2026-09-29T00:20:21.604586+05:30: sustained failure; still enabled elsewhere and shadow-tracked on crypto (see docs/self-review-applied-log.md)
+  # RETIRED on bse 2026-10-03 by self-review item bse:2026-10-03T16:40:13.193782+05:30: sustained failure; still enabled elsewhere and shadow-tracked on bse (see docs/self-review-applied-log.md)
   base_breakout:
-    retired_markets: [crypto]
+    retired_markets: [crypto, bse]
     enabled: true
     base_len_sessions: {min: 5, max: 25}
     close_within_pct_of_base_high: 0.03
