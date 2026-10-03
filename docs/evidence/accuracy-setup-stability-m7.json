@@ -1,0 +1,76 @@
+{
+  "checkpoint": "accuracy-setup-stability-m7",
+  "run_id": "20261003-194846",
+  "created_at": "2026-10-03T19:48:45.367366+05:30",
+  "protocol_version": "accuracy-setup-stability-v1",
+  "protocol_sha256": "5a7eb13cc1fc6ad6d877b723bc168bf33f0989ad25979db2ca897e9f43ea33b7",
+  "artifact_sha256": "70c4d22b0711ea4c651f60930749729622d2917610ede58a610636860e504b12",
+  "status": "locked_pass",
+  "evidence_level": "historical_locked_pass_prospective_pending",
+  "hypothesis": {
+    "name": "primary_trend_pullback",
+    "setup": "trend_pullback",
+    "entry_mode": "next_session_open",
+    "stop_atr": 1.0,
+    "target_r": 0.5,
+    "max_hold": 3
+  },
+  "raw_development": {
+    "n": 1811,
+    "wins": 1437,
+    "accuracy": 0.7934842628382109,
+    "wilson_lower_bound": 0.7742282597874978,
+    "expectancy_r": 0.0331023871801215,
+    "fold_accuracy": [
+      0.7924528301886793,
+      0.7314285714285714,
+      0.7987421383647799,
+      0.8130434782608695
+    ],
+    "fold_expectancy_r": [
+      0.0328840226636517,
+      -0.05480502571572384,
+      0.02085730734077025,
+      0.05398683901880532
+    ],
+    "stability_pass": true
+  },
+  "development_selector": {
+    "model": "standardized_l2_logistic_c0.1",
+    "threshold": 0.55,
+    "top_k": 2,
+    "n_candidates": 1446,
+    "n_selected": 647,
+    "wins": 526,
+    "observed_success": 0.8129829984544049,
+    "wilson_lower_bound": 0.78112222761999,
+    "session_coverage": 1.0,
+    "sessions_meeting_target": 269,
+    "session_target_rate": 0.7116402116402116,
+    "expectancy_r": 0.05589004373882859,
+    "qualified": true
+  },
+  "locked_test": {
+    "status": "locked_pass",
+    "n_candidates": 606,
+    "n_selected": 223,
+    "wins": 186,
+    "observed_success": 0.8340807174887892,
+    "wilson_lower_bound": 0.7796832721797459,
+    "active_sessions": 123,
+    "total_sessions": 126,
+    "session_coverage": 0.9761904761904762,
+    "sessions_meeting_target": 91,
+    "session_target_rate": 0.7398373983739838,
+    "expectancy_r": 0.08292911511374737,
+    "qualified": true
+  },
+  "secondary_base_breakout": {
+    "stability_pass": false,
+    "failure": "positive_fold_count",
+    "selector_trained": false
+  },
+  "live_changes": false,
+  "canonical_live_baseline_changed": false,
+  "next_stage": "prospective_shadow_tracking"
+}

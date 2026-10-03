@@ -211,3 +211,54 @@ async def test_accuracy_geometry_exposes_development_without_promoting_diagnosti
     assert body["best_positive_setup_diagnostic"]["accuracy"] == 0.7935
     assert body["nominee"] is None
     assert body["locked_test"]["status"] == "not_opened_no_nominee"
+
+
+@pytest.mark.asyncio
+async def test_setup_stability_distinguishes_historical_pass_from_prospective(
+    tmp_path, monkeypatch
+) -> None:
+    folder = tmp_path / "accuracy-setup-stability"
+    folder.mkdir()
+    point = {
+        "n_selected": 647,
+        "observed_success": 0.813,
+        "wilson_lower_bound": 0.781,
+        "expectancy_r": 0.056,
+        "qualified": True,
+    }
+    payload = {
+        "status": "locked_pass",
+        "hypotheses": [
+            {
+                "hypothesis": {"name": "primary_trend_pullback"},
+                "stability_pass": True,
+                "aggregate": {"accuracy": 0.7935},
+                "selector": {"status": "qualified_development"},
+            }
+        ],
+        "nominee": {
+            "hypothesis": {"name": "primary_trend_pullback"},
+            "development_operating_point": point,
+        },
+        "locked_test": {
+            "status": "locked_pass",
+            "n_selected": 223,
+            "observed_success": 0.8341,
+            "wilson_lower_bound": 0.7797,
+            "expectancy_r": 0.0829,
+            "qualified": True,
+        },
+    }
+    (folder / "latest.json").write_text(json.dumps(payload), encoding="utf-8")
+    monkeypatch.setattr(dashboard_app, "MODELS_DIR", tmp_path)
+    app = create_app(DashboardState())
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        response = await client.get("/api/accuracy-setup-stability")
+
+    body = response.json()
+    assert body["status"] == "locked_pass"
+    assert body["development_operating_point"]["observed_success"] == 0.813
+    assert body["locked_test"]["observed_success"] == 0.8341
+    assert body["evidence_level"] == "historical_locked_pass_prospective_pending"

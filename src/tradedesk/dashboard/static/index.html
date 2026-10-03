@@ -691,6 +691,10 @@
       <div class="card"><div class="label">Best quick-profit development</div><div class="value" id="geometry-best">-</div></div>
       <div class="card"><div class="label">Best positive setup diagnostic</div><div class="value" id="geometry-positive-setup">-</div></div>
       <div class="card"><div class="label">Geometry locked tail</div><div class="value" id="geometry-locked">-</div></div>
+      <div class="card"><div class="label">Setup stability</div><div class="value" id="stability-status">-</div></div>
+      <div class="card"><div class="label">Development OOS selector</div><div class="value" id="stability-development">-</div></div>
+      <div class="card"><div class="label">Locked historical tail</div><div class="value" id="stability-locked">-</div></div>
+      <div class="card"><div class="label">Evidence level</div><div class="value" id="stability-evidence">-</div></div>
     </div>
     <div class="muted" id="race-detail" style="margin-top:8px;"></div>
   </section>
@@ -1057,14 +1061,15 @@ setInterval(loadAgentReliability, 60000);
 // ---------------------------------------------------------------- Accuracy qualification
 async function loadAccuracyPolicy() {
   try {
-    const [policyR, selectorR, raceR, geometryR] = await Promise.all([
-      fetch('/api/accuracy-policy'), fetch('/api/accuracy-selector'), fetch('/api/accuracy-race'), fetch('/api/accuracy-geometry'),
+    const [policyR, selectorR, raceR, geometryR, stabilityR] = await Promise.all([
+      fetch('/api/accuracy-policy'), fetch('/api/accuracy-selector'), fetch('/api/accuracy-race'), fetch('/api/accuracy-geometry'), fetch('/api/accuracy-setup-stability'),
     ]);
-    if (!policyR.ok || !selectorR.ok || !raceR.ok || !geometryR.ok) throw new Error('accuracy evidence unavailable');
+    if (!policyR.ok || !selectorR.ok || !raceR.ok || !geometryR.ok || !stabilityR.ok) throw new Error('accuracy evidence unavailable');
     const p = await policyR.json();
     const selector = await selectorR.json();
     const race = await raceR.json();
     const geometry = await geometryR.json();
+    const stability = await stabilityR.json();
     $('accuracy-min-win').textContent = pct(p.min_win_rate);
     $('accuracy-min-lb').textContent = pct(p.min_win_rate_wilson_lb);
     $('accuracy-evidence').innerHTML = `${p.min_trades} total<br><span class="muted" style="font-size:13px;">${p.min_oos_trades} OOS</span>`;
@@ -1112,8 +1117,21 @@ async function loadAccuracyPolicy() {
       : 'none';
     $('geometry-locked').textContent = geometry.locked_test
       ? (geometry.locked_test.status || 'unknown').replaceAll('_', ' ') : '-';
+    $('stability-status').textContent = (stability.status || 'not run').replaceAll('_', ' ');
+    $('stability-status').className = 'value ' + (stability.status === 'locked_pass' ? 'pos' : '');
+    const stabilityDev = stability.development_operating_point;
+    $('stability-development').innerHTML = stabilityDev
+      ? `${pct(stabilityDev.observed_success)}<br><span class="muted" style="font-size:13px;">n=${stabilityDev.n_selected}, LB ${pct(stabilityDev.wilson_lower_bound)}, ${Number(stabilityDev.expectancy_r).toFixed(3)}R</span>`
+      : '-';
+    const stabilityLocked = stability.locked_test;
+    $('stability-locked').innerHTML = stabilityLocked && stabilityLocked.observed_success != null
+      ? `${pct(stabilityLocked.observed_success)}<br><span class="muted" style="font-size:13px;">n=${stabilityLocked.n_selected}, LB ${pct(stabilityLocked.wilson_lower_bound)}, ${Number(stabilityLocked.expectancy_r).toFixed(3)}R</span>`
+      : '-';
+    $('stability-evidence').innerHTML = stability.evidence_level === 'historical_locked_pass_prospective_pending'
+      ? 'Historical pass<br><span class="muted" style="font-size:13px;">prospective shadow pending</span>'
+      : (stability.evidence_level || '-').replaceAll('_', ' ');
   } catch (e) {
-    for (const id of ['accuracy-min-win', 'accuracy-min-lb', 'accuracy-evidence', 'accuracy-shadow-count', 'selector-status', 'selector-success', 'selector-confidence', 'selector-operating-point', 'race-status', 'race-cohort', 'race-economics', 'race-rule-score', 'race-models', 'race-best-coverage', 'geometry-status', 'geometry-best', 'geometry-positive-setup', 'geometry-locked']) $(id).textContent = 'n/a';
+    for (const id of ['accuracy-min-win', 'accuracy-min-lb', 'accuracy-evidence', 'accuracy-shadow-count', 'selector-status', 'selector-success', 'selector-confidence', 'selector-operating-point', 'race-status', 'race-cohort', 'race-economics', 'race-rule-score', 'race-models', 'race-best-coverage', 'geometry-status', 'geometry-best', 'geometry-positive-setup', 'geometry-locked', 'stability-status', 'stability-development', 'stability-locked', 'stability-evidence']) $(id).textContent = 'n/a';
     $('accuracy-shadow-list').textContent = 'Accuracy policy unavailable.';
     $('selector-detail').textContent = 'Selector evidence unavailable.';
     $('race-detail').textContent = 'Frozen model-race evidence unavailable.';

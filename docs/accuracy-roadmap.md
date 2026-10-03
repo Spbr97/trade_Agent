@@ -462,6 +462,16 @@ fresh evidence; missed targets remain visible.
   +0.033R; it becomes the next preregistered stability hypothesis, not a promoted
   result. The canonical baseline remains 21.50%; see the
   [Milestone-6 checkpoint](accuracy-geometry-m6-checkpoint.md).
+- [x] Complete Milestone 7's preregistered setup-specific stability test. The fixed
+  anticipatory trend-pullback mechanism passed its four-fold stability gate, and its
+  single causal logistic selector qualified on embargoed development OOS evidence at
+  526/647 wins (81.30%), a 78.11% Wilson lower bound, 71.16% successful-session rate
+  and +0.056R. Its one-time locked historical evaluation also passed: 186/223 wins
+  (83.41%), 77.97% Wilson lower bound, 73.98% successful-session rate and +0.083R.
+  This is the program's first historical locked pass, but the source population is
+  previously inspected research; prospective shadow evidence is still pending and no
+  live/canonical baseline changes. See the
+  [Milestone-7 checkpoint](accuracy-setup-stability-m7-checkpoint.md).
 
 For each completed item, attach its artifact/run identifier, date, sample size and
 pass/fail result. Update this checklist at checkpoints. The 70–80% objective remains

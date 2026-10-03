@@ -262,6 +262,48 @@ def create_app(
             }
         )
 
+    @app.get("/api/accuracy-setup-stability")
+    async def api_accuracy_setup_stability() -> JSONResponse:
+        """Locked historical setup result; prospective status stays explicitly pending."""
+        path = MODELS_DIR / "accuracy-setup-stability" / "latest.json"
+        if not path.exists():
+            return JSONResponse(
+                {"status": "not_run", "detail": "setup stability has not run"}
+            )
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return JSONResponse(
+                {"status": "invalid", "detail": "setup-stability artifact is unreadable"}
+            )
+        nominee = payload.get("nominee") or {}
+        return JSONResponse(
+            {
+                "status": payload.get("status", "invalid"),
+                "detail": payload.get("detail"),
+                "created_at": payload.get("created_at"),
+                "protocol": payload.get("protocol"),
+                "development": payload.get("development"),
+                "hypotheses": [
+                    {
+                        "name": (row.get("hypothesis") or {}).get("name"),
+                        "stability_pass": row.get("stability_pass"),
+                        "aggregate": row.get("aggregate"),
+                        "selector_status": (row.get("selector") or {}).get("status"),
+                    }
+                    for row in (payload.get("hypotheses") or [])
+                ],
+                "nominee": nominee,
+                "development_operating_point": nominee.get("development_operating_point"),
+                "locked_test": payload.get("locked_test"),
+                "evidence_level": (
+                    "historical_locked_pass_prospective_pending"
+                    if payload.get("status") == "locked_pass"
+                    else "historical_development_only"
+                ),
+            }
+        )
+
     @app.get("/api/crypto/universe")
     async def api_crypto_universe() -> JSONResponse:
         """Latest full-active-universe run; absence is shown as not run, never as zero."""

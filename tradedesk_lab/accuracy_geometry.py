@@ -293,6 +293,67 @@ def _failures(summary: dict[str, Any], protocol: AccuracyGeometryProtocol) -> li
     return [name for passed, name in checks if not passed]
 
 
+def quick_geometry_records(
+    calls: list[PreparedCall],
+    *,
+    entry_mode: str,
+    stop_atr: float,
+    target_r: float,
+    max_hold: int,
+    root: Path = ROOT,
+) -> pd.DataFrame:
+    """Resolve one frozen geometry into per-call labels for downstream validation."""
+    settings = load_config(root)
+    market = nse_market(settings)
+    records: list[dict[str, Any]] = []
+    for call in calls:
+        entry_spec = call.entries.get(entry_mode)
+        if entry_spec is None:
+            continue
+        entry = entry_spec.fill
+        stop = entry - stop_atr * call.atr
+        target = entry + target_r * (entry - stop)
+        size_key = (entry_mode, stop_atr)
+        if size_key not in call.qty_cache:
+            call.qty_cache[size_key] = position_size(
+                SizeInputs(
+                    equity=float(settings.risk.trading_capital),
+                    entry=entry,
+                    stop=stop,
+                    max_risk_pct=float(settings.risk.max_risk_per_trade_pct),
+                    max_position_value_pct=float(settings.risk.max_position_value_pct),
+                    size_multiplier=float(settings.risk.regime_size_multiplier.neutral),
+                    gap_risk_cap_pct=float(settings.risk.gap_risk_cap_pct),
+                    gap95_pct=call.gap95,
+                    available_heat_pct=float(settings.risk.max_portfolio_heat_pct),
+                )
+            ).qty
+        qty = call.qty_cache[size_key]
+        if qty <= 0:
+            continue
+        outcome = _quick_outcome(
+            entry_spec,
+            stop=stop,
+            target=target,
+            max_hold=max_hold,
+            qty=qty,
+            costs=market.costs,
+        )
+        if outcome is None:
+            continue
+        won, net_r = outcome
+        records.append(
+            {
+                "signal_id": call.signal_id,
+                "armed_on": call.armed_on,
+                "setup": call.setup,
+                "label": won,
+                "net_r": net_r,
+            }
+        )
+    return pd.DataFrame.from_records(records)
+
+
 def evaluate_geometry(
     calls: list[PreparedCall],
     *,
