@@ -695,8 +695,13 @@
       <div class="card"><div class="label">Development OOS selector</div><div class="value" id="stability-development">-</div></div>
       <div class="card"><div class="label">Locked historical tail</div><div class="value" id="stability-locked">-</div></div>
       <div class="card"><div class="label">Evidence level</div><div class="value" id="stability-evidence">-</div></div>
+      <div class="card"><div class="label">Prospective M8 status</div><div class="value" id="prospective-status">-</div></div>
+      <div class="card"><div class="label">Fresh selected / resolved</div><div class="value" id="prospective-counts">-</div></div>
+      <div class="card"><div class="label">Fresh accuracy / Wilson LB</div><div class="value" id="prospective-accuracy">-</div></div>
+      <div class="card"><div class="label">Session target / expectancy</div><div class="value" id="prospective-session">-</div></div>
     </div>
     <div class="muted" id="race-detail" style="margin-top:8px;"></div>
+    <div class="muted" id="prospective-detail" style="margin-top:8px;"></div>
   </section>
 
 <div id="tab-learning" class="subtab">
@@ -1061,15 +1066,16 @@ setInterval(loadAgentReliability, 60000);
 // ---------------------------------------------------------------- Accuracy qualification
 async function loadAccuracyPolicy() {
   try {
-    const [policyR, selectorR, raceR, geometryR, stabilityR] = await Promise.all([
-      fetch('/api/accuracy-policy'), fetch('/api/accuracy-selector'), fetch('/api/accuracy-race'), fetch('/api/accuracy-geometry'), fetch('/api/accuracy-setup-stability'),
+    const [policyR, selectorR, raceR, geometryR, stabilityR, prospectiveR] = await Promise.all([
+      fetch('/api/accuracy-policy'), fetch('/api/accuracy-selector'), fetch('/api/accuracy-race'), fetch('/api/accuracy-geometry'), fetch('/api/accuracy-setup-stability'), fetch('/api/accuracy-prospective-shadow'),
     ]);
-    if (!policyR.ok || !selectorR.ok || !raceR.ok || !geometryR.ok || !stabilityR.ok) throw new Error('accuracy evidence unavailable');
+    if (!policyR.ok || !selectorR.ok || !raceR.ok || !geometryR.ok || !stabilityR.ok || !prospectiveR.ok) throw new Error('accuracy evidence unavailable');
     const p = await policyR.json();
     const selector = await selectorR.json();
     const race = await raceR.json();
     const geometry = await geometryR.json();
     const stability = await stabilityR.json();
+    const prospective = await prospectiveR.json();
     $('accuracy-min-win').textContent = pct(p.min_win_rate);
     $('accuracy-min-lb').textContent = pct(p.min_win_rate_wilson_lb);
     $('accuracy-evidence').innerHTML = `${p.min_trades} total<br><span class="muted" style="font-size:13px;">${p.min_oos_trades} OOS</span>`;
@@ -1130,11 +1136,27 @@ async function loadAccuracyPolicy() {
     $('stability-evidence').innerHTML = stability.evidence_level === 'historical_locked_pass_prospective_pending'
       ? 'Historical pass<br><span class="muted" style="font-size:13px;">prospective shadow pending</span>'
       : (stability.evidence_level || '-').replaceAll('_', ' ');
+    const ps = prospective.summary;
+    $('prospective-status').textContent = (prospective.status || 'not activated').replaceAll('_', ' ');
+    $('prospective-status').className = 'value ' + (prospective.status === 'prospective_pass' ? 'pos' : (prospective.status === 'prospective_fail' ? 'neg' : 'planned'));
+    $('prospective-counts').innerHTML = ps
+      ? `${ps.selected_calls} / ${ps.resolved_calls}<br><span class="muted" style="font-size:13px;">${ps.pending_calls} pending · ${ps.active_sessions} sessions</span>`
+      : '-';
+    $('prospective-accuracy').innerHTML = ps && ps.accuracy != null
+      ? `${pct(ps.accuracy)} / ${pct(ps.wilson_lower_bound)}<br><span class="muted" style="font-size:13px;">fresh calls only</span>`
+      : 'insufficient evidence';
+    $('prospective-session').innerHTML = ps && ps.session_target_rate != null
+      ? `${pct(ps.session_target_rate)} / ${Number(ps.expectancy_r).toFixed(3)}R`
+      : '-';
+    $('prospective-detail').textContent = prospective.activation
+      ? `Activated after ${prospective.activation.forward_after}; p>=${Number(prospective.activation.candidate.probability_threshold).toFixed(2)}, top-${prospective.activation.candidate.top_k_per_arming_session}. Shadow only: no alert, grade, sizing, management or order authority.`
+      : (prospective.detail || 'Prospective shadow is not activated.');
   } catch (e) {
-    for (const id of ['accuracy-min-win', 'accuracy-min-lb', 'accuracy-evidence', 'accuracy-shadow-count', 'selector-status', 'selector-success', 'selector-confidence', 'selector-operating-point', 'race-status', 'race-cohort', 'race-economics', 'race-rule-score', 'race-models', 'race-best-coverage', 'geometry-status', 'geometry-best', 'geometry-positive-setup', 'geometry-locked', 'stability-status', 'stability-development', 'stability-locked', 'stability-evidence']) $(id).textContent = 'n/a';
+    for (const id of ['accuracy-min-win', 'accuracy-min-lb', 'accuracy-evidence', 'accuracy-shadow-count', 'selector-status', 'selector-success', 'selector-confidence', 'selector-operating-point', 'race-status', 'race-cohort', 'race-economics', 'race-rule-score', 'race-models', 'race-best-coverage', 'geometry-status', 'geometry-best', 'geometry-positive-setup', 'geometry-locked', 'stability-status', 'stability-development', 'stability-locked', 'stability-evidence', 'prospective-status', 'prospective-counts', 'prospective-accuracy', 'prospective-session']) $(id).textContent = 'n/a';
     $('accuracy-shadow-list').textContent = 'Accuracy policy unavailable.';
     $('selector-detail').textContent = 'Selector evidence unavailable.';
     $('race-detail').textContent = 'Frozen model-race evidence unavailable.';
+    $('prospective-detail').textContent = 'Prospective evidence unavailable.';
   }
 }
 loadAccuracyPolicy();

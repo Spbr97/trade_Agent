@@ -262,3 +262,44 @@ async def test_setup_stability_distinguishes_historical_pass_from_prospective(
     assert body["development_operating_point"]["observed_success"] == 0.813
     assert body["locked_test"]["observed_success"] == 0.8341
     assert body["evidence_level"] == "historical_locked_pass_prospective_pending"
+
+
+@pytest.mark.asyncio
+async def test_prospective_shadow_reports_fresh_evidence_without_live_authority(
+    tmp_path, monkeypatch
+) -> None:
+    state = tmp_path / "state.json"
+    state.write_text(
+        json.dumps(
+            {
+                "activation": {
+                    "forward_after": "2026-10-02",
+                    "candidate": {
+                        "probability_threshold": 0.55,
+                        "top_k_per_arming_session": 2,
+                    },
+                },
+                "summary": {
+                    "status": "collecting_insufficient_evidence",
+                    "selected_calls": 4,
+                    "resolved_calls": 2,
+                    "eligible_for_live": False,
+                },
+                "records": [{"signal_id": "x", "features": {"adx14": 25.0}}],
+                "current_errors": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(dashboard_app, "ACCURACY_PROSPECTIVE_STATE", state)
+    app = create_app(DashboardState())
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        response = await client.get("/api/accuracy-prospective-shadow")
+
+    body = response.json()
+    assert body["status"] == "collecting_insufficient_evidence"
+    assert body["summary"]["eligible_for_live"] is False
+    assert body["activation"]["forward_after"] == "2026-10-02"
+    assert "features" not in body["records"][0]

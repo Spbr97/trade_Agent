@@ -18,6 +18,9 @@ from tradedesk.dashboard.state import DashboardState
 STATIC = Path(__file__).with_name("static")
 MODELS_DIR = Path("data/models")
 CRYPTO_UNIVERSE_REPORT = Path("data/reports/crypto_universe_latest.json")
+ACCURACY_PROSPECTIVE_STATE = Path(
+    "data/m14_m18/accuracy_prospective_shadow/state.json"
+)
 
 
 def _read_call_log(log_path: Path, limit: int) -> list[dict[str, Any]]:
@@ -300,6 +303,49 @@ def create_app(
                     "historical_locked_pass_prospective_pending"
                     if payload.get("status") == "locked_pass"
                     else "historical_development_only"
+                ),
+            }
+        )
+
+    @app.get("/api/accuracy-prospective-shadow")
+    async def api_accuracy_prospective_shadow() -> JSONResponse:
+        """Fresh M8 evidence only; never converts a historical pass into live authority."""
+        if not ACCURACY_PROSPECTIVE_STATE.exists():
+            return JSONResponse(
+                {
+                    "status": "not_activated",
+                    "summary": None,
+                    "activation": None,
+                    "records": [],
+                    "detail": "prospective shadow has not been activated",
+                }
+            )
+        try:
+            payload = json.loads(ACCURACY_PROSPECTIVE_STATE.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return JSONResponse(
+                {
+                    "status": "invalid",
+                    "summary": None,
+                    "activation": None,
+                    "records": [],
+                    "detail": "prospective shadow state is unreadable",
+                }
+            )
+        summary = payload.get("summary") or {}
+        records = [
+            {k: v for k, v in row.items() if k != "features"}
+            for row in (payload.get("records") or [])[-50:]
+        ]
+        return JSONResponse(
+            {
+                "status": summary.get("status", "invalid"),
+                "summary": summary,
+                "activation": payload.get("activation"),
+                "records": records,
+                "current_errors": payload.get("current_errors", []),
+                "detail": (
+                    "shadow-only forward evidence; live eligibility remains unchanged"
                 ),
             }
         )

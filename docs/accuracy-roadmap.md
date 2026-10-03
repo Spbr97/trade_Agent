@@ -472,6 +472,16 @@ fresh evidence; missed targets remain visible.
   previously inspected research; prospective shadow evidence is still pending and no
   live/canonical baseline changes. See the
   [Milestone-7 checkpoint](accuracy-setup-stability-m7-checkpoint.md).
+- [x] Implement Milestone 8's forward-only shadow validator for that exact frozen
+  candidate. Activation excludes its own date, every existing watchlist and every
+  already-stored NSE benchmark session; later sessions are scored before the next 09:15
+  cutoff at p>=0.55 and top two per session, then resolved with the fixed next-open /
+  1 ATR stop / 0.5R / three-session after-cost contract. The dashboard reports fresh sample size, accuracy,
+  Wilson lower bound, successful-session rate and expectancy while keeping live authority
+  false. Implementation is complete; the evidence gate remains pending until at least 100
+  resolved calls across 30 sessions. See the
+  [Milestone-8 checkpoint](accuracy-prospective-shadow-m8-checkpoint.md) and
+  [frozen protocol](accuracy-prospective-shadow-m8-protocol.md).
 
 For each completed item, attach its artifact/run identifier, date, sample size and
 pass/fail result. Update this checklist at checkpoints. The 70–80% objective remains
