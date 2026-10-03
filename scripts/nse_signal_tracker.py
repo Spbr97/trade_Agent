@@ -36,11 +36,13 @@ import sys
 from datetime import date
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "src"))
+sys.path.insert(0, str(ROOT))
 
-from tradedesk.data.candle_store import CandleStore
-from tradedesk.scan import load_watchlist
-from tradedesk.signal_tracker import (
+from tradedesk.data.candle_store import CandleStore  # noqa: E402
+from tradedesk.scan import load_watchlist  # noqa: E402
+from tradedesk.signal_tracker import (  # noqa: E402
     flag_setup_failures,
     load_log,
     log_new_signals,
@@ -88,6 +90,23 @@ def main() -> None:
         print(f"dashboard: {DASHBOARD}")
         if flagged:
             print(f"flagged for review: {', '.join(flagged)}")
+
+    # M8 is an additive research observer.  It reads the saved watchlist and candles only;
+    # any collector failure is reported but cannot take down the established NSE tracker.
+    try:
+        from tradedesk_lab.accuracy_prospective_shadow import collect
+
+        shadow = collect()
+        summary = shadow["summary"]
+        print(
+            "M8 prospective shadow: "
+            f"{summary['selected_calls']} selected, {summary['resolved_calls']} resolved, "
+            f"status={summary['status']}"
+        )
+    except FileNotFoundError:
+        print("M8 prospective shadow: not activated")
+    except Exception as exc:
+        print(f"M8 prospective shadow degraded: {type(exc).__name__}: {exc}")
 
 
 if __name__ == "__main__":
