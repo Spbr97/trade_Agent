@@ -23,6 +23,7 @@ import pandas as pd
 from tradedesk.broker.indstocks.models import IST
 from tradedesk.prediction.features import FEATURE_NAMES, FEATURE_VERSION
 from tradedesk.prediction.selective import (
+    DEFAULT_THRESHOLDS,
     AccuracySelectorPolicy,
     accuracy_coverage_curve,
     select_accuracy_operating_point,
@@ -38,6 +39,7 @@ class AccuracyRaceProtocol:
     embargo_sessions: int = 10
     final_test_frac: float = 0.20
     candidates: tuple[str, ...] = ("rule_score", "logistic", "hist_gradient_boosting")
+    thresholds: tuple[float, ...] = DEFAULT_THRESHOLDS
 
 
 DEFAULT_RACE_PROTOCOL = AccuracyRaceProtocol()
@@ -142,6 +144,20 @@ def _model(kind: str, seed: int) -> Any:
             StandardScaler(),
             LogisticRegression(C=0.5, max_iter=1000, random_state=seed),
         )
+    if kind == "logistic_balanced":
+        from sklearn.linear_model import LogisticRegression
+        from sklearn.pipeline import make_pipeline
+        from sklearn.preprocessing import StandardScaler
+
+        return make_pipeline(
+            StandardScaler(),
+            LogisticRegression(
+                C=0.1,
+                class_weight="balanced",
+                max_iter=2000,
+                random_state=seed,
+            ),
+        )
     if kind == "hist_gradient_boosting":
         from sklearn.ensemble import HistGradientBoostingClassifier
 
@@ -153,15 +169,115 @@ def _model(kind: str, seed: int) -> Any:
             l2_regularization=1.0,
             random_state=seed,
         )
+    if kind == "extra_trees_balanced":
+        from sklearn.ensemble import ExtraTreesClassifier
+
+        return ExtraTreesClassifier(
+            n_estimators=300,
+            max_depth=8,
+            min_samples_leaf=40,
+            max_features="sqrt",
+            class_weight="balanced_subsample",
+            n_jobs=-1,
+            random_state=seed,
+        )
+    if kind == "xgboost_regularized":
+        from xgboost import XGBClassifier
+
+        return XGBClassifier(
+            n_estimators=350,
+            max_depth=3,
+            learning_rate=0.03,
+            min_child_weight=30,
+            subsample=0.8,
+            colsample_bytree=0.8,
+            reg_alpha=1.0,
+            reg_lambda=10.0,
+            eval_metric="logloss",
+            n_jobs=4,
+            random_state=seed,
+        )
     raise ValueError(f"unknown race candidate: {kind}")
 
 
-def _best_observed(curve: list[dict[str, Any]]) -> dict[str, Any] | None:
-    sampled = [row for row in curve if row["n_selected"] >= 20]
+class _SetupAwareLogistic:
+    """Separate regularised coefficients per setup, with a global fallback.
+
+    Setup flags are decision-time features. Fitting separate models lets a dominant setup
+    stop dictating every coefficient while retaining the exact same rows and folds.
+    """
+
+    def __init__(self, feature_names: Sequence[str], seed: int) -> None:
+        self.setup_indices = [
+            index for index, name in enumerate(feature_names) if name.startswith("setup_")
+        ]
+        self.seed = seed
+        self.global_model: Any = None
+        self.setup_models: dict[int, Any] = {}
+
+    def fit(self, X: np.ndarray, y: np.ndarray) -> _SetupAwareLogistic:
+        self.global_model = _model("logistic", self.seed)
+        self.global_model.fit(X, y)
+        self.setup_models = {}
+        for index in self.setup_indices:
+            mask = X[:, index] > 0.5
+            if int(mask.sum()) < 100 or len(np.unique(y[mask])) < 2:
+                continue
+            model = _model("logistic", self.seed)
+            model.fit(X[mask], y[mask])
+            self.setup_models[index] = model
+        return self
+
+    def predict_proba(self, X: np.ndarray) -> np.ndarray:
+        probabilities: np.ndarray = np.asarray(
+            self.global_model.predict_proba(X), dtype=float
+        )
+        for index, model in self.setup_models.items():
+            mask = X[:, index] > 0.5
+            if mask.any():
+                probabilities[mask] = model.predict_proba(X[mask])
+        return probabilities
+
+
+def _candidate_model(kind: str, seed: int, feature_names: Sequence[str]) -> Any:
+    if kind == "setup_logistic":
+        return _SetupAwareLogistic(feature_names, seed)
+    return _model(kind, seed)
+
+
+def _best_observed(
+    curve: list[dict[str, Any]], *, min_calls: int = 20, min_sessions: int = 0
+) -> dict[str, Any] | None:
+    sampled = [
+        row
+        for row in curve
+        if row["n_selected"] >= min_calls and row["active_sessions"] >= min_sessions
+    ]
     return max(
         sampled,
         key=lambda row: (
             row["wilson_lower_bound"], row["observed_success"], row["n_selected"]
+        ),
+        default=None,
+    )
+
+
+def _best_policy_coverage(
+    curve: list[dict[str, Any]], policy: AccuracySelectorPolicy
+) -> dict[str, Any] | None:
+    sampled = [
+        row
+        for row in curve
+        if row["n_selected"] >= policy.min_calls
+        and row["active_sessions"] >= policy.min_active_sessions
+        and row["session_coverage"] >= policy.min_session_coverage
+    ]
+    return max(
+        sampled,
+        key=lambda row: (
+            row["wilson_lower_bound"],
+            row["observed_success"],
+            row["n_selected"],
         ),
         default=None,
     )
@@ -235,7 +351,7 @@ def run_accuracy_race(
                 oos_p[fold.test_idx] = scores[fold.test_idx]
         else:
             for fold in folds:
-                model = _model(kind, protocol.seed)
+                model = _candidate_model(kind, protocol.seed, feature_names)
                 if len(np.unique(y[fold.train_idx])) < 2:
                     continue
                 model.fit(X[fold.train_idx], y[fold.train_idx])
@@ -244,6 +360,7 @@ def run_accuracy_race(
         curve = accuracy_coverage_curve(
             y[mask], oos_p[mask], r[mask], list(np.asarray(sessions, dtype=object)[mask]),
             policy=policy,
+            thresholds=protocol.thresholds,
         )
         point = select_accuracy_operating_point(curve)
         row = {
@@ -252,6 +369,12 @@ def run_accuracy_race(
             "folds": len(folds),
             "operating_point": point,
             "best_observed": _best_observed(curve),
+            "best_adequately_sampled": _best_observed(
+                curve,
+                min_calls=policy.min_calls,
+                min_sessions=policy.min_active_sessions,
+            ),
+            "best_policy_coverage": _best_policy_coverage(curve, policy),
             "curve": curve,
         }
         candidate_rows.append(row)
@@ -277,7 +400,7 @@ def run_accuracy_race(
     if kind == "rule_score":
         final_p = np.clip(final["plain_score"].to_numpy(dtype=float) / 100.0, 0.0, 1.0)
     else:
-        model = _model(kind, protocol.seed)
+        model = _candidate_model(kind, protocol.seed, feature_names)
         model.fit(X, y)
         final_p = model.predict_proba(final[feature_names].to_numpy(dtype=float))[:, 1]
     locked_curve = accuracy_coverage_curve(

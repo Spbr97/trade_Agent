@@ -195,6 +195,8 @@ def create_app(
                         "kind": row.get("kind"),
                         "oos_rows": row.get("oos_rows"),
                         "qualified": row.get("operating_point") is not None,
+                        "best_adequately_sampled": row.get("best_adequately_sampled"),
+                        "best_policy_coverage": row.get("best_policy_coverage"),
                     }
                     for row in (payload.get("candidates") or [])
                 ],

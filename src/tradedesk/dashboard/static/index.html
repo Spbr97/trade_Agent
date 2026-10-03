@@ -686,6 +686,7 @@
       <div class="card"><div class="label">Economics coverage</div><div class="value" id="race-economics">-</div></div>
       <div class="card"><div class="label">Rule-score coverage</div><div class="value" id="race-rule-score">-</div></div>
       <div class="card"><div class="label">Models evaluated</div><div class="value" id="race-models">-</div></div>
+      <div class="card"><div class="label">Best coverage-qualified accuracy</div><div class="value" id="race-best-coverage">-</div></div>
     </div>
     <div class="muted" id="race-detail" style="margin-top:8px;"></div>
   </section>
@@ -1085,9 +1086,17 @@ async function loadAccuracyPolicy() {
     $('race-rule-score').textContent = cohort.rule_score_coverage != null ? pct(cohort.rule_score_coverage) : '-';
     $('race-models').textContent = (race.candidates || []).length
       ? race.candidates.map(row => row.kind).join(', ') : 'none';
+    const coveragePoints = (race.candidates || [])
+      .filter(row => row.best_policy_coverage)
+      .map(row => ({kind: row.kind, ...row.best_policy_coverage}))
+      .sort((a, b) => b.wilson_lower_bound - a.wilson_lower_bound);
+    const coverageBest = coveragePoints[0];
+    $('race-best-coverage').innerHTML = coverageBest
+      ? `${pct(coverageBest.observed_success)}<br><span class="muted" style="font-size:13px;">${coverageBest.kind}, n=${coverageBest.n_selected}, LB ${pct(coverageBest.wilson_lower_bound)}</span>`
+      : '-';
     $('race-detail').textContent = (cohort.blockers || []).join(' | ') || race.detail || '';
   } catch (e) {
-    for (const id of ['accuracy-min-win', 'accuracy-min-lb', 'accuracy-evidence', 'accuracy-shadow-count', 'selector-status', 'selector-success', 'selector-confidence', 'selector-operating-point', 'race-status', 'race-cohort', 'race-economics', 'race-rule-score', 'race-models']) $(id).textContent = 'n/a';
+    for (const id of ['accuracy-min-win', 'accuracy-min-lb', 'accuracy-evidence', 'accuracy-shadow-count', 'selector-status', 'selector-success', 'selector-confidence', 'selector-operating-point', 'race-status', 'race-cohort', 'race-economics', 'race-rule-score', 'race-models', 'race-best-coverage']) $(id).textContent = 'n/a';
     $('accuracy-shadow-list').textContent = 'Accuracy policy unavailable.';
     $('selector-detail').textContent = 'Selector evidence unavailable.';
     $('race-detail').textContent = 'Frozen model-race evidence unavailable.';

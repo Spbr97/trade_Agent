@@ -19,6 +19,20 @@ from tradedesk_lab.clean_dataset import FEATURES, load_prepared, prepare_clean
 
 from tradedesk.prediction.race import AccuracyRaceProtocol, run_accuracy_race, save_accuracy_race
 
+RANKING_PROTOCOL = AccuracyRaceProtocol(
+    version="accuracy-ranking-v3",
+    candidates=(
+        "rule_score",
+        "logistic",
+        "logistic_balanced",
+        "setup_logistic",
+        "hist_gradient_boosting",
+        "extra_trees_balanced",
+        "xgboost_regularized",
+    ),
+    thresholds=tuple(round(0.15 + 0.05 * index, 2) for index in range(17)),
+)
+
 
 def main() -> None:
     parser = argparse.ArgumentParser()
@@ -26,6 +40,12 @@ def main() -> None:
         "--rebuild-clean",
         action="store_true",
         help="Rebuild the causal/economic cohort instead of loading the verified snapshot",
+    )
+    parser.add_argument(
+        "--experiment",
+        choices=("causal-v2", "ranking-v3"),
+        default="causal-v2",
+        help="Frozen candidate and selector protocol to execute",
     )
     parser.add_argument(
         "--out",
@@ -44,9 +64,14 @@ def main() -> None:
     args.dataset_out.parent.mkdir(parents=True, exist_ok=True)
     frame.to_csv(args.dataset_out, index=False)
 
+    protocol = (
+        RANKING_PROTOCOL
+        if args.experiment == "ranking-v3"
+        else AccuracyRaceProtocol(version="accuracy-race-v2-causal")
+    )
     result = run_accuracy_race(
         frame,
-        protocol=AccuracyRaceProtocol(version="accuracy-race-v2-causal"),
+        protocol=protocol,
         feature_names=FEATURES,
         feature_version=FEATURE_VERSION,
     )

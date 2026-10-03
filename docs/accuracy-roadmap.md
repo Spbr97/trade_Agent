@@ -444,6 +444,15 @@ fresh evidence; missed targets remain visible.
   unopened. Crypto monitoring is also expanded from ten hard-coded coins to the dynamic
   active CoinDCX INR universe (339 pairs in the verified run). See the
   [Milestone-4 checkpoint](accuracy-training-m4-checkpoint.md).
+- [x] Complete Milestone 5's coverage-aware ranking experiment. Seven candidate
+  models were evaluated on the same 13,305 chronological OOS rows over thresholds
+  from 0.15 to 0.95. Balanced logistic was best at the deployability reporting
+  floor, with 146/476 wins (30.67%), a 26.70% Wilson lower bound, 45.21% session
+  coverage and -0.446R expectancy. It failed the frozen gates, no nominee was
+  created, and the locked 4,848-row tail stayed unopened. The 47.83% result remains
+  only a 23-call diagnostic, not a baseline. AEM v1 remains the 21.50% canonical
+  baseline; see the
+  [Milestone-5 checkpoint](accuracy-ranking-m5-checkpoint.md).
 
 For each completed item, attach its artifact/run identifier, date, sample size and
 pass/fail result. Update this checklist at checkpoints. The 70–80% objective remains

@@ -90,6 +90,23 @@ async def test_accuracy_race_exposes_blockers_without_treating_them_as_pass(
                     "rule_score_coverage": 0.0,
                     "blockers": ["feature schema is not v4"],
                 },
+                "candidates": [
+                    {
+                        "kind": "logistic_balanced",
+                        "oos_rows": 13305,
+                        "operating_point": None,
+                        "best_adequately_sampled": {
+                            "n_selected": 241,
+                            "observed_success": 0.3237,
+                        },
+                        "best_policy_coverage": {
+                            "n_selected": 476,
+                            "observed_success": 0.3067,
+                            "wilson_lower_bound": 0.2670,
+                            "session_coverage": 0.4521,
+                        },
+                    }
+                ],
                 "nominee": None,
                 "locked_test": {"status": "not_opened"},
             }
@@ -106,6 +123,7 @@ async def test_accuracy_race_exposes_blockers_without_treating_them_as_pass(
     body = response.json()
     assert body["status"] == "blocked"
     assert body["cohort"]["economics_coverage"] == 0.0204
+    assert body["candidates"][0]["best_policy_coverage"]["n_selected"] == 476
     assert body["nominee"] is None
     assert body["locked_test"]["status"] == "not_opened"
 

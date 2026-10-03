@@ -85,3 +85,23 @@ def test_race_can_use_an_explicit_audited_causal_feature_contract() -> None:
         "logistic",
         "hist_gradient_boosting",
     ]
+
+
+def test_ranking_protocol_uses_its_frozen_thresholds_and_challengers() -> None:
+    frame = _dataset(n_sessions=40)
+    protocol = AccuracyRaceProtocol(
+        n_splits=2,
+        embargo_sessions=1,
+        candidates=("logistic_balanced", "setup_logistic", "extra_trees_balanced"),
+        thresholds=(0.2, 0.4),
+    )
+
+    result = run_accuracy_race(frame, protocol=protocol)
+
+    assert [row["kind"] for row in result["candidates"]] == list(protocol.candidates)
+    assert all(
+        {point["threshold"] for point in row["curve"]} == {0.2, 0.4}
+        for row in result["candidates"]
+    )
+    assert all("best_adequately_sampled" in row for row in result["candidates"])
+    assert all("best_policy_coverage" in row for row in result["candidates"])

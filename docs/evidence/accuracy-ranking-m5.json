@@ -1,0 +1,75 @@
+{
+  "checkpoint": "accuracy-ranking-m5",
+  "run_id": "20261003-182349",
+  "created_at": "2026-10-03T18:23:49.466777+05:30",
+  "protocol_version": "accuracy-ranking-v3",
+  "status": "abstain",
+  "artifact_sha256": "15a2883023b0960b67dfccb46b5a28b2c8a5d601dbcb12e472fee67ffe1a820d",
+  "cohort": {
+    "rows": 22756,
+    "sessions": 750,
+    "feature_count": 33,
+    "fingerprint_sha256": "f786d7cc40479a116b102c9f55855ec9ed31d5ad74b3cb81d1eb38ad1bb66f04",
+    "economics_coverage": 1.0,
+    "rule_score_coverage": 1.0,
+    "raw_target_prevalence": 0.234839163297592
+  },
+  "development": {
+    "oos_rows_per_candidate": 13305,
+    "sessions": 480,
+    "candidates_evaluated": 7,
+    "thresholds": [
+      0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55,
+      0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95
+    ]
+  },
+  "best_policy_coverage": {
+    "kind": "logistic_balanced",
+    "threshold": 0.6,
+    "top_k": 3,
+    "n_selected": 476,
+    "wins": 146,
+    "observed_success": 0.3067226890756303,
+    "wilson_lower_bound": 0.26698134189429257,
+    "active_sessions": 217,
+    "session_coverage": 0.45208333333333334,
+    "sessions_meeting_target": 29,
+    "session_target_rate": 0.1336405529953917,
+    "expectancy_r": -0.4461924490850286,
+    "qualified": false
+  },
+  "best_adequately_sampled": {
+    "kind": "logistic_balanced",
+    "threshold": 0.65,
+    "top_k": 3,
+    "n_selected": 241,
+    "wins": 78,
+    "observed_success": 0.3236514522821577,
+    "wilson_lower_bound": 0.2677486830189474,
+    "session_coverage": 0.22708333333333333,
+    "expectancy_r": -0.38523706168433247,
+    "qualified": false
+  },
+  "small_sample_diagnostic": {
+    "kind": "logistic",
+    "threshold": 0.55,
+    "top_k": 3,
+    "n_selected": 23,
+    "wins": 11,
+    "observed_success": 0.4782608695652174,
+    "wilson_lower_bound": 0.29237157416646653,
+    "session_coverage": 0.029166666666666667,
+    "expectancy_r": -0.05587636094998607,
+    "qualified": false
+  },
+  "nominee": null,
+  "locked_test": {
+    "status": "not_opened_no_nominee",
+    "rows": 4848
+  },
+  "canonical_baseline": {
+    "name": "AEM v1",
+    "accuracy": 0.215,
+    "changed": false
+  }
+}
