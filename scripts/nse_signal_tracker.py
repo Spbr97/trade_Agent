@@ -146,6 +146,18 @@ def main() -> None:
             )
         except Exception as exc:
             print(f"M11 random-timing control degraded: {type(exc).__name__}: {exc}")
+        try:
+            from tradedesk_lab.accuracy_prospective_qualification import run_qualification
+
+            qualification = run_qualification()
+            print(
+                "NSE prospective qualification: "
+                f"status={qualification['status']}, "
+                f"review_authorized={qualification['review_authorized']}, "
+                f"live_eligible={qualification['eligible_for_live']}"
+            )
+        except Exception as exc:
+            print(f"NSE prospective qualification degraded: {type(exc).__name__}: {exc}")
 
 
 if __name__ == "__main__":
