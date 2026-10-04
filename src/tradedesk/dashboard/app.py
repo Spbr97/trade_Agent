@@ -30,12 +30,17 @@ ACCURACY_PROSPECTIVE_CONTROL = Path(
 ACCURACY_PROSPECTIVE_TIMING = Path(
     "data/m14_m18/accuracy_prospective_timing/state.json"
 )
+ACCURACY_PROSPECTIVE_QUALIFICATION = Path(
+    "data/m14_m18/accuracy_prospective_qualification/latest.json"
+)
 CRYPTO_ACCURACY_STATE = Path("data/m14_m18/crypto_accuracy_program/state.json")
 CRYPTO_ACCURACY_TIMING = Path("data/m14_m18/crypto_accuracy_timing/state.json")
 CRYPTO_ACCURACY_DATASET = Path("data/m14_m18/crypto_accuracy_dataset/state.json")
+CRYPTO_ACCURACY_MECHANISMS = Path("data/m14_m18/crypto_accuracy_mechanisms/state.json")
 CRYPTO_UNIVERSE_STATE = Path(
     "data/m14_m18/crypto_accuracy_dataset/universe_state.json"
 )
+BSE_ACCURACY_QUICK_PROFIT = Path("docs/evidence/bse-accuracy-quick-profit-b1.json")
 
 
 def _read_call_log(log_path: Path, limit: int) -> list[dict[str, Any]]:
@@ -241,6 +246,465 @@ def create_app(
                 "detail": (
                     "crypto-only closed-candle dataset; pre-activation membership is "
                     "unknown, never inferred, and never shown as a pass"
+                ),
+            }
+        )
+
+    @app.get("/api/crypto/accuracy-mechanisms")
+    async def api_crypto_accuracy_mechanisms() -> JSONResponse:
+        """Compact C2 mechanism-race evidence; research can never grant live authority."""
+
+        def compact(value: Any, keys: tuple[str, ...]) -> dict[str, Any] | None:
+            if not isinstance(value, dict):
+                return None
+            return {key: value.get(key) for key in keys}
+
+        def unavailable(status: str, detail: str) -> JSONResponse:
+            return JSONResponse(
+                {
+                    "status": status,
+                    "version": None,
+                    "id": None,
+                    "created_at": None,
+                    "c1_dataset": None,
+                    "c1_readiness": None,
+                    "trial_counts": {
+                        "registered": 12,
+                        "evaluated": None,
+                        "passed": None,
+                        "rejected": None,
+                        "incomplete": None,
+                    },
+                    "best_trial": None,
+                    "mechanisms": [],
+                    "source_integrity": {"passed": False, "errors": [detail]},
+                    "baseline_improved": False,
+                    "eligible_for_live": False,
+                    "detail": detail,
+                }
+            )
+
+        if not CRYPTO_ACCURACY_MECHANISMS.exists():
+            return unavailable("not_run", "crypto C2 mechanism race has not run")
+        try:
+            payload = json.loads(CRYPTO_ACCURACY_MECHANISMS.read_text(encoding="utf-8"))
+            if not isinstance(payload, dict):
+                raise ValueError("crypto C2 state must be an object")
+        except (OSError, ValueError, json.JSONDecodeError):
+            return unavailable("invalid", "crypto C2 mechanism state is unreadable")
+
+        mechanism_rows = payload.get("mechanisms")
+        mechanisms = []
+        if isinstance(mechanism_rows, list):
+            mechanisms = [
+                row
+                for item in mechanism_rows
+                if (
+                    row := compact(
+                        item,
+                        (
+                            "id",
+                            "status",
+                            "evaluated_trials",
+                            "passing_trials",
+                            "stopped",
+                        ),
+                    )
+                )
+                is not None
+            ]
+
+        source_integrity = compact(payload.get("source_integrity"), ("passed", "errors")) or {
+            "passed": False,
+            "errors": ["crypto C2 source integrity is unavailable"],
+        }
+        reported_status = payload.get("status", "invalid")
+        if source_integrity["passed"] is not True:
+            reported_status = "blocked_invalid_source_integrity"
+        return JSONResponse(
+            {
+                "status": reported_status,
+                "version": payload.get("version"),
+                "id": payload.get("id"),
+                "created_at": payload.get("created_at"),
+                "c1_dataset": compact(
+                    payload.get("c1_dataset"),
+                    ("id", "status", "contract_sha256", "source_sha256"),
+                ),
+                "c1_readiness": compact(
+                    payload.get("c1_readiness"),
+                    (
+                        "minimum_pair_sessions",
+                        "required_pair_sessions",
+                        "ready_pairs",
+                        "required_pairs",
+                        "resolved_labels",
+                        "minimum_resolved_labels",
+                        "resolved_sessions",
+                        "minimum_active_sessions",
+                    ),
+                ),
+                "trial_counts": compact(
+                    payload.get("trial_counts"),
+                    ("registered", "evaluated", "passed", "rejected", "incomplete"),
+                ),
+                "best_trial": compact(
+                    payload.get("best_trial"),
+                    (
+                        "mechanism",
+                        "geometry",
+                        "status",
+                        "resolved_calls",
+                        "active_sessions",
+                        "observed_accuracy",
+                        "wilson95_lower",
+                        "mean_net_r",
+                        "minimum_control_advantage_r",
+                    ),
+                ),
+                "mechanisms": mechanisms,
+                "source_integrity": source_integrity,
+                # C2 is consumed development evidence. Optimistic artifact fields cannot
+                # turn this read-only surface into a baseline or live-eligibility claim.
+                "baseline_improved": False,
+                "eligible_for_live": False,
+                "detail": payload.get(
+                    "detail",
+                    "crypto-only C2 mechanism evidence; unavailable is never a pass",
+                ),
+            }
+        )
+
+    @app.get("/api/accuracy-prospective-qualification")
+    async def api_accuracy_prospective_qualification() -> JSONResponse:
+        """Compact atomic NSE qualification; review authority is not live authority."""
+
+        def unavailable(status: str, detail: str) -> JSONResponse:
+            return JSONResponse(
+                {
+                    "status": status,
+                    "created_at": None,
+                    "components": [],
+                    "parity": {
+                        "identity_passed": False,
+                        "evaluation_ready": False,
+                        "evaluation_passed": False,
+                        "failures": [detail],
+                    },
+                    "gate_checks": {},
+                    "canonical_baseline": None,
+                    "locked_historical_challenger": None,
+                    "review_authorized": False,
+                    "baseline_improved": False,
+                    "eligible_for_live": False,
+                    "detail": detail,
+                }
+            )
+
+        if not ACCURACY_PROSPECTIVE_QUALIFICATION.exists():
+            return unavailable(
+                "not_run", "NSE prospective qualification has not run"
+            )
+        try:
+            payload = json.loads(
+                ACCURACY_PROSPECTIVE_QUALIFICATION.read_text(encoding="utf-8")
+            )
+            if not isinstance(payload, dict):
+                raise ValueError("NSE qualification state must be an object")
+        except (OSError, ValueError, json.JSONDecodeError):
+            return unavailable(
+                "invalid", "NSE prospective qualification state is unreadable"
+            )
+
+        metric_names = (
+            "resolved_calls",
+            "wins",
+            "accuracy",
+            "wilson_lower_bound",
+            "active_sessions",
+            "session_target_rate",
+            "expectancy_r",
+            "stressed_resolved_calls",
+            "stressed_accuracy",
+            "stressed_expectancy_r",
+            "session_cluster_lower_95",
+            "week_cluster_lower_95",
+            "model_accuracy",
+            "model_expectancy_r",
+            "control_advantage_r",
+            "p_value",
+        )
+        components = []
+        raw_components = payload.get("components")
+        if isinstance(raw_components, dict):
+            for identifier, raw in raw_components.items():
+                if not isinstance(raw, dict):
+                    continue
+                raw_metrics = raw.get("metrics")
+                metrics = (
+                    {
+                        key: raw_metrics.get(key)
+                        for key in metric_names
+                        if key in raw_metrics
+                    }
+                    if isinstance(raw_metrics, dict)
+                    else {}
+                )
+                components.append(
+                    {
+                        "id": identifier,
+                        "available": raw.get("available") is True,
+                        "ready": raw.get("ready") is True,
+                        "passed": raw.get("passed") is True,
+                        "status": raw.get("status", "not_available"),
+                        "metrics": metrics,
+                    }
+                )
+
+        raw_parity = payload.get("parity")
+        parity = raw_parity if isinstance(raw_parity, dict) else {}
+        compact_parity = {
+            "identity_passed": parity.get("identity_passed") is True,
+            "evaluation_ready": parity.get("evaluation_ready") is True,
+            "evaluation_passed": parity.get("evaluation_passed") is True,
+            "failures": parity.get("failures")
+            if isinstance(parity.get("failures"), list)
+            else [],
+        }
+        gate_names = (
+            "all_components_available",
+            "all_components_ready",
+            "m8_accuracy_passed",
+            "m9_integrity_stress_passed",
+            "m10_selection_control_passed",
+            "m11_timing_control_passed",
+            "candidate_and_evaluation_parity",
+        )
+        raw_gates = payload.get("gate_checks")
+        gate_checks = (
+            {name: raw_gates.get(name) is True for name in gate_names}
+            if isinstance(raw_gates, dict)
+            else {}
+        )
+
+        baseline_names = (
+            "contract",
+            "strict_wins",
+            "resolved_fills",
+            "strict_success_rate",
+            "wilson_lower_bound",
+            "mean_net_r",
+            "status",
+        )
+        challenger_names = (*baseline_names[:-1], "evidence_class")
+        raw_baseline = payload.get("canonical_baseline")
+        raw_challenger = payload.get("locked_historical_challenger")
+        canonical_baseline = (
+            {name: raw_baseline.get(name) for name in baseline_names}
+            if isinstance(raw_baseline, dict)
+            else None
+        )
+        locked_challenger = (
+            {name: raw_challenger.get(name) for name in challenger_names}
+            if isinstance(raw_challenger, dict)
+            else None
+        )
+        expected_component_ids = {
+            "m8_accuracy",
+            "m9_integrity_stress",
+            "m10_selection_control",
+            "m11_timing_control",
+        }
+        review_authorized = bool(
+            payload.get("status") == "human_review_authorized"
+            and payload.get("review_authorized") is True
+            and len(components) == 4
+            and {row["id"] for row in components} == expected_component_ids
+            and all(row["available"] and row["ready"] and row["passed"] for row in components)
+            and compact_parity["identity_passed"]
+            and compact_parity["evaluation_ready"]
+            and compact_parity["evaluation_passed"]
+            and gate_checks
+            and all(gate_checks.values())
+        )
+        reported_status = payload.get("status", "invalid")
+        allowed_statuses = {
+            "not_available",
+            "collecting_insufficient_evidence",
+            "degraded",
+            "prospective_rejected",
+            "human_review_authorized",
+        }
+        if reported_status not in allowed_statuses:
+            reported_status = "invalid"
+        elif reported_status == "human_review_authorized" and not review_authorized:
+            reported_status = "degraded"
+        return JSONResponse(
+            {
+                "status": reported_status,
+                "created_at": payload.get("created_at"),
+                "components": components,
+                "parity": compact_parity,
+                "gate_checks": gate_checks,
+                "canonical_baseline": canonical_baseline,
+                "locked_historical_challenger": locked_challenger,
+                "review_authorized": review_authorized,
+                "baseline_improved": False,
+                "eligible_for_live": False,
+                "detail": payload.get(
+                    "detail",
+                    "NSE prospective qualification is read-only; unavailable is never a pass",
+                ),
+            }
+        )
+
+    @app.get("/api/bse/accuracy-quick-profit")
+    async def api_bse_accuracy_quick_profit() -> JSONResponse:
+        """Compact BSE B1 evidence; development transport stays visibly separate."""
+
+        def unavailable(status: str, detail: str) -> JSONResponse:
+            return JSONResponse(
+                {
+                    "status": status,
+                    "created_at": None,
+                    "readiness": None,
+                    "geometry": None,
+                    "prospective": {
+                        "source_sessions": None,
+                        "rules_sample_ready": None,
+                        "best_trial": None,
+                    },
+                    "development_transport": None,
+                    "baseline_improved": False,
+                    "live": False,
+                    "promotion_allowed": False,
+                    "detail": detail,
+                }
+            )
+
+        if not BSE_ACCURACY_QUICK_PROFIT.exists():
+            return unavailable("not_run", "BSE B1 quick-profit evidence has not run")
+        try:
+            payload = json.loads(BSE_ACCURACY_QUICK_PROFIT.read_text(encoding="utf-8"))
+            if not isinstance(payload, dict):
+                raise ValueError("BSE B1 state must be an object")
+        except (OSError, ValueError, json.JSONDecodeError):
+            return unavailable("invalid", "BSE B1 quick-profit evidence is unreadable")
+
+        def compact_trial(raw: Any) -> dict[str, Any] | None:
+            if not isinstance(raw, dict):
+                return None
+            return {
+                key: raw.get(key)
+                for key in (
+                    "rule",
+                    "verdict",
+                    "development_only",
+                    "resolved",
+                    "wins",
+                    "observed_strict_success",
+                    "wilson_lower_bound",
+                    "after_cost_expectancy_r",
+                    "active_sessions",
+                    "source_sessions",
+                    "sample_ready",
+                    "qualified",
+                )
+            }
+
+        def best_trial(raw: Any, *, prospective: bool) -> dict[str, Any] | None:
+            if not isinstance(raw, dict) or not isinstance(raw.get("trials"), list):
+                return None
+            eligible = [
+                item
+                for item in raw["trials"]
+                if isinstance(item, dict)
+                and item.get("observed_strict_success") is not None
+                and item.get("after_cost_expectancy_r") is not None
+            ]
+            if not eligible:
+                return None
+
+            def sortable(value: Any) -> float:
+                try:
+                    number = float(value)
+                except (TypeError, ValueError):
+                    return float("-inf")
+                return number if number == number else float("-inf")
+
+            selected = max(
+                eligible,
+                key=lambda item: (
+                    sortable(item["observed_strict_success"]),
+                    sortable(item.get("wilson_lower_bound")),
+                    sortable(item["after_cost_expectancy_r"]),
+                    str(item.get("rule", "")),
+                ),
+            )
+            result = compact_trial(selected)
+            if result is not None and not prospective:
+                result["development_only"] = True
+                result["verdict"] = "development_only"
+            return result
+
+        readiness_names = (
+            "activation_date",
+            "prospective_source_sessions",
+            "required_sessions",
+            "rules_sample_ready",
+            "registered_candidate_rules",
+        )
+        geometry_names = (
+            "entry_mode",
+            "stop_atr",
+            "target_r",
+            "max_hold_sessions",
+            "trial_count",
+        )
+        raw_readiness = payload.get("readiness")
+        raw_geometry = payload.get("geometry")
+        raw_prospective = payload.get("prospective")
+        raw_development = payload.get("development_transport")
+        prospective = raw_prospective if isinstance(raw_prospective, dict) else {}
+        development = raw_development if isinstance(raw_development, dict) else {}
+        reported_status = payload.get("status", "invalid")
+        if reported_status not in {"collecting", "rejected", "research_qualified"}:
+            reported_status = "invalid"
+        elif reported_status == "research_qualified" and not prospective.get(
+            "qualified_rules"
+        ):
+            reported_status = "invalid"
+        return JSONResponse(
+            {
+                "status": reported_status,
+                "created_at": payload.get("created_at"),
+                "readiness": (
+                    {name: raw_readiness.get(name) for name in readiness_names}
+                    if isinstance(raw_readiness, dict)
+                    else None
+                ),
+                "geometry": (
+                    {name: raw_geometry.get(name) for name in geometry_names}
+                    if isinstance(raw_geometry, dict)
+                    else None
+                ),
+                "prospective": {
+                    "source_sessions": prospective.get("source_sessions"),
+                    "rules_sample_ready": prospective.get("rules_sample_ready"),
+                    "best_trial": best_trial(prospective, prospective=True),
+                },
+                "development_transport": {
+                    "development_only": True,
+                    "source_sessions": development.get("source_sessions"),
+                    "rules_sample_ready": development.get("rules_sample_ready"),
+                    "best_rule": best_trial(development, prospective=False),
+                },
+                "baseline_improved": False,
+                "live": False,
+                "promotion_allowed": False,
+                "detail": payload.get(
+                    "detail",
+                    "BSE B1 is collecting prospective evidence; development transport cannot pass",
                 ),
             }
         )

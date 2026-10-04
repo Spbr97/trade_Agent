@@ -186,6 +186,526 @@ async def test_crypto_accuracy_dataset_is_compact_and_never_claims_live_readines
 
 
 @pytest.mark.asyncio
+async def test_crypto_accuracy_mechanisms_missing_and_unreadable_fail_closed(
+    tmp_path, monkeypatch
+) -> None:
+    state_path = tmp_path / "crypto-mechanisms.json"
+    monkeypatch.setattr(dashboard_app, "CRYPTO_ACCURACY_MECHANISMS", state_path)
+    app = create_app(DashboardState())
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        missing = (await client.get("/api/crypto/accuracy-mechanisms")).json()
+        state_path.write_text("{not-json", encoding="utf-8")
+        unreadable = (await client.get("/api/crypto/accuracy-mechanisms")).json()
+
+    assert missing["status"] == "not_run"
+    assert unreadable["status"] == "invalid"
+    for body in (missing, unreadable):
+        assert body["best_trial"] is None
+        assert body["trial_counts"]["registered"] == 12
+        assert body["trial_counts"]["evaluated"] is None
+        assert body["source_integrity"]["passed"] is False
+        assert body["baseline_improved"] is False
+        assert body["eligible_for_live"] is False
+
+
+@pytest.mark.asyncio
+async def test_crypto_accuracy_mechanisms_is_compact_and_overrides_authority(
+    tmp_path, monkeypatch
+) -> None:
+    state_path = tmp_path / "crypto-mechanisms.json"
+    state_path.write_text(
+        json.dumps(
+            {
+                "version": "crypto-accuracy-mechanisms-v1",
+                "id": "c2-collecting",
+                "status": "collecting_c1_point_in_time_history",
+                "created_at": "2026-10-04T12:00:00+00:00",
+                "c1_dataset": {
+                    "id": "c1-frozen",
+                    "status": "not_ready_collecting_point_in_time_history",
+                    "contract_sha256": "contract",
+                    "source_sha256": "source",
+                    "artifacts": ["must-not-leak"],
+                },
+                "c1_readiness": {
+                    "minimum_pair_sessions": 1,
+                    "required_pair_sessions": 30,
+                    "ready_pairs": 0,
+                    "required_pairs": 337,
+                    "resolved_labels": 0,
+                    "minimum_resolved_labels": 100,
+                    "resolved_sessions": 0,
+                    "minimum_active_sessions": 30,
+                    "pair_rows": ["must-not-leak"],
+                },
+                "trial_counts": {
+                    "registered": 12,
+                    "evaluated": 0,
+                    "passed": 0,
+                    "rejected": 0,
+                    "incomplete": 12,
+                    "trials": ["must-not-leak"],
+                },
+                "best_trial": {
+                    "mechanism": None,
+                    "geometry": None,
+                    "status": "unavailable",
+                    "resolved_calls": 0,
+                    "active_sessions": 0,
+                    "observed_accuracy": None,
+                    "wilson95_lower": None,
+                    "mean_net_r": None,
+                    "minimum_control_advantage_r": None,
+                    "selected_rows": ["must-not-leak"],
+                },
+                "mechanisms": [
+                    {
+                        "id": "cross_sectional_momentum",
+                        "status": "collecting",
+                        "evaluated_trials": 0,
+                        "passing_trials": 0,
+                        "stopped": False,
+                        "control_draws": ["must-not-leak"],
+                    }
+                ],
+                "source_integrity": {
+                    "passed": True,
+                    "errors": [],
+                    "artifact_hashes": ["must-not-leak"],
+                },
+                "baseline_improved": True,
+                "eligible_for_live": True,
+                "trials": ["large-payload-must-not-leak"],
+                "detail": "C1 is collecting; C2 has not evaluated outcomes.",
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(dashboard_app, "CRYPTO_ACCURACY_MECHANISMS", state_path)
+    app = create_app(DashboardState())
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        response = await client.get("/api/crypto/accuracy-mechanisms")
+        payload = json.loads(state_path.read_text(encoding="utf-8"))
+        payload["status"] = "mechanism_race_passed_research_only"
+        payload["source_integrity"]["passed"] = False
+        state_path.write_text(json.dumps(payload), encoding="utf-8")
+        integrity_blocked = await client.get("/api/crypto/accuracy-mechanisms")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert set(body) == {
+        "status",
+        "version",
+        "id",
+        "created_at",
+        "c1_dataset",
+        "c1_readiness",
+        "trial_counts",
+        "best_trial",
+        "mechanisms",
+        "source_integrity",
+        "baseline_improved",
+        "eligible_for_live",
+        "detail",
+    }
+    assert body["status"] == "collecting_c1_point_in_time_history"
+    assert body["c1_readiness"]["minimum_pair_sessions"] == 1
+    assert body["c1_readiness"]["ready_pairs"] == 0
+    assert body["c1_readiness"]["required_pairs"] == 337
+    assert body["trial_counts"]["evaluated"] == 0
+    assert body["trial_counts"]["registered"] == 12
+    assert body["best_trial"]["observed_accuracy"] is None
+    assert body["best_trial"]["wilson95_lower"] is None
+    assert body["baseline_improved"] is False
+    assert body["eligible_for_live"] is False
+    assert integrity_blocked.json()["status"] == "blocked_invalid_source_integrity"
+    assert set(body["c1_dataset"]) == {"id", "status", "contract_sha256", "source_sha256"}
+    assert set(body["c1_readiness"]) == {
+        "minimum_pair_sessions",
+        "required_pair_sessions",
+        "ready_pairs",
+        "required_pairs",
+        "resolved_labels",
+        "minimum_resolved_labels",
+        "resolved_sessions",
+        "minimum_active_sessions",
+    }
+    assert set(body["trial_counts"]) == {
+        "registered",
+        "evaluated",
+        "passed",
+        "rejected",
+        "incomplete",
+    }
+    assert set(body["best_trial"]) == {
+        "mechanism",
+        "geometry",
+        "status",
+        "resolved_calls",
+        "active_sessions",
+        "observed_accuracy",
+        "wilson95_lower",
+        "mean_net_r",
+        "minimum_control_advantage_r",
+    }
+    assert set(body["mechanisms"][0]) == {
+        "id",
+        "status",
+        "evaluated_trials",
+        "passing_trials",
+        "stopped",
+    }
+    assert set(body["source_integrity"]) == {"passed", "errors"}
+
+
+@pytest.mark.asyncio
+async def test_crypto_accuracy_mechanism_cards_preserve_c1_and_label_missing_metrics() -> None:
+    app = create_app(DashboardState())
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        html = (await client.get("/")).text
+
+    assert 'id="crypto-dataset-status"' in html
+    for element_id in (
+        "crypto-mechanisms-status",
+        "crypto-mechanisms-evaluated",
+        "crypto-mechanisms-passing",
+        "crypto-mechanisms-accuracy",
+        "crypto-mechanisms-wilson",
+    ):
+        assert f'id="{element_id}"' in html
+    assert "not available — not a pass" in html
+    assert "fetch('/api/crypto/accuracy-mechanisms')" in html
+
+
+@pytest.mark.asyncio
+async def test_nse_prospective_qualification_missing_and_unreadable_fail_closed(
+    tmp_path, monkeypatch
+) -> None:
+    state_path = tmp_path / "nse-qualification.json"
+    monkeypatch.setattr(
+        dashboard_app, "ACCURACY_PROSPECTIVE_QUALIFICATION", state_path
+    )
+    app = create_app(DashboardState())
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        missing = (await client.get("/api/accuracy-prospective-qualification")).json()
+        state_path.write_text("[]", encoding="utf-8")
+        unreadable = (
+            await client.get("/api/accuracy-prospective-qualification")
+        ).json()
+
+    assert missing["status"] == "not_run"
+    assert unreadable["status"] == "invalid"
+    for body in (missing, unreadable):
+        assert body["components"] == []
+        assert body["parity"]["identity_passed"] is False
+        assert body["review_authorized"] is False
+        assert body["baseline_improved"] is False
+        assert body["eligible_for_live"] is False
+
+
+@pytest.mark.asyncio
+async def test_nse_prospective_qualification_is_compact_and_read_only(
+    tmp_path, monkeypatch
+) -> None:
+    state_path = tmp_path / "nse-qualification.json"
+    components = {
+        identifier: {
+            "available": True,
+            "ready": False,
+            "passed": False,
+            "status": "collecting_insufficient_evidence",
+            "gates": {"must_not_leak": True},
+            "metrics": {
+                "resolved_calls": 0,
+                "accuracy": None,
+                "wilson_lower_bound": None,
+                "private_rows": ["must-not-leak"],
+            },
+        }
+        for identifier in (
+            "m8_accuracy",
+            "m9_integrity_stress",
+            "m10_selection_control",
+            "m11_timing_control",
+        )
+    }
+    state_path.write_text(
+        json.dumps(
+            {
+                "status": "collecting_insufficient_evidence",
+                "created_at": "2026-10-04T12:00:00+00:00",
+                "components": components,
+                "parity": {
+                    "identity_passed": True,
+                    "evaluation_ready": False,
+                    "evaluation_passed": False,
+                    "failures": [],
+                    "versions": {"must_not_leak": True},
+                },
+                "gate_checks": {
+                    "all_components_available": True,
+                    "all_components_ready": False,
+                    "m8_accuracy_passed": False,
+                    "m9_integrity_stress_passed": False,
+                    "m10_selection_control_passed": False,
+                    "m11_timing_control_passed": False,
+                    "candidate_and_evaluation_parity": False,
+                    "unregistered_gate": True,
+                },
+                "canonical_baseline": {
+                    "contract": "aem-v1-same-session",
+                    "strict_wins": 149,
+                    "resolved_fills": 693,
+                    "strict_success_rate": 149 / 693,
+                    "wilson_lower_bound": 0.186035,
+                    "mean_net_r": -0.27471,
+                    "status": "unchanged",
+                    "calls": ["must-not-leak"],
+                },
+                "locked_historical_challenger": {
+                    "contract": "trend-pullback",
+                    "strict_wins": 186,
+                    "resolved_fills": 223,
+                    "strict_success_rate": 186 / 223,
+                    "wilson_lower_bound": 0.77968,
+                    "mean_net_r": 0.0829,
+                    "evidence_class": "historical_locked_not_prospective",
+                    "selected_rows": ["must-not-leak"],
+                },
+                "review_authorized": True,
+                "baseline_improved": True,
+                "eligible_for_live": True,
+                "source_artifacts": {"must_not_leak": True},
+                "detail": "Fresh NSE evidence is collecting.",
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        dashboard_app, "ACCURACY_PROSPECTIVE_QUALIFICATION", state_path
+    )
+    app = create_app(DashboardState())
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        body = (await client.get("/api/accuracy-prospective-qualification")).json()
+        payload = json.loads(state_path.read_text(encoding="utf-8"))
+        payload["status"] = "human_review_authorized"
+        state_path.write_text(json.dumps(payload), encoding="utf-8")
+        optimistic = (
+            await client.get("/api/accuracy-prospective-qualification")
+        ).json()
+
+    assert set(body) == {
+        "status",
+        "created_at",
+        "components",
+        "parity",
+        "gate_checks",
+        "canonical_baseline",
+        "locked_historical_challenger",
+        "review_authorized",
+        "baseline_improved",
+        "eligible_for_live",
+        "detail",
+    }
+    assert len(body["components"]) == 4
+    assert set(body["components"][0]) == {
+        "id", "available", "ready", "passed", "status", "metrics"
+    }
+    assert "private_rows" not in body["components"][0]["metrics"]
+    assert set(body["parity"]) == {
+        "identity_passed", "evaluation_ready", "evaluation_passed", "failures"
+    }
+    assert "unregistered_gate" not in body["gate_checks"]
+    assert body["canonical_baseline"]["strict_success_rate"] == pytest.approx(149 / 693)
+    assert body["locked_historical_challenger"]["evidence_class"] == (
+        "historical_locked_not_prospective"
+    )
+    assert body["review_authorized"] is False
+    assert body["baseline_improved"] is False
+    assert body["eligible_for_live"] is False
+    assert optimistic["status"] == "degraded"
+
+
+@pytest.mark.asyncio
+async def test_bse_quick_profit_missing_and_unreadable_fail_closed(
+    tmp_path, monkeypatch
+) -> None:
+    state_path = tmp_path / "bse-b1.json"
+    monkeypatch.setattr(dashboard_app, "BSE_ACCURACY_QUICK_PROFIT", state_path)
+    app = create_app(DashboardState())
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        missing = (await client.get("/api/bse/accuracy-quick-profit")).json()
+        state_path.write_text("{broken", encoding="utf-8")
+        unreadable = (await client.get("/api/bse/accuracy-quick-profit")).json()
+
+    assert missing["status"] == "not_run"
+    assert unreadable["status"] == "invalid"
+    for body in (missing, unreadable):
+        assert body["prospective"]["best_trial"] is None
+        assert body["baseline_improved"] is False
+        assert body["live"] is False
+        assert body["promotion_allowed"] is False
+
+
+@pytest.mark.asyncio
+async def test_bse_quick_profit_separates_prospective_and_development_evidence(
+    tmp_path, monkeypatch
+) -> None:
+    state_path = tmp_path / "bse-b1.json"
+    payload = {
+        "status": "collecting",
+        "created_at": "2026-10-04T12:00:00+00:00",
+        "readiness": {
+            "activation_date": "2026-10-04",
+            "prospective_source_sessions": 0,
+            "required_sessions": 30,
+            "rules_sample_ready": 0,
+            "registered_candidate_rules": 4,
+            "raw_rows": ["must-not-leak"],
+        },
+        "geometry": {
+            "entry_mode": "next_session_open",
+            "stop_atr": 1.0,
+            "target_r": 0.5,
+            "max_hold_sessions": 3,
+            "trial_count": 1,
+            "source": ["must-not-leak"],
+        },
+        "prospective": {
+            "source_sessions": 0,
+            "rules_sample_ready": 0,
+            "trials": [
+                {
+                    "rule": "prospective-pending",
+                    "observed_strict_success": None,
+                    "after_cost_expectancy_r": None,
+                    "private_rows": ["must-not-leak"],
+                }
+            ],
+            "raw_pvalues": {"must_not_leak": None},
+        },
+        "development_transport": {
+            "source_sessions": 11,
+            "rules_sample_ready": 0,
+            "trials": [
+                {
+                    "rule": "weaker",
+                    "verdict": "development_only",
+                    "observed_strict_success": 0.55,
+                    "wilson_lower_bound": 0.40,
+                    "after_cost_expectancy_r": 0.10,
+                },
+                {
+                    "rule": "best-dev",
+                    "verdict": "qualified",
+                    "development_only": False,
+                    "resolved": 31,
+                    "wins": 20,
+                    "observed_strict_success": 0.65,
+                    "wilson_lower_bound": 0.47,
+                    "after_cost_expectancy_r": -0.126,
+                    "active_sessions": 7,
+                    "source_sessions": 11,
+                    "sample_ready": False,
+                    "qualified": True,
+                    "status_counts": {"must_not_leak": 31},
+                },
+            ],
+        },
+        "baseline_improved": True,
+        "live": True,
+        "promotion_allowed": True,
+        "protocol": {"must_not_leak": True},
+        "detail": "Prospective BSE evidence is collecting.",
+    }
+    state_path.write_text(json.dumps(payload), encoding="utf-8")
+    monkeypatch.setattr(dashboard_app, "BSE_ACCURACY_QUICK_PROFIT", state_path)
+    app = create_app(DashboardState())
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        first = (await client.get("/api/bse/accuracy-quick-profit")).json()
+        payload["prospective"]["trials"].append(
+            {
+                "rule": "prospective-ready",
+                "verdict": "collecting",
+                "development_only": False,
+                "observed_strict_success": 0.81,
+                "wilson_lower_bound": 0.71,
+                "after_cost_expectancy_r": 0.12,
+            }
+        )
+        state_path.write_text(json.dumps(payload), encoding="utf-8")
+        second = (await client.get("/api/bse/accuracy-quick-profit")).json()
+
+    assert set(first) == {
+        "status",
+        "created_at",
+        "readiness",
+        "geometry",
+        "prospective",
+        "development_transport",
+        "baseline_improved",
+        "live",
+        "promotion_allowed",
+        "detail",
+    }
+    assert first["readiness"]["prospective_source_sessions"] == 0
+    assert first["prospective"]["best_trial"] is None
+    assert first["development_transport"]["development_only"] is True
+    assert first["development_transport"]["best_rule"]["rule"] == "best-dev"
+    assert first["development_transport"]["best_rule"]["verdict"] == "development_only"
+    assert first["development_transport"]["best_rule"]["development_only"] is True
+    assert "status_counts" not in first["development_transport"]["best_rule"]
+    assert second["prospective"]["best_trial"]["rule"] == "prospective-ready"
+    assert first["baseline_improved"] is False
+    assert first["live"] is False
+    assert first["promotion_allowed"] is False
+
+
+@pytest.mark.asyncio
+async def test_parallel_accuracy_cards_are_present_and_explicitly_labeled() -> None:
+    app = create_app(DashboardState())
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        html = (await client.get("/")).text
+
+    for element_id in (
+        "nse-qualification-status",
+        "nse-qualification-ready",
+        "nse-qualification-baseline",
+        "nse-qualification-challenger",
+        "nse-qualification-fresh",
+        "bse-b1-status",
+        "bse-b1-sessions",
+        "bse-b1-ready",
+        "bse-b1-accuracy",
+        "bse-b1-development-best",
+        "bse-b1-development-netr",
+    ):
+        assert f'id="{element_id}"' in html
+    assert "Locked challenger · historical-only" in html
+    assert "Development-only best" in html
+    assert "Development-only net R" in html
+    assert "fetch('/api/accuracy-prospective-qualification')" in html
+    assert "fetch('/api/bse/accuracy-quick-profit')" in html
+    assert "not available — not a pass" in html
+
+
+@pytest.mark.asyncio
 async def test_accuracy_selector_reports_missing_artifact_as_not_trained(
     tmp_path, monkeypatch
 ) -> None:

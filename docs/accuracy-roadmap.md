@@ -508,6 +508,15 @@ fresh evidence; missed targets remain visible.
   random future-session timing. Current evidence is empty and collecting; see the
   [Milestone-11 checkpoint](accuracy-prospective-timing-m11-checkpoint.md) and
   [frozen protocol](accuracy-prospective-timing-m11-protocol.md).
+- [x] Add the atomic NSE prospective qualification bundle over M8–M11. It requires all
+  four evidence streams, exact candidate/version/denominator parity, M9 integrity and
+  stress, and both random-selection and random-timing advantages before it can authorize
+  even a human review. The first real run has all four artifacts available and identity
+  parity intact, but 0 fresh resolved calls and 0 active sessions, so it is
+  `collecting_insufficient_evidence`. The canonical comparator remains 149/693 = 21.50%;
+  the 186/223 = 83.41% locked challenger remains historical-only, and live authority is
+  false. See the [qualification checkpoint](accuracy-prospective-qualification-checkpoint.md)
+  and [frozen protocol](accuracy-prospective-qualification-protocol.md).
 
 For each completed item, attach its artifact/run identifier, date, sample size and
 pass/fail result. Update this checklist at checkpoints. The 70–80% objective remains
@@ -541,7 +550,45 @@ pairs, 355,278 raw closed rows and 354,402 canonical daily rows after removing 8
 duplicate IST-day fillers, plus 7,058 explicit absent sessions and 673 invalid OHLCV rows.
 Three exact universe observations now cover one session per required pair; 0 of 337 pairs
 meet the 30-session gate and all 1,011 geometry rows are excluded rather than resolved.
-Evidence is collecting and no baseline improvement is claimed. Next is C2's bounded
-mechanism/control race after enough C1 point-in-time evidence exists; see the
+Evidence is collecting and no baseline improvement is claimed. See the
 [C1 dataset checkpoint](crypto-accuracy-dataset-c1-checkpoint.md) and
 [frozen dataset protocol](crypto-accuracy-dataset-c1-protocol.md).
+
+The C2 mechanism/control implementation is now complete under
+`crypto-accuracy-mechanisms-v1`. It freezes four mechanisms—seven-session
+cross-sectional momentum, 14/3-session pullback continuation, liquid
+five-versus-prior-15-session true-range compression and seven-session BTC-relative
+strength—against the three existing C1 geometries, for exactly 12 trials. Every trial has
+inverse, 1,000 shuffled, 1,000 random-coin and 1,000 same-coin random-timing controls with
+seed `20261007`; family-wise max-statistic correction covers the full trial budget.
+Cross-sections require at least 200 valid registered coins and 90% active registered
+coverage.
+
+Implementation does not equal evidence. Current real C1 history leaves **0 of 12 C2
+trials evaluated**, so accuracy, Wilson confidence, expectancy and control advantage are
+unavailable rather than zero or pass. Results stay suppressed until all trials and paired
+controls mature. A trial then needs 100 resolved calls across 30 sessions, 80% accuracy,
+a 70% Wilson lower bound, positive after-cost R, at least +0.10R and superior accuracy/net
+R versus every control, corrected p no greater than 0.05 and favorable direction in all
+three chronological folds. Failure rejects and stops this version; a pass remains
+research-only, leaves `baseline_improved` and live eligibility false, and authorizes only
+C3. See the [C2 checkpoint](crypto-accuracy-mechanisms-c2-checkpoint.md) and
+[frozen C2 protocol](crypto-accuracy-mechanisms-c2-protocol.md).
+
+## Parallel BSE accuracy program
+
+BSE evidence remains independent of both NSE and crypto. B1 transports exactly one
+already-frozen quick-profit geometry—next-session open, 1 ATR stop, 0.5R target and the
+M6 three-session deadline—to the four existing BSE forward-research rules. It uses BSE
+candles, configured equity costs and same-session `random_eligible` controls; Holm
+correction covers the four registered rules. No BSE threshold or geometry grid was opened.
+
+The pre-activation transport diagnostic raised raw accuracy to 57.98–64.52%, versus
+54.17% for random selection, but every candidate remained negative after costs
+(-0.300R to -0.126R), below the 80%/70% accuracy-confidence gates, and statistically
+unqualified. Those results are development-only and cannot become a baseline. Prospective
+collection activated on 4 October 2026 and currently has 0/30 sessions and 0/4
+sample-ready rules. B1 therefore remains `collecting`, with `baseline_improved`, live and
+promotion authority all false. See the
+[BSE B1 checkpoint](bse-accuracy-quick-profit-b1-checkpoint.md) and
+[frozen B1 protocol](bse-accuracy-quick-profit-b1-protocol.md).

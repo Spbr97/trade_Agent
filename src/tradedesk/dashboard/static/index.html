@@ -198,6 +198,19 @@
       </div>
     </section>
 
+    <section>
+      <h2>BSE accuracy · B1 quick-profit <span class="info-ic" title="Prospective BSE evidence only. Historical transport diagnostics are shown separately and cannot qualify or promote a rule.">ⓘ</span></h2>
+      <div class="cards">
+        <div class="card"><div class="label">B1 status</div><div class="value" id="bse-b1-status">-</div></div>
+        <div class="card"><div class="label">Prospective sessions</div><div class="value" id="bse-b1-sessions">-</div></div>
+        <div class="card"><div class="label">Sample-ready rules</div><div class="value" id="bse-b1-ready">-</div></div>
+        <div class="card"><div class="label">Prospective accuracy</div><div class="value" id="bse-b1-accuracy">-</div></div>
+        <div class="card"><div class="label">Development-only best</div><div class="value" id="bse-b1-development-best">-</div></div>
+        <div class="card"><div class="label">Development-only net R</div><div class="value" id="bse-b1-development-netr">-</div></div>
+      </div>
+      <div class="muted" id="bse-b1-detail" style="margin-top:8px;"></div>
+    </section>
+
     <div id="bse-view-live">
       <details class="filters">
         <summary>Filters <span class="muted" id="bsetoday-filter-count"></span></summary>
@@ -412,6 +425,14 @@
       <div class="card"><div class="label">Resolved quick-profit labels</div><div class="value" id="crypto-dataset-labels">-</div></div>
     </div>
     <div class="muted" id="crypto-dataset-detail" style="margin-top:8px;"></div>
+    <div class="cards" style="margin-top:12px;">
+      <div class="card"><div class="label">C2 mechanism race</div><div class="value" id="crypto-mechanisms-status">-</div></div>
+      <div class="card"><div class="label">Evaluated trials</div><div class="value" id="crypto-mechanisms-evaluated">-</div></div>
+      <div class="card"><div class="label">Passing trials</div><div class="value" id="crypto-mechanisms-passing">-</div></div>
+      <div class="card"><div class="label">Best observed accuracy</div><div class="value" id="crypto-mechanisms-accuracy">-</div></div>
+      <div class="card"><div class="label">Best Wilson lower</div><div class="value" id="crypto-mechanisms-wilson">-</div></div>
+    </div>
+    <div class="muted" id="crypto-mechanisms-detail" style="margin-top:8px;"></div>
   </section>
   <section class="perf-controls">
     <div class="group">
@@ -737,10 +758,18 @@
       <div class="card"><div class="label">Model / random timing expectancy</div><div class="value" id="prospective-timing-expectancy">-</div></div>
       <div class="card"><div class="label">Timing advantage / p-value</div><div class="value" id="prospective-timing-advantage">-</div></div>
     </div>
+    <div class="cards" style="margin-top:10px;">
+      <div class="card"><div class="label">Prospective qualification</div><div class="value" id="nse-qualification-status">-</div></div>
+      <div class="card"><div class="label">Ready components</div><div class="value" id="nse-qualification-ready">-</div></div>
+      <div class="card"><div class="label">Canonical baseline</div><div class="value" id="nse-qualification-baseline">-</div></div>
+      <div class="card"><div class="label">Locked challenger · historical-only</div><div class="value" id="nse-qualification-challenger">-</div></div>
+      <div class="card"><div class="label">Fresh prospective accuracy</div><div class="value" id="nse-qualification-fresh">-</div></div>
+    </div>
     <div class="muted" id="race-detail" style="margin-top:8px;"></div>
     <div class="muted" id="prospective-detail" style="margin-top:8px;"></div>
     <div class="muted" id="prospective-control-detail" style="margin-top:8px;"></div>
     <div class="muted" id="prospective-timing-detail" style="margin-top:8px;"></div>
+    <div class="muted" id="nse-qualification-detail" style="margin-top:8px;"></div>
   </section>
 
 <div id="tab-learning" class="subtab">
@@ -1244,6 +1273,81 @@ async function loadAccuracyPolicy() {
 loadAccuracyPolicy();
 setInterval(loadAccuracyPolicy, 60000);
 
+async function loadProspectiveQualification() {
+  const unavailable = 'not available — not a pass';
+  const knownNumber = number => number !== null && number !== undefined && Number.isFinite(Number(number));
+  const metric = number => knownNumber(number) ? `${(Number(number) * 100).toFixed(2)}%` : unavailable;
+  try {
+    const response = await fetch('/api/accuracy-prospective-qualification');
+    if (!response.ok) throw new Error('NSE prospective qualification unavailable');
+    const value = await response.json();
+    const components = Array.isArray(value.components) ? value.components : [];
+    const completeBundle = components.length === 4;
+    const ready = components.filter(component => component.ready === true).length;
+    const baseline = value.canonical_baseline || {};
+    const challenger = value.locked_historical_challenger || {};
+    const fresh = components.find(component => component.id === 'm8_accuracy');
+    const freshMetrics = fresh && fresh.metrics ? fresh.metrics : {};
+    $('nse-qualification-status').textContent = (value.status || 'invalid').replaceAll('_', ' ');
+    $('nse-qualification-status').className = 'value planned';
+    $('nse-qualification-ready').textContent = completeBundle ? `${ready}/4` : unavailable;
+    $('nse-qualification-baseline').innerHTML = knownNumber(baseline.strict_success_rate)
+      ? `${metric(baseline.strict_success_rate)}<br><span class="muted" style="font-size:13px;">canonical · unchanged</span>`
+      : unavailable;
+    $('nse-qualification-challenger').innerHTML = knownNumber(challenger.strict_success_rate)
+      ? `${metric(challenger.strict_success_rate)}<br><span class="muted" style="font-size:13px;">historical-only · n=${Number(challenger.resolved_fills).toLocaleString()} · LB ${metric(challenger.wilson_lower_bound)}</span>`
+      : unavailable;
+    $('nse-qualification-fresh').innerHTML = knownNumber(freshMetrics.accuracy)
+      ? `${metric(freshMetrics.accuracy)}<br><span class="muted" style="font-size:13px;">LB ${metric(freshMetrics.wilson_lower_bound)} · fresh only</span>`
+      : unavailable;
+    $('nse-qualification-detail').textContent = value.detail || 'NSE prospective qualification is read-only; unavailable is never a pass.';
+  } catch (e) {
+    $('nse-qualification-status').textContent = 'unavailable';
+    for (const id of ['nse-qualification-ready', 'nse-qualification-baseline', 'nse-qualification-challenger', 'nse-qualification-fresh']) $(id).textContent = unavailable;
+    $('nse-qualification-detail').textContent = 'NSE prospective qualification is unavailable — not a pass.';
+  }
+}
+loadProspectiveQualification();
+setInterval(loadProspectiveQualification, 60000);
+
+async function loadBseAccuracyQuickProfit() {
+  const unavailable = 'not available — not a pass';
+  const knownNumber = number => number !== null && number !== undefined && Number.isFinite(Number(number));
+  const metric = number => knownNumber(number) ? `${(Number(number) * 100).toFixed(2)}%` : unavailable;
+  try {
+    const response = await fetch('/api/bse/accuracy-quick-profit');
+    if (!response.ok) throw new Error('BSE B1 evidence unavailable');
+    const value = await response.json();
+    const readiness = value.readiness || {};
+    const prospective = value.prospective || {};
+    const development = value.development_transport || {};
+    const prospectiveBest = prospective.best_trial || {};
+    const developmentBest = development.best_rule || {};
+    $('bse-b1-status').textContent = (value.status || 'invalid').replaceAll('_', ' ');
+    $('bse-b1-status').className = 'value planned';
+    $('bse-b1-sessions').textContent = knownNumber(readiness.prospective_source_sessions) && knownNumber(readiness.required_sessions)
+      ? `${Number(readiness.prospective_source_sessions).toLocaleString()}/${Number(readiness.required_sessions).toLocaleString()}`
+      : unavailable;
+    $('bse-b1-ready').textContent = knownNumber(readiness.rules_sample_ready) && knownNumber(readiness.registered_candidate_rules)
+      ? `${Number(readiness.rules_sample_ready).toLocaleString()}/${Number(readiness.registered_candidate_rules).toLocaleString()}`
+      : unavailable;
+    $('bse-b1-accuracy').textContent = metric(prospectiveBest.observed_strict_success);
+    $('bse-b1-development-best').innerHTML = knownNumber(developmentBest.observed_strict_success)
+      ? `${metric(developmentBest.observed_strict_success)}<br><span class="muted" style="font-size:13px;">${esc(developmentBest.rule)} · development-only</span>`
+      : unavailable;
+    $('bse-b1-development-netr').innerHTML = knownNumber(developmentBest.after_cost_expectancy_r)
+      ? `${Number(developmentBest.after_cost_expectancy_r).toFixed(3)}R<br><span class="muted" style="font-size:13px;">development-only</span>`
+      : unavailable;
+    $('bse-b1-detail').textContent = value.detail || 'BSE B1 prospective evidence is collecting; development transport cannot pass.';
+  } catch (e) {
+    $('bse-b1-status').textContent = 'unavailable';
+    for (const id of ['bse-b1-sessions', 'bse-b1-ready', 'bse-b1-accuracy', 'bse-b1-development-best', 'bse-b1-development-netr']) $(id).textContent = unavailable;
+    $('bse-b1-detail').textContent = 'BSE B1 evidence is unavailable — not a pass.';
+  }
+}
+loadBseAccuracyQuickProfit();
+setInterval(loadBseAccuracyQuickProfit, 60000);
+
 async function loadCryptoUniverse() {
   try {
     const response = await fetch('/api/crypto/universe');
@@ -1334,6 +1438,41 @@ async function loadCryptoAccuracyDataset() {
 }
 loadCryptoAccuracyDataset();
 setInterval(loadCryptoAccuracyDataset, 60000);
+
+async function loadCryptoAccuracyMechanisms() {
+  const unavailable = 'not available — not a pass';
+  try {
+    const response = await fetch('/api/crypto/accuracy-mechanisms');
+    if (!response.ok) throw new Error('crypto C2 mechanisms unavailable');
+    const value = await response.json();
+    const counts = value.trial_counts || {};
+    const best = value.best_trial || {};
+    const knownNumber = number => number !== null && number !== undefined && Number.isFinite(Number(number));
+    const registered = knownNumber(counts.registered) ? Number(counts.registered) : 12;
+    const evaluatedKnown = knownNumber(counts.evaluated);
+    const passingKnown = knownNumber(counts.passed);
+    const metric = number => knownNumber(number)
+      ? `${(Number(number) * 100).toFixed(2)}%`
+      : unavailable;
+    $('crypto-mechanisms-status').textContent = (value.status || 'invalid').replaceAll('_', ' ');
+    $('crypto-mechanisms-status').className = 'value planned';
+    $('crypto-mechanisms-evaluated').textContent = evaluatedKnown
+      ? `${Number(counts.evaluated).toLocaleString()}/${registered.toLocaleString()}`
+      : unavailable;
+    $('crypto-mechanisms-passing').textContent = passingKnown
+      ? Number(counts.passed).toLocaleString()
+      : unavailable;
+    $('crypto-mechanisms-accuracy').textContent = metric(best.observed_accuracy);
+    $('crypto-mechanisms-wilson').textContent = metric(best.wilson95_lower);
+    $('crypto-mechanisms-detail').textContent = value.detail || 'Crypto C2 evidence is research-only. Unavailable is never a pass; live eligibility remains false.';
+  } catch (e) {
+    $('crypto-mechanisms-status').textContent = 'unavailable';
+    for (const id of ['crypto-mechanisms-evaluated', 'crypto-mechanisms-passing', 'crypto-mechanisms-accuracy', 'crypto-mechanisms-wilson']) $(id).textContent = unavailable;
+    $('crypto-mechanisms-detail').textContent = 'Crypto C2 mechanism evidence is unavailable — not a pass.';
+  }
+}
+loadCryptoAccuracyMechanisms();
+setInterval(loadCryptoAccuracyMechanisms, 60000);
 
 // ---------------------------------------------------------------- Review tab
 function reviewCard(item) {
