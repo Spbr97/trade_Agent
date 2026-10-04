@@ -47,3 +47,9 @@ python scripts/accuracy_prospective_qualification.py status
 Implementation is isolated in
 `tradedesk_lab/accuracy_prospective_qualification.py`; it does not modify the frozen
 M8-M11 collectors or production/dashboard code.
+
+R1 now adds a first-look terminal lock around this bundle. Collecting and degraded states
+continue to refresh, but the first mature `human_review_authorized` or
+`prospective_rejected` report is written once and verified before every later read. This
+prevents daily optional stopping; see the
+[R1 evidence-refresh checkpoint](accuracy-evidence-refresh-r1-checkpoint.md).

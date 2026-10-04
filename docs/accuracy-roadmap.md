@@ -517,6 +517,10 @@ fresh evidence; missed targets remain visible.
   the 186/223 = 83.41% locked challenger remains historical-only, and live authority is
   false. See the [qualification checkpoint](accuracy-prospective-qualification-checkpoint.md)
   and [frozen protocol](accuracy-prospective-qualification-protocol.md).
+- [x] Add R1 scheduled evidence refresh and first-look decision locks. NSE can now make
+  exactly one terminal decision at the first mature M8–M11 cohort; later samples cannot
+  turn a rejection into a pass. The current 0-call bundle remains collecting and is not
+  latched. See the [R1 checkpoint](accuracy-evidence-refresh-r1-checkpoint.md).
 
 For each completed item, attach its artifact/run identifier, date, sample size and
 pass/fail result. Update this checklist at checkpoints. The 70–80% objective remains
@@ -575,6 +579,12 @@ research-only, leaves `baseline_improved` and live eligibility false, and author
 C3. See the [C2 checkpoint](crypto-accuracy-mechanisms-c2-checkpoint.md) and
 [frozen C2 protocol](crypto-accuracy-mechanisms-c2-protocol.md).
 
+C1 and C2 now refresh automatically after the established daily crypto tracker. C2 is
+skipped on any C1 integrity failure, and a refresh failure cannot erase the point-in-time
+universe observation or stop the base tracker. The first real automated refresh remains
+0/12 evaluated and non-terminal; see the
+[R1 checkpoint](accuracy-evidence-refresh-r1-checkpoint.md).
+
 ## Parallel BSE accuracy program
 
 BSE evidence remains independent of both NSE and crypto. B1 transports exactly one
@@ -592,3 +602,8 @@ sample-ready rules. B1 therefore remains `collecting`, with `baseline_improved`,
 promotion authority all false. See the
 [BSE B1 checkpoint](bse-accuracy-quick-profit-b1-checkpoint.md) and
 [frozen B1 protocol](bse-accuracy-quick-profit-b1-protocol.md).
+
+B1 now refreshes automatically after the BSE forward-research tracker and writes runtime
+state outside tracked documentation. Its first mature `research_qualified` or `rejected`
+result is terminal and hash-verified, preventing optional stopping; see the
+[R1 checkpoint](accuracy-evidence-refresh-r1-checkpoint.md).

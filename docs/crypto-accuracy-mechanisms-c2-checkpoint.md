@@ -71,3 +71,8 @@ or live eligibility true.
 See the [frozen C2 protocol](crypto-accuracy-mechanisms-c2-protocol.md), the
 [C1 dataset checkpoint](crypto-accuracy-dataset-c1-checkpoint.md), and the
 [crypto accuracy plan](plan-crypto-accuracy.md).
+
+R1 now refreshes C1 and then C2 automatically after the daily crypto tracker. C2 is never
+called when C1 source integrity is missing or false, and a derived refresh failure cannot
+undo the recorded point-in-time universe observation. See the
+[R1 evidence-refresh checkpoint](accuracy-evidence-refresh-r1-checkpoint.md).

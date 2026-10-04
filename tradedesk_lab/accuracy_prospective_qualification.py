@@ -17,6 +17,9 @@ from typing import Any
 from tradedesk_lab.artifacts import OUTPUT, ROOT, digest, write_json
 
 VERSION = "accuracy-prospective-qualification-v1"
+TERMINAL_VERSION = "accuracy-prospective-qualification-first-look-v1"
+TERMINAL_STATUSES = frozenset({"human_review_authorized", "prospective_rejected"})
+TERMINAL_FILE = "terminal-first-look.json"
 DEFAULT_OUTPUT = OUTPUT / "accuracy_prospective_qualification"
 M8_PATH = OUTPUT / "accuracy_prospective_shadow" / "state.json"
 M9_PATH = OUTPUT / "accuracy_prospective_monitor" / "latest.json"
@@ -63,6 +66,13 @@ def canonical_sha256(value: Any) -> str:
     """Return the same stable JSON fingerprint used by the frozen controls."""
     payload = json.dumps(value, sort_keys=True, separators=(",", ":"), default=str)
     return hashlib.sha256(payload.encode()).hexdigest()
+
+
+def _terminal_report_sha256(report: dict[str, Any]) -> str:
+    payload = {
+        key: value for key, value in report.items() if key != "first_look_report_sha256"
+    }
+    return canonical_sha256(payload)
 
 
 def _all_true(gates: Any, required: tuple[str, ...]) -> bool:
@@ -392,6 +402,8 @@ def evaluate_qualification(
         },
         "qualification_passed": review_authorized,
         "review_authorized": review_authorized,
+        "first_look_latched": False,
+        "first_look_report_sha256": None,
         "canonical_baseline": CANONICAL_BASELINE,
         "locked_historical_challenger": LOCKED_CHALLENGER,
         "baseline_improved": False,
@@ -414,6 +426,85 @@ def _read_optional(path: Path) -> dict[str, Any] | None:
     return value
 
 
+def _verified_terminal(path: Path) -> dict[str, Any]:
+    """Read the immutable first-look result or fail closed on any inconsistency."""
+
+    try:
+        envelope = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError("NSE first-look terminal artifact is unreadable") from exc
+    if not isinstance(envelope, dict):
+        raise ValueError("NSE first-look terminal artifact is not an object")
+    report = envelope.get("report")
+    if not isinstance(report, dict):
+        raise ValueError("NSE first-look terminal report is missing")
+    errors: list[str] = []
+    if envelope.get("version") != TERMINAL_VERSION:
+        errors.append("terminal_version")
+    if envelope.get("report_sha256") != canonical_sha256(report):
+        errors.append("report_sha256")
+    if report.get("version") != VERSION:
+        errors.append("report_version")
+    if report.get("market") != "NSE":
+        errors.append("market")
+    status = report.get("status")
+    if status not in TERMINAL_STATUSES:
+        errors.append("status")
+    if report.get("baseline_improved") is not False:
+        errors.append("baseline_improved")
+    if report.get("eligible_for_live") is not False:
+        errors.append("eligible_for_live")
+    if not isinstance(report.get("source_artifacts"), dict):
+        errors.append("source_artifacts")
+    gates = report.get("gate_checks")
+    parity = report.get("parity")
+    if not isinstance(gates, dict) or gates.get("all_components_ready") is not True:
+        errors.append("mature_first_look")
+    if not isinstance(parity, dict) or parity.get("evaluation_ready") is not True:
+        errors.append("evaluation_ready")
+    elif parity.get("passed") is not True:
+        errors.append("parity_passed")
+    authorized = status == "human_review_authorized"
+    if report.get("qualification_passed") is not authorized:
+        errors.append("qualification_passed")
+    if report.get("review_authorized") is not authorized:
+        errors.append("review_authorized")
+    if report.get("first_look_latched") is not True:
+        errors.append("first_look_latched")
+    if report.get("first_look_report_sha256") != _terminal_report_sha256(report):
+        errors.append("first_look_report_sha256")
+    if authorized and (not gates or not all(value is True for value in gates.values())):
+        errors.append("passing_gates")
+    if errors:
+        raise ValueError(
+            "NSE first-look terminal artifact failed verification: " + ", ".join(errors)
+        )
+    return report
+
+
+def _latch_terminal(output: Path, report: dict[str, Any]) -> dict[str, Any]:
+    """Create the first-look envelope once; a concurrent winner is re-read and verified."""
+
+    output.mkdir(parents=True, exist_ok=True)
+    terminal_path = output / TERMINAL_FILE
+    report = dict(report)
+    report["first_look_latched"] = True
+    report["first_look_report_sha256"] = _terminal_report_sha256(report)
+    envelope = {
+        "version": TERMINAL_VERSION,
+        "latched_at": report.get("created_at"),
+        "report_sha256": canonical_sha256(report),
+        "report": report,
+    }
+    try:
+        with terminal_path.open("x", encoding="utf-8") as stream:
+            json.dump(envelope, stream, indent=2, sort_keys=True)
+            stream.write("\n")
+    except FileExistsError:
+        return _verified_terminal(terminal_path)
+    return _verified_terminal(terminal_path)
+
+
 def run_qualification(
     *,
     output: Path = DEFAULT_OUTPUT,
@@ -423,6 +514,11 @@ def run_qualification(
     m11_path: Path = M11_PATH,
 ) -> dict[str, Any]:
     """Read the current evidence atomically enough for a read-only qualification report."""
+    terminal_path = output / TERMINAL_FILE
+    if terminal_path.exists():
+        terminal = _verified_terminal(terminal_path)
+        write_json(output / "latest.json", terminal)
+        return terminal
     paths = {
         "m8_accuracy": m8_path,
         "m9_integrity_stress": m9_path,
@@ -444,5 +540,7 @@ def run_qualification(
         }
         for name, path in paths.items()
     }
+    if report["status"] in TERMINAL_STATUSES:
+        report = _latch_terminal(output, report)
     write_json(output / "latest.json", report)
     return report

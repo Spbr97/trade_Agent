@@ -4,6 +4,7 @@ Bind to 127.0.0.1 only (PLAN.md 16)."""
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 from collections.abc import AsyncIterator
 from datetime import date, datetime
@@ -40,7 +41,7 @@ CRYPTO_ACCURACY_MECHANISMS = Path("data/m14_m18/crypto_accuracy_mechanisms/state
 CRYPTO_UNIVERSE_STATE = Path(
     "data/m14_m18/crypto_accuracy_dataset/universe_state.json"
 )
-BSE_ACCURACY_QUICK_PROFIT = Path("docs/evidence/bse-accuracy-quick-profit-b1.json")
+BSE_ACCURACY_QUICK_PROFIT = Path("data/m14_m18/bse_accuracy_quick_profit/state.json")
 
 
 def _read_call_log(log_path: Path, limit: int) -> list[dict[str, Any]]:
@@ -278,6 +279,7 @@ def create_app(
                     "best_trial": None,
                     "mechanisms": [],
                     "source_integrity": {"passed": False, "errors": [detail]},
+                    "first_look_latched": False,
                     "baseline_improved": False,
                     "eligible_for_live": False,
                     "detail": detail,
@@ -321,6 +323,11 @@ def create_app(
         reported_status = payload.get("status", "invalid")
         if source_integrity["passed"] is not True:
             reported_status = "blocked_invalid_source_integrity"
+        first_look_latched = bool(
+            source_integrity["passed"] is True
+            and reported_status
+            in {"mechanism_race_passed_research_only", "mechanism_race_rejected"}
+        )
         return JSONResponse(
             {
                 "status": reported_status,
@@ -364,6 +371,7 @@ def create_app(
                 ),
                 "mechanisms": mechanisms,
                 "source_integrity": source_integrity,
+                "first_look_latched": first_look_latched,
                 # C2 is consumed development evidence. Optimistic artifact fields cannot
                 # turn this read-only surface into a baseline or live-eligibility claim.
                 "baseline_improved": False,
@@ -395,6 +403,7 @@ def create_app(
                     "canonical_baseline": None,
                     "locked_historical_challenger": None,
                     "review_authorized": False,
+                    "first_look_latched": False,
                     "baseline_improved": False,
                     "eligible_for_live": False,
                     "detail": detail,
@@ -539,6 +548,37 @@ def create_app(
             reported_status = "invalid"
         elif reported_status == "human_review_authorized" and not review_authorized:
             reported_status = "degraded"
+        mature_bundle = bool(
+            len(components) == 4
+            and all(row["available"] and row["ready"] for row in components)
+            and compact_parity["identity_passed"]
+            and compact_parity["evaluation_ready"]
+            and compact_parity["evaluation_passed"]
+            and gate_checks.get("all_components_available") is True
+            and gate_checks.get("all_components_ready") is True
+            and gate_checks.get("candidate_and_evaluation_parity") is True
+        )
+        nse_hash_payload = {
+            key: value
+            for key, value in payload.items()
+            if key != "first_look_report_sha256"
+        }
+        nse_hash = hashlib.sha256(
+            json.dumps(
+                nse_hash_payload,
+                sort_keys=True,
+                separators=(",", ":"),
+                default=str,
+            ).encode()
+        ).hexdigest()
+        first_look_latched = bool(
+            payload.get("first_look_latched") is True
+            and payload.get("first_look_report_sha256") == nse_hash
+            and mature_bundle
+            and reported_status in {"human_review_authorized", "prospective_rejected"}
+        )
+        if payload.get("first_look_latched") is True and not first_look_latched:
+            reported_status = "degraded"
         return JSONResponse(
             {
                 "status": reported_status,
@@ -549,6 +589,7 @@ def create_app(
                 "canonical_baseline": canonical_baseline,
                 "locked_historical_challenger": locked_challenger,
                 "review_authorized": review_authorized,
+                "first_look_latched": first_look_latched,
                 "baseline_improved": False,
                 "eligible_for_live": False,
                 "detail": payload.get(
@@ -575,6 +616,7 @@ def create_app(
                         "best_trial": None,
                     },
                     "development_transport": None,
+                    "first_look_latched": False,
                     "baseline_improved": False,
                     "live": False,
                     "promotion_allowed": False,
@@ -668,11 +710,32 @@ def create_app(
         prospective = raw_prospective if isinstance(raw_prospective, dict) else {}
         development = raw_development if isinstance(raw_development, dict) else {}
         reported_status = payload.get("status", "invalid")
+        terminal = payload.get("terminal_first_look")
+        bse_hash_payload = {
+            key: value for key, value in payload.items() if key != "terminal_first_look"
+        }
+        bse_hash = hashlib.sha256(
+            json.dumps(
+                bse_hash_payload,
+                sort_keys=True,
+                separators=(",", ":"),
+                default=str,
+            ).encode()
+        ).hexdigest()
+        first_look_latched = bool(
+            reported_status in {"research_qualified", "rejected"}
+            and isinstance(terminal, dict)
+            and terminal.get("version") == "bse-accuracy-quick-profit-first-look-v1"
+            and isinstance(terminal.get("result_sha256"), str)
+            and terminal["result_sha256"] == bse_hash
+        )
         if reported_status not in {"collecting", "rejected", "research_qualified"}:
             reported_status = "invalid"
         elif reported_status == "research_qualified" and not prospective.get(
             "qualified_rules"
         ):
+            reported_status = "invalid"
+        elif reported_status in {"research_qualified", "rejected"} and not first_look_latched:
             reported_status = "invalid"
         return JSONResponse(
             {
@@ -699,6 +762,7 @@ def create_app(
                     "rules_sample_ready": development.get("rules_sample_ready"),
                     "best_rule": best_trial(development, prospective=False),
                 },
+                "first_look_latched": first_look_latched,
                 "baseline_improved": False,
                 "live": False,
                 "promotion_allowed": False,

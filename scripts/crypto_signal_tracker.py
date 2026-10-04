@@ -208,5 +208,20 @@ def main() -> None:
         print(f"Crypto timing control degraded: {type(exc).__name__}: {exc}")
 
 
+    try:
+        from tradedesk_lab.crypto_accuracy_pipeline import refresh_crypto_accuracy
+
+        accuracy = refresh_crypto_accuracy()
+        print(
+            "Crypto accuracy evidence refresh: "
+            f"C1 status={accuracy['c1']['status']}, "
+            f"C2 status={accuracy['c2']['status']}"
+        )
+    except Exception as exc:
+        # The point-in-time collection above is already durable. Keep the
+        # tracker successful and let the next run retry these derived outputs.
+        print(f"Crypto accuracy evidence degraded: {type(exc).__name__}: {exc}")
+
+
 if __name__ == "__main__":
     main()

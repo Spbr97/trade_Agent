@@ -37,7 +37,102 @@ from tradedesk_lab.accuracy_geometry import (
     _quick_outcome,
     wilson_lower_bound,
 )
-from tradedesk_lab.artifacts import ROOT, digest, write_json
+from tradedesk_lab.artifacts import OUTPUT, ROOT, digest, write_json
+
+DEFAULT_EVIDENCE = OUTPUT / "bse_accuracy_quick_profit" / "state.json"
+_TERMINAL_VERSION = "bse-accuracy-quick-profit-first-look-v1"
+
+_TERMINAL_RESEARCH_STATUSES = frozenset({"research_qualified", "rejected"})
+
+
+def _terminal_payload_sha256(value: dict[str, Any]) -> str:
+    payload = {key: item for key, item in value.items() if key != "terminal_first_look"}
+    encoded = json.dumps(
+        payload, sort_keys=True, separators=(",", ":"), default=str
+    ).encode()
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _stamp_terminal_result(value: dict[str, Any]) -> dict[str, Any]:
+    if value.get("status") not in _TERMINAL_RESEARCH_STATUSES:
+        return value
+    stamped = dict(value)
+    stamped["terminal_first_look"] = {
+        "version": _TERMINAL_VERSION,
+        "latched_at": value.get("created_at"),
+        "result_sha256": _terminal_payload_sha256(value),
+    }
+    return stamped
+
+
+def _load_terminal_bse_quick_profit(
+    output: Path,
+    protocol: Any,
+) -> dict[str, Any] | None:
+    """Return a verified terminal B1 artifact, if one has already been recorded.
+
+    Terminal evidence is deliberately fail-closed.  Once the registered first look
+    has made a decision, a malformed or incompatible artifact must not silently
+    trigger a second look over a larger sample.
+    """
+
+    if not output.exists():
+        return None
+    try:
+        value = json.loads(output.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError("BSE B1 evidence artifact is unreadable") from exc
+    if not isinstance(value, dict):
+        raise ValueError("BSE B1 evidence artifact is not an object")
+    if value.get("status") not in _TERMINAL_RESEARCH_STATUSES:
+        return None
+
+    artifact_protocol = value.get("protocol")
+    errors: list[str] = []
+    if value.get("schema_version") != "bse-accuracy-quick-profit-state-v1":
+        errors.append("schema_version")
+    if value.get("market") != "bse":
+        errors.append("market")
+    if (
+        not isinstance(artifact_protocol, dict)
+        or artifact_protocol.get("sha256") != protocol.sha256
+    ):
+        errors.append("protocol.sha256")
+    if value.get("live") is not False:
+        errors.append("live")
+    if value.get("promotion_allowed") is not False:
+        errors.append("promotion_allowed")
+    if value.get("baseline_improved") is not False:
+        errors.append("baseline_improved")
+    terminal = value.get("terminal_first_look")
+    if not isinstance(terminal, dict) or terminal.get("version") != _TERMINAL_VERSION:
+        errors.append("terminal_first_look")
+    elif terminal.get("result_sha256") != _terminal_payload_sha256(value):
+        errors.append("result_sha256")
+    prospective = value.get("prospective")
+    if not isinstance(prospective, dict):
+        errors.append("prospective")
+    else:
+        trials = prospective.get("trials")
+        qualified = prospective.get("qualified_rules")
+        if not isinstance(trials, list) or len(trials) != len(CANDIDATE_RULES):
+            errors.append("prospective.trials")
+        elif not all(
+            isinstance(row, dict)
+            and row.get("verdict") in {"rejected", "qualified_research_only"}
+            for row in trials
+        ):
+            errors.append("prospective.decisions")
+        if not isinstance(qualified, list):
+            errors.append("prospective.qualified_rules")
+        elif value.get("status") == "research_qualified" and not qualified:
+            errors.append("research_qualified")
+        elif value.get("status") == "rejected" and qualified:
+            errors.append("rejected")
+    if errors:
+        fields = ", ".join(errors)
+        raise ValueError(f"terminal BSE B1 evidence failed verification: {fields}")
+    return value
 
 CONTROL_RULE = "random_eligible"
 CANDIDATE_RULES = (
@@ -653,6 +748,31 @@ def run_bse_quick_profit(
     }
 
 
-def save_bse_quick_profit(result: dict[str, Any], output: Path) -> Path:
-    write_json(output, result)
+def save_bse_quick_profit(
+    result: dict[str, Any],
+    output: Path,
+    *,
+    protocol: BseQuickProfitProtocol = DEFAULT_BSE_QUICK_PROFIT_PROTOCOL,
+) -> Path:
+    # Protect the registered first look even when an older caller still follows
+    # the split run-then-save API.
+    if _load_terminal_bse_quick_profit(output, protocol) is None:
+        write_json(output, _stamp_terminal_result(result))
     return output
+
+
+def refresh_bse_quick_profit(
+    *,
+    root: Path = ROOT,
+    protocol: BseQuickProfitProtocol = DEFAULT_BSE_QUICK_PROFIT_PROTOCOL,
+    output: Path = DEFAULT_EVIDENCE,
+) -> dict[str, Any]:
+    """Refresh B1 evidence once, latching its first terminal prospective look."""
+
+    terminal = _load_terminal_bse_quick_profit(output, protocol)
+    if terminal is not None:
+        return terminal
+    result = run_bse_quick_profit(root=root, protocol=protocol)
+    save_bse_quick_profit(result, output, protocol=protocol)
+    # Re-read after saving so a concurrent first terminal writer also wins.
+    return _load_terminal_bse_quick_profit(output, protocol) or result

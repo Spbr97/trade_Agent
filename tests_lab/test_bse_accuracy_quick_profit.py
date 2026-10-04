@@ -1,10 +1,12 @@
 from __future__ import annotations
 
-from dataclasses import replace
+import json
+from dataclasses import asdict, replace
 from datetime import date
 
 import pandas as pd
 import pytest
+import tradedesk_lab.bse_accuracy_quick_profit as bse_module
 from tradedesk_lab.artifacts import ROOT
 from tradedesk_lab.bse_accuracy_quick_profit import (
     CANDIDATE_RULES,
@@ -12,6 +14,7 @@ from tradedesk_lab.bse_accuracy_quick_profit import (
     QuickProfitRecord,
     holm_adjusted_pvalues,
     one_sided_sign_flip_pvalue,
+    refresh_bse_quick_profit,
     resolve_quick_profit_call,
     summarize_cohort,
 )
@@ -154,3 +157,106 @@ def test_preactivation_cohort_can_never_qualify() -> None:
     result = summarize_cohort(records, source, protocol=protocol, development_only=True)
     assert all(trial["verdict"] == "development_only" for trial in result["trials"])
     assert not result["qualified_rules"]
+
+
+def _terminal_result(status: str = "rejected") -> dict[str, object]:
+    qualified = status == "research_qualified"
+    trials = [
+        {
+            "rule": rule,
+            "verdict": "qualified_research_only" if qualified and offset == 0 else "rejected",
+        }
+        for offset, rule in enumerate(CANDIDATE_RULES)
+    ]
+    return {
+        "schema_version": DEFAULT_BSE_QUICK_PROFIT_PROTOCOL.state_schema_version,
+        "created_at": "2026-12-01T16:00:00+05:30",
+        "market": "bse",
+        "status": status,
+        "live": False,
+        "baseline_improved": False,
+        "promotion_allowed": False,
+        "protocol": asdict(DEFAULT_BSE_QUICK_PROFIT_PROTOCOL)
+        | {"sha256": DEFAULT_BSE_QUICK_PROFIT_PROTOCOL.sha256},
+        "readiness": {
+            "prospective_source_sessions": 30,
+            "rules_sample_ready": 4,
+        },
+        "prospective": {
+            "trials": trials,
+            "qualified_rules": [CANDIDATE_RULES[0]] if qualified else [],
+        },
+    }
+
+
+def test_first_terminal_bse_look_is_latched(monkeypatch, tmp_path) -> None:
+    output = tmp_path / "bse-b1.json"
+    calls = 0
+
+    def first_run(**_kwargs):
+        nonlocal calls
+        calls += 1
+        return _terminal_result("rejected")
+
+    monkeypatch.setattr(bse_module, "run_bse_quick_profit", first_run)
+    first = refresh_bse_quick_profit(output=output, root=tmp_path)
+    terminal_bytes = output.read_bytes()
+    assert first["status"] == "rejected"
+    assert first["terminal_first_look"]["result_sha256"]
+
+    monkeypatch.setattr(
+        bse_module,
+        "run_bse_quick_profit",
+        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("must stay latched")),
+    )
+    second = refresh_bse_quick_profit(output=output, root=tmp_path)
+    assert second["status"] == "rejected"
+    assert output.read_bytes() == terminal_bytes
+    assert calls == 1
+
+
+def test_tampered_terminal_bse_look_fails_closed(monkeypatch, tmp_path) -> None:
+    output = tmp_path / "bse-b1.json"
+    monkeypatch.setattr(
+        bse_module,
+        "run_bse_quick_profit",
+        lambda **_kwargs: _terminal_result("rejected"),
+    )
+    refresh_bse_quick_profit(output=output, root=tmp_path)
+    artifact = json.loads(output.read_text(encoding="utf-8"))
+    artifact["status"] = "research_qualified"
+    output.write_text(json.dumps(artifact), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="terminal BSE B1 evidence failed verification"):
+        refresh_bse_quick_profit(output=output, root=tmp_path)
+
+
+def test_bse_research_tracker_refresh_is_failure_isolated(
+    monkeypatch, tmp_path, capsys
+) -> None:
+    import scripts.research_tracker as tracker_script
+
+    monkeypatch.setattr(tracker_script, "resolve", lambda **_kwargs: None)
+    monkeypatch.setattr(tracker_script, "scan", lambda **_kwargs: None)
+    monkeypatch.setattr(tracker_script, "load_log", lambda _path: [])
+    monkeypatch.setattr(tracker_script, "cost_r_for", lambda _market: 0.0)
+    monkeypatch.setattr(
+        tracker_script, "flag_research_findings", lambda *_args, **_kwargs: []
+    )
+    monkeypatch.setattr(tracker_script, "eod_learn", lambda **_kwargs: None)
+    monkeypatch.setattr(tracker_script, "report", lambda **_kwargs: None)
+    monkeypatch.setattr(
+        bse_module,
+        "refresh_bse_quick_profit",
+        lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("locked")),
+    )
+
+    tracker_script.run(
+        market="bse",
+        db=tmp_path / "bse.duckdb",
+        root=tmp_path,
+        max_codes=0,
+        log=tmp_path / "calls.jsonl",
+    )
+
+    assert "BSE B1 accuracy evidence degraded: RuntimeError: locked" in capsys.readouterr().out

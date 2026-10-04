@@ -59,6 +59,8 @@ C1 does not improve the baseline; it creates the auditable input needed to test 
   evidence as unavailable—never zero or pass.
 - [ ] Evaluate all 12 trials once every trial/control is mature; reject and stop this
   version if none passes, or authorize only C3 research if one qualifies.
+- [x] Refresh C1 and then C2 automatically after the established daily tracker; skip C2
+  on any C1 integrity failure and keep tracker collection durable on refresh failure.
 
 C2 implementation is complete, but **0 of 12 trials are evaluated** because current C1
 evidence still has one point-in-time session per required pair and no mature geometry

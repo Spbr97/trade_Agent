@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 
 import httpx
@@ -206,6 +207,7 @@ async def test_crypto_accuracy_mechanisms_missing_and_unreadable_fail_closed(
         assert body["trial_counts"]["registered"] == 12
         assert body["trial_counts"]["evaluated"] is None
         assert body["source_integrity"]["passed"] is False
+        assert body["first_look_latched"] is False
         assert body["baseline_improved"] is False
         assert body["eligible_for_live"] is False
 
@@ -308,6 +310,7 @@ async def test_crypto_accuracy_mechanisms_is_compact_and_overrides_authority(
         "best_trial",
         "mechanisms",
         "source_integrity",
+        "first_look_latched",
         "baseline_improved",
         "eligible_for_live",
         "detail",
@@ -322,6 +325,7 @@ async def test_crypto_accuracy_mechanisms_is_compact_and_overrides_authority(
     assert body["best_trial"]["wilson95_lower"] is None
     assert body["baseline_improved"] is False
     assert body["eligible_for_live"] is False
+    assert body["first_look_latched"] is False
     assert integrity_blocked.json()["status"] == "blocked_invalid_source_integrity"
     assert set(body["c1_dataset"]) == {"id", "status", "contract_sha256", "source_sha256"}
     assert set(body["c1_readiness"]) == {
@@ -375,6 +379,7 @@ async def test_crypto_accuracy_mechanism_cards_preserve_c1_and_label_missing_met
         "crypto-mechanisms-status",
         "crypto-mechanisms-evaluated",
         "crypto-mechanisms-passing",
+        "crypto-mechanisms-first-look",
         "crypto-mechanisms-accuracy",
         "crypto-mechanisms-wilson",
     ):
@@ -407,6 +412,7 @@ async def test_nse_prospective_qualification_missing_and_unreadable_fail_closed(
         assert body["components"] == []
         assert body["parity"]["identity_passed"] is False
         assert body["review_authorized"] is False
+        assert body["first_look_latched"] is False
         assert body["baseline_improved"] is False
         assert body["eligible_for_live"] is False
 
@@ -513,6 +519,7 @@ async def test_nse_prospective_qualification_is_compact_and_read_only(
         "canonical_baseline",
         "locked_historical_challenger",
         "review_authorized",
+        "first_look_latched",
         "baseline_improved",
         "eligible_for_live",
         "detail",
@@ -533,6 +540,7 @@ async def test_nse_prospective_qualification_is_compact_and_read_only(
     assert body["review_authorized"] is False
     assert body["baseline_improved"] is False
     assert body["eligible_for_live"] is False
+    assert body["first_look_latched"] is False
     assert optimistic["status"] == "degraded"
 
 
@@ -554,6 +562,7 @@ async def test_bse_quick_profit_missing_and_unreadable_fail_closed(
     assert unreadable["status"] == "invalid"
     for body in (missing, unreadable):
         assert body["prospective"]["best_trial"] is None
+        assert body["first_look_latched"] is False
         assert body["baseline_improved"] is False
         assert body["live"] is False
         assert body["promotion_allowed"] is False
@@ -649,6 +658,26 @@ async def test_bse_quick_profit_separates_prospective_and_development_evidence(
         )
         state_path.write_text(json.dumps(payload), encoding="utf-8")
         second = (await client.get("/api/bse/accuracy-quick-profit")).json()
+        payload["status"] = "rejected"
+        payload["terminal_first_look"] = {
+            "version": "bse-accuracy-quick-profit-first-look-v1",
+            "result_sha256": "0" * 64,
+        }
+        state_path.write_text(json.dumps(payload), encoding="utf-8")
+        tampered = (await client.get("/api/bse/accuracy-quick-profit")).json()
+        hash_payload = {
+            key: value for key, value in payload.items() if key != "terminal_first_look"
+        }
+        payload["terminal_first_look"]["result_sha256"] = hashlib.sha256(
+            json.dumps(
+                hash_payload,
+                sort_keys=True,
+                separators=(",", ":"),
+                default=str,
+            ).encode()
+        ).hexdigest()
+        state_path.write_text(json.dumps(payload), encoding="utf-8")
+        terminal = (await client.get("/api/bse/accuracy-quick-profit")).json()
 
     assert set(first) == {
         "status",
@@ -657,6 +686,7 @@ async def test_bse_quick_profit_separates_prospective_and_development_evidence(
         "geometry",
         "prospective",
         "development_transport",
+        "first_look_latched",
         "baseline_improved",
         "live",
         "promotion_allowed",
@@ -673,6 +703,11 @@ async def test_bse_quick_profit_separates_prospective_and_development_evidence(
     assert first["baseline_improved"] is False
     assert first["live"] is False
     assert first["promotion_allowed"] is False
+    assert first["first_look_latched"] is False
+    assert tampered["status"] == "invalid"
+    assert tampered["first_look_latched"] is False
+    assert terminal["status"] == "rejected"
+    assert terminal["first_look_latched"] is True
 
 
 @pytest.mark.asyncio
@@ -686,12 +721,14 @@ async def test_parallel_accuracy_cards_are_present_and_explicitly_labeled() -> N
     for element_id in (
         "nse-qualification-status",
         "nse-qualification-ready",
+        "nse-qualification-first-look",
         "nse-qualification-baseline",
         "nse-qualification-challenger",
         "nse-qualification-fresh",
         "bse-b1-status",
         "bse-b1-sessions",
         "bse-b1-ready",
+        "bse-b1-first-look",
         "bse-b1-accuracy",
         "bse-b1-development-best",
         "bse-b1-development-netr",

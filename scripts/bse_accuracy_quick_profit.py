@@ -12,8 +12,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from tradedesk_lab.artifacts import ROOT  # noqa: E402
 from tradedesk_lab.bse_accuracy_quick_profit import (  # noqa: E402
-    run_bse_quick_profit,
-    save_bse_quick_profit,
+    DEFAULT_EVIDENCE,
+    refresh_bse_quick_profit,
 )
 
 
@@ -22,11 +22,11 @@ def main() -> None:
     parser.add_argument(
         "--output",
         type=Path,
-        default=ROOT / "docs/evidence/bse-accuracy-quick-profit-b1.json",
+        default=DEFAULT_EVIDENCE,
     )
     args = parser.parse_args()
-    result = run_bse_quick_profit(root=ROOT)
-    output = save_bse_quick_profit(result, args.output)
+    result = refresh_bse_quick_profit(root=ROOT, output=args.output)
+    output = args.output
     summary = {
         "status": result["status"],
         "live": result["live"],

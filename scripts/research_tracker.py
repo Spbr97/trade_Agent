@@ -152,6 +152,21 @@ def run(
         from tradedesk.reliability_sources import log_daily_reliability_snapshot
 
         log_daily_reliability_snapshot()
+    if market == "bse":
+        # B1 is a derived, read-only observer. A failure must not invalidate the
+        # established research tracker run or silently turn missing evidence into a pass.
+        try:
+            from tradedesk_lab.bse_accuracy_quick_profit import refresh_bse_quick_profit
+
+            evidence = refresh_bse_quick_profit(root=root)
+            typer.echo(
+                "BSE B1 accuracy evidence: "
+                f"status={evidence['status']}, "
+                f"sessions={evidence['readiness']['prospective_source_sessions']}, "
+                f"sample_ready={evidence['readiness']['rules_sample_ready']}/4"
+            )
+        except Exception as exc:
+            typer.echo(f"BSE B1 accuracy evidence degraded: {type(exc).__name__}: {exc}")
 
 
 if __name__ == "__main__":

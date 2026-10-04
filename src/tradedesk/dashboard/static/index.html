@@ -204,6 +204,7 @@
         <div class="card"><div class="label">B1 status</div><div class="value" id="bse-b1-status">-</div></div>
         <div class="card"><div class="label">Prospective sessions</div><div class="value" id="bse-b1-sessions">-</div></div>
         <div class="card"><div class="label">Sample-ready rules</div><div class="value" id="bse-b1-ready">-</div></div>
+        <div class="card"><div class="label">First-look decision</div><div class="value" id="bse-b1-first-look">-</div></div>
         <div class="card"><div class="label">Prospective accuracy</div><div class="value" id="bse-b1-accuracy">-</div></div>
         <div class="card"><div class="label">Development-only best</div><div class="value" id="bse-b1-development-best">-</div></div>
         <div class="card"><div class="label">Development-only net R</div><div class="value" id="bse-b1-development-netr">-</div></div>
@@ -429,6 +430,7 @@
       <div class="card"><div class="label">C2 mechanism race</div><div class="value" id="crypto-mechanisms-status">-</div></div>
       <div class="card"><div class="label">Evaluated trials</div><div class="value" id="crypto-mechanisms-evaluated">-</div></div>
       <div class="card"><div class="label">Passing trials</div><div class="value" id="crypto-mechanisms-passing">-</div></div>
+      <div class="card"><div class="label">First-look decision</div><div class="value" id="crypto-mechanisms-first-look">-</div></div>
       <div class="card"><div class="label">Best observed accuracy</div><div class="value" id="crypto-mechanisms-accuracy">-</div></div>
       <div class="card"><div class="label">Best Wilson lower</div><div class="value" id="crypto-mechanisms-wilson">-</div></div>
     </div>
@@ -761,6 +763,7 @@
     <div class="cards" style="margin-top:10px;">
       <div class="card"><div class="label">Prospective qualification</div><div class="value" id="nse-qualification-status">-</div></div>
       <div class="card"><div class="label">Ready components</div><div class="value" id="nse-qualification-ready">-</div></div>
+      <div class="card"><div class="label">First-look decision</div><div class="value" id="nse-qualification-first-look">-</div></div>
       <div class="card"><div class="label">Canonical baseline</div><div class="value" id="nse-qualification-baseline">-</div></div>
       <div class="card"><div class="label">Locked challenger · historical-only</div><div class="value" id="nse-qualification-challenger">-</div></div>
       <div class="card"><div class="label">Fresh prospective accuracy</div><div class="value" id="nse-qualification-fresh">-</div></div>
@@ -1291,6 +1294,9 @@ async function loadProspectiveQualification() {
     $('nse-qualification-status').textContent = (value.status || 'invalid').replaceAll('_', ' ');
     $('nse-qualification-status').className = 'value planned';
     $('nse-qualification-ready').textContent = completeBundle ? `${ready}/4` : unavailable;
+    $('nse-qualification-first-look').textContent = value.first_look_latched === true
+      ? 'latched · terminal'
+      : 'collecting · not latched';
     $('nse-qualification-baseline').innerHTML = knownNumber(baseline.strict_success_rate)
       ? `${metric(baseline.strict_success_rate)}<br><span class="muted" style="font-size:13px;">canonical · unchanged</span>`
       : unavailable;
@@ -1303,7 +1309,7 @@ async function loadProspectiveQualification() {
     $('nse-qualification-detail').textContent = value.detail || 'NSE prospective qualification is read-only; unavailable is never a pass.';
   } catch (e) {
     $('nse-qualification-status').textContent = 'unavailable';
-    for (const id of ['nse-qualification-ready', 'nse-qualification-baseline', 'nse-qualification-challenger', 'nse-qualification-fresh']) $(id).textContent = unavailable;
+    for (const id of ['nse-qualification-ready', 'nse-qualification-first-look', 'nse-qualification-baseline', 'nse-qualification-challenger', 'nse-qualification-fresh']) $(id).textContent = unavailable;
     $('nse-qualification-detail').textContent = 'NSE prospective qualification is unavailable — not a pass.';
   }
 }
@@ -1331,6 +1337,9 @@ async function loadBseAccuracyQuickProfit() {
     $('bse-b1-ready').textContent = knownNumber(readiness.rules_sample_ready) && knownNumber(readiness.registered_candidate_rules)
       ? `${Number(readiness.rules_sample_ready).toLocaleString()}/${Number(readiness.registered_candidate_rules).toLocaleString()}`
       : unavailable;
+    $('bse-b1-first-look').textContent = value.first_look_latched === true
+      ? 'latched · terminal'
+      : 'collecting · not latched';
     $('bse-b1-accuracy').textContent = metric(prospectiveBest.observed_strict_success);
     $('bse-b1-development-best').innerHTML = knownNumber(developmentBest.observed_strict_success)
       ? `${metric(developmentBest.observed_strict_success)}<br><span class="muted" style="font-size:13px;">${esc(developmentBest.rule)} · development-only</span>`
@@ -1341,7 +1350,7 @@ async function loadBseAccuracyQuickProfit() {
     $('bse-b1-detail').textContent = value.detail || 'BSE B1 prospective evidence is collecting; development transport cannot pass.';
   } catch (e) {
     $('bse-b1-status').textContent = 'unavailable';
-    for (const id of ['bse-b1-sessions', 'bse-b1-ready', 'bse-b1-accuracy', 'bse-b1-development-best', 'bse-b1-development-netr']) $(id).textContent = unavailable;
+    for (const id of ['bse-b1-sessions', 'bse-b1-ready', 'bse-b1-first-look', 'bse-b1-accuracy', 'bse-b1-development-best', 'bse-b1-development-netr']) $(id).textContent = unavailable;
     $('bse-b1-detail').textContent = 'BSE B1 evidence is unavailable — not a pass.';
   }
 }
@@ -1462,12 +1471,15 @@ async function loadCryptoAccuracyMechanisms() {
     $('crypto-mechanisms-passing').textContent = passingKnown
       ? Number(counts.passed).toLocaleString()
       : unavailable;
+    $('crypto-mechanisms-first-look').textContent = value.first_look_latched === true
+      ? 'latched · terminal'
+      : 'collecting · not latched';
     $('crypto-mechanisms-accuracy').textContent = metric(best.observed_accuracy);
     $('crypto-mechanisms-wilson').textContent = metric(best.wilson95_lower);
     $('crypto-mechanisms-detail').textContent = value.detail || 'Crypto C2 evidence is research-only. Unavailable is never a pass; live eligibility remains false.';
   } catch (e) {
     $('crypto-mechanisms-status').textContent = 'unavailable';
-    for (const id of ['crypto-mechanisms-evaluated', 'crypto-mechanisms-passing', 'crypto-mechanisms-accuracy', 'crypto-mechanisms-wilson']) $(id).textContent = unavailable;
+    for (const id of ['crypto-mechanisms-evaluated', 'crypto-mechanisms-passing', 'crypto-mechanisms-first-look', 'crypto-mechanisms-accuracy', 'crypto-mechanisms-wilson']) $(id).textContent = unavailable;
     $('crypto-mechanisms-detail').textContent = 'Crypto C2 mechanism evidence is unavailable — not a pass.';
   }
 }

@@ -83,3 +83,9 @@ lead to a newly preregistered BSE mechanism, not a wider search over this cohort
 
 Dashboard work was intentionally deferred to the parent integration checkpoint. The JSON
 state is ready to expose read-only without recomputation or evidence pooling.
+
+R1 subsequently wired B1 into the successful BSE research-tracker path, moved its changing
+prospective state to `data/m14_m18/bse_accuracy_quick_profit/state.json`, and added a
+hash-verified terminal first-look lock. The committed file in `docs/evidence/` remains the
+original development/activation snapshot. See the
+[R1 evidence-refresh checkpoint](accuracy-evidence-refresh-r1-checkpoint.md).

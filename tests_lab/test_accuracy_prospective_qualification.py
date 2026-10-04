@@ -4,10 +4,16 @@ import json
 from pathlib import Path
 
 from tradedesk_lab.accuracy_prospective_qualification import (
+    TERMINAL_FILE,
     canonical_sha256,
     evaluate_qualification,
     run_qualification,
 )
+
+
+def _write_fixture(paths: list[Path], *, pass_all: bool) -> None:
+    for path, value in zip(paths, _fixture(pass_all=pass_all), strict=True):
+        path.write_text(json.dumps(value), encoding="utf-8")
 
 
 def _fixture(*, pass_all: bool = True):
@@ -215,3 +221,90 @@ def test_runner_writes_explicit_unavailable_report(tmp_path: Path) -> None:
     assert report["status"] == saved["status"] == "not_available"
     assert all(not row["available"] for row in saved["source_artifacts"].values())
     assert saved["qualification_passed"] is False
+
+
+def test_first_mature_rejection_is_latched_against_later_pass(tmp_path: Path) -> None:
+    paths = [tmp_path / name for name in ("m8.json", "m9.json", "m10.json", "m11.json")]
+    output = tmp_path / "out"
+    _write_fixture(paths, pass_all=False)
+    rejected = run_qualification(
+        output=output,
+        m8_path=paths[0],
+        m9_path=paths[1],
+        m10_path=paths[2],
+        m11_path=paths[3],
+    )
+    terminal_bytes = (output / TERMINAL_FILE).read_bytes()
+
+    _write_fixture(paths, pass_all=True)
+    rerun = run_qualification(
+        output=output,
+        m8_path=paths[0],
+        m9_path=paths[1],
+        m10_path=paths[2],
+        m11_path=paths[3],
+    )
+
+    assert rejected["status"] == rerun["status"] == "prospective_rejected"
+    assert rerun["review_authorized"] is False
+    assert (output / TERMINAL_FILE).read_bytes() == terminal_bytes
+
+
+def test_first_mature_pass_is_latched_against_later_failure(tmp_path: Path) -> None:
+    paths = [tmp_path / name for name in ("m8.json", "m9.json", "m10.json", "m11.json")]
+    output = tmp_path / "out"
+    _write_fixture(paths, pass_all=True)
+    passed = run_qualification(
+        output=output,
+        m8_path=paths[0],
+        m9_path=paths[1],
+        m10_path=paths[2],
+        m11_path=paths[3],
+    )
+    terminal_bytes = (output / TERMINAL_FILE).read_bytes()
+
+    _write_fixture(paths, pass_all=False)
+    rerun = run_qualification(
+        output=output,
+        m8_path=paths[0],
+        m9_path=paths[1],
+        m10_path=paths[2],
+        m11_path=paths[3],
+    )
+
+    assert passed["status"] == rerun["status"] == "human_review_authorized"
+    assert rerun["review_authorized"] is True
+    assert rerun["baseline_improved"] is False
+    assert rerun["eligible_for_live"] is False
+    assert (output / TERMINAL_FILE).read_bytes() == terminal_bytes
+
+
+def test_tampered_terminal_fails_closed_without_reopening_inputs(tmp_path: Path) -> None:
+    paths = [tmp_path / name for name in ("m8.json", "m9.json", "m10.json", "m11.json")]
+    output = tmp_path / "out"
+    _write_fixture(paths, pass_all=False)
+    run_qualification(
+        output=output,
+        m8_path=paths[0],
+        m9_path=paths[1],
+        m10_path=paths[2],
+        m11_path=paths[3],
+    )
+    terminal_path = output / TERMINAL_FILE
+    envelope = json.loads(terminal_path.read_text(encoding="utf-8"))
+    envelope["report"]["status"] = "human_review_authorized"
+    terminal_path.write_text(json.dumps(envelope), encoding="utf-8")
+    _write_fixture(paths, pass_all=True)
+
+    try:
+        run_qualification(
+            output=output,
+            m8_path=paths[0],
+            m9_path=paths[1],
+            m10_path=paths[2],
+            m11_path=paths[3],
+        )
+    except ValueError as exc:
+        assert "terminal artifact failed verification" in str(exc)
+    else:
+        raise AssertionError("tampered terminal evidence must fail closed")
