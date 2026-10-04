@@ -32,6 +32,10 @@ ACCURACY_PROSPECTIVE_TIMING = Path(
 )
 CRYPTO_ACCURACY_STATE = Path("data/m14_m18/crypto_accuracy_program/state.json")
 CRYPTO_ACCURACY_TIMING = Path("data/m14_m18/crypto_accuracy_timing/state.json")
+CRYPTO_ACCURACY_DATASET = Path("data/m14_m18/crypto_accuracy_dataset/state.json")
+CRYPTO_UNIVERSE_STATE = Path(
+    "data/m14_m18/crypto_accuracy_dataset/universe_state.json"
+)
 
 
 def _read_call_log(log_path: Path, limit: int) -> list[dict[str, Any]]:
@@ -176,6 +180,67 @@ def create_app(
                 "detail": (
                     "forward-only same-coin timing evidence; each setup remains "
                     "independent and live authority is false"
+                ),
+            }
+        )
+
+    @app.get("/api/crypto/accuracy-dataset")
+    async def api_crypto_accuracy_dataset() -> JSONResponse:
+        """Compact C1 dataset readiness; row-level artifacts stay off the dashboard."""
+        dataset: dict[str, Any] | None = None
+        universe: dict[str, Any] | None = None
+        try:
+            if CRYPTO_ACCURACY_DATASET.exists():
+                dataset = json.loads(CRYPTO_ACCURACY_DATASET.read_text(encoding="utf-8"))
+            if CRYPTO_UNIVERSE_STATE.exists():
+                raw_universe = json.loads(CRYPTO_UNIVERSE_STATE.read_text(encoding="utf-8"))
+                universe = {
+                    key: raw_universe.get(key)
+                    for key in (
+                        "status",
+                        "activated_at",
+                        "observations",
+                        "current_active_pairs",
+                        "current_known_inactive_pairs",
+                        "listing_transitions",
+                        "removal_transitions",
+                        "latest_event_sha256",
+                        "membership_before_activation",
+                    )
+                }
+        except (OSError, ValueError):
+            return JSONResponse(
+                {
+                    "status": "invalid",
+                    "detail": "crypto C1 dataset state is unreadable",
+                }
+            )
+        if dataset is None:
+            return JSONResponse(
+                {
+                    "status": "collecting_universe" if universe else "not_activated",
+                    "universe": universe,
+                    "detail": "exact universe history is collecting; dataset not frozen yet",
+                }
+            )
+        return JSONResponse(
+            {
+                "status": dataset.get("status", "invalid"),
+                "id": dataset.get("id"),
+                "latest_closed_session": dataset.get("latest_closed_session"),
+                "membership": dataset.get("membership"),
+                "coverage_summary": dataset.get("coverage_summary"),
+                "source_integrity": dataset.get("source_integrity"),
+                "geometry_count": len(
+                    (dataset.get("contract") or {}).get("geometries") or []
+                ),
+                "universe": universe,
+                "baseline_improved": dataset.get("baseline_improved", False),
+                "eligible_for_live": dataset.get("eligible_for_live", False),
+                "next_checkpoint": dataset.get("next_checkpoint"),
+                "detail": (
+                    "crypto-only closed-candle dataset; pre-activation membership is "
+                    "unknown, never inferred, and never shown as a pass"
                 ),
             }
         )

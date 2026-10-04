@@ -1,6 +1,6 @@
 # Accuracy-first checkbox roadmap
 
-Updated: 30 September 2026. The governing forward plan is the
+Updated: 4 October 2026. The governing forward plan is the
 [absolute baseline-accuracy improvement plan](plan-absolute-baseline-accuracy.md).
 
 Primary objective: maintain and improve the reliability of executable NSE calls,
@@ -529,3 +529,19 @@ live-tagged calls, registers only later unresolved calls, evaluates each setup i
 against 1,000 same-coin random future timings, and applies crypto-specific slippage,
 fee/GST/TDS economics. Current evidence is empty and collecting; see the
 [crypto C1 timing checkpoint](crypto-accuracy-timing-c1-checkpoint.md).
+
+The C1 all-pair dataset and label implementation is also complete. It records exact
+append-only active/delisted universe snapshots without inferring membership before
+activation; freezes only fully closed candles with explicit missing, stale and invalid
+states; and applies three preregistered ATR quick-profit geometries with causal next-open,
+gap and stop-wins-ties rules. Gross, after-cost and reporting-only VDA after-tax R remain
+separate. The first accepted verified freeze
+(`2026-10-03-095a9bcdc03d-f991d060-394b1f39`) contains 339
+pairs, 355,278 raw closed rows and 354,402 canonical daily rows after removing 876 known
+duplicate IST-day fillers, plus 7,058 explicit absent sessions and 673 invalid OHLCV rows.
+Three exact universe observations now cover one session per required pair; 0 of 337 pairs
+meet the 30-session gate and all 1,011 geometry rows are excluded rather than resolved.
+Evidence is collecting and no baseline improvement is claimed. Next is C2's bounded
+mechanism/control race after enough C1 point-in-time evidence exists; see the
+[C1 dataset checkpoint](crypto-accuracy-dataset-c1-checkpoint.md) and
+[frozen dataset protocol](crypto-accuracy-dataset-c1-protocol.md).

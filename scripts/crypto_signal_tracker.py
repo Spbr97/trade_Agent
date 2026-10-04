@@ -41,6 +41,7 @@ from tradedesk.markets import crypto_market
 from tradedesk.markets.crypto_universe import (
     active_crypto_codes,
     crypto_codes_needing_daily_refresh,
+    stored_crypto_codes,
 )
 from tradedesk.scan import build_watchlist, scan_config
 from tradedesk.signal_tracker import (
@@ -99,6 +100,19 @@ def main() -> None:
                 return universe, len(refresh_codes), len(summary.errors)
 
         universe, refreshed_pairs, fetch_errors = asyncio.run(refresh())
+        universe_event: dict | None = None
+        universe_history_error: str | None = None
+        known_inactive = sorted(set(stored_crypto_codes(store)) - set(universe))
+        try:
+            from tradedesk_lab.crypto_accuracy_dataset import record_universe_observation
+
+            universe_event = record_universe_observation(
+                active_codes=universe,
+                inactive_codes=known_inactive,
+                observed_at=datetime.now(IST),
+            )
+        except Exception as exc:
+            universe_history_error = f"{type(exc).__name__}: {exc}"
         reference = f"{market.code_prefix}{market.benchmark_name}"
         if reference not in universe:
             raise RuntimeError(f"crypto benchmark {reference} is not active")
@@ -134,6 +148,12 @@ def main() -> None:
                     "generated_at": datetime.now(IST).isoformat(),
                     "session": day.isoformat(),
                     "active_inr_pairs": len(universe),
+                    "active_codes": universe,
+                    "known_inactive_codes": known_inactive,
+                    "universe_event_sha256": (
+                        universe_event["event_sha256"] if universe_event else None
+                    ),
+                    "universe_history_error": universe_history_error,
                     "scanned_pairs": len(scan_codes),
                     "pairs_with_closed_session": closed_on_day,
                     "configured_exclusions": sorted(market.universe_rules.exclude_codes),
@@ -169,6 +189,8 @@ def main() -> None:
         print(f"dashboard: {DASHBOARD}")
         if flagged:
             print(f"flagged for review: {', '.join(flagged)}")
+        if universe_history_error:
+            print(f"Crypto universe history degraded: {universe_history_error}")
 
     # Independent forward-only accuracy control.  It reads the saved crypto log and
     # candles after the established tracker closes them; failures cannot stop tracking.

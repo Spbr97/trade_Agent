@@ -402,6 +402,16 @@
       <div class="card"><div class="label">Timing-qualified setups</div><div class="value" id="crypto-timing-qualified">-</div></div>
     </div>
     <div class="muted" id="crypto-timing-detail" style="margin-top:8px;"></div>
+    <div class="cards" style="margin-top:12px;">
+      <div class="card"><div class="label">C1 dataset integrity</div><div class="value" id="crypto-dataset-status">-</div></div>
+      <div class="card"><div class="label">Materialized pairs</div><div class="value" id="crypto-dataset-pairs">-</div></div>
+      <div class="card"><div class="label">Closed daily rows</div><div class="value" id="crypto-dataset-rows">-</div></div>
+      <div class="card"><div class="label">Duplicate rows removed</div><div class="value" id="crypto-dataset-duplicates">-</div></div>
+      <div class="card"><div class="label">Minimum pair PIT sessions</div><div class="value" id="crypto-dataset-sessions">-</div></div>
+      <div class="card"><div class="label">Pairs at minimum</div><div class="value" id="crypto-dataset-pair-readiness">-</div></div>
+      <div class="card"><div class="label">Resolved quick-profit labels</div><div class="value" id="crypto-dataset-labels">-</div></div>
+    </div>
+    <div class="muted" id="crypto-dataset-detail" style="margin-top:8px;"></div>
   </section>
   <section class="perf-controls">
     <div class="group">
@@ -1298,6 +1308,32 @@ async function loadCryptoAccuracyTiming() {
 }
 loadCryptoAccuracyTiming();
 setInterval(loadCryptoAccuracyTiming, 60000);
+
+async function loadCryptoAccuracyDataset() {
+  try {
+    const response = await fetch('/api/crypto/accuracy-dataset');
+    if (!response.ok) throw new Error('crypto dataset unavailable');
+    const value = await response.json();
+    if (value.status === 'not_activated' || value.status === 'invalid') throw new Error(value.detail);
+    const coverage = value.coverage_summary || {};
+    const membership = value.membership || {};
+    const labelStatuses = coverage.label_statuses || {};
+    $('crypto-dataset-status').textContent = (value.status || 'collecting').replaceAll('_', ' ');
+    $('crypto-dataset-status').className = 'value ' + (value.status === 'dataset_ready_research_only' ? 'pos' : 'planned');
+    $('crypto-dataset-pairs').textContent = coverage.materialized_pairs ?? value.universe?.current_active_pairs ?? 0;
+    $('crypto-dataset-rows').textContent = (coverage.closed_daily_rows ?? 0).toLocaleString();
+    $('crypto-dataset-duplicates').textContent = (coverage.duplicate_daily_rows ?? 0).toLocaleString();
+    $('crypto-dataset-sessions').textContent = `${membership.minimum_pair_point_in_time_sessions ?? 0}/${membership.minimum_point_in_time_sessions ?? 30}`;
+    $('crypto-dataset-pair-readiness').textContent = `${membership.pairs_meeting_minimum_sessions ?? 0}/${membership.required_active_pairs ?? 0}`;
+    $('crypto-dataset-labels').textContent = (labelStatuses.resolved ?? 0).toLocaleString();
+    $('crypto-dataset-detail').textContent = `Only fully closed, de-duplicated crypto candles are frozen. ${Number(coverage.label_rows ?? 0).toLocaleString()} geometry rows: ${Number(labelStatuses.pending ?? 0).toLocaleString()} pending, ${Number(labelStatuses.excluded ?? 0).toLocaleString()} excluded. Pre-activation membership is unknown, not backfilled; costs and reporting-only VDA tax attach only to resolved labels.`;
+  } catch (e) {
+    for (const id of ['crypto-dataset-status', 'crypto-dataset-pairs', 'crypto-dataset-rows', 'crypto-dataset-duplicates', 'crypto-dataset-sessions', 'crypto-dataset-pair-readiness', 'crypto-dataset-labels']) $(id).textContent = 'n/a';
+    $('crypto-dataset-detail').textContent = 'Crypto C1 universe history or dataset has not completed.';
+  }
+}
+loadCryptoAccuracyDataset();
+setInterval(loadCryptoAccuracyDataset, 60000);
 
 // ---------------------------------------------------------------- Review tab
 function reviewCard(item) {

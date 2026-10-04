@@ -1,6 +1,7 @@
 # Crypto accuracy improvement program
 
-Status: **C0 implemented; C1 prospective timing foundation activated; research-only**
+Status: **C0 and C1 implemented; first C1 freeze verified and collecting; no accuracy
+improvement established; research-only**
 
 Market: **CoinDCX INR crypto pairs only**
 Evidence rule: **crypto is never pooled with NSE or BSE; historical backfill is never
@@ -28,12 +29,20 @@ reported separately because its no-loss-offset treatment can reverse the practic
   independent and apply 1,000 frozen timing cohorts.
 - [x] Use only fully closed candles for outcomes and hash resolved source windows.
 - [x] Apply crypto slippage, fee, GST and TDS to paired net-R timing comparisons.
-- [ ] Materialize all supported active INR pairs with delistings and missingness explicit.
-- [ ] Extend the closed-candle and mutation guarantees to the full materialized all-pair
+- [x] Materialize all supported active INR pairs with delistings and missingness explicit.
+- [x] Extend the closed-candle and mutation guarantees to the full materialized all-pair
   research dataset.
-- [ ] Recompute outcomes for registered quick-profit geometries with gap and same-bar
+- [x] Recompute outcomes for registered quick-profit geometries with gap and same-bar
   ambiguity rules frozen.
-- [ ] Attach fee/slippage economics and reporting-only VDA after-tax economics per trade.
+- [x] Attach fee/slippage economics and reporting-only VDA after-tax economics per trade.
+
+C1 engineering is complete and its corrected all-pair freeze passed source verification:
+339 pairs, 355,278 raw closed rows, 354,402 canonical daily rows after removing 876
+duplicate IST-day fillers, 7,058 explicit absent sessions and 673 invalid OHLCV rows. It
+has three exact universe observations, one point-in-time session per required pair, and
+0 of 337 required pairs at the 30-session gate. All 1,011 geometry rows are excluded, none
+resolved. Accuracy and expectancy remain unavailable—not zero and not a pass. Completing
+C1 does not improve the baseline; it creates the auditable input needed to test C2.
 
 ## C2 — anticipatory mechanism and quick-profit geometry race
 
@@ -77,5 +86,7 @@ market can borrow the other's wins, sample size, confidence, random advantage or
 status.
 
 Evidence: [C0 baseline](crypto-accuracy-c0-checkpoint.md),
-[C1 timing checkpoint](crypto-accuracy-timing-c1-checkpoint.md), and
-[C1 timing protocol](crypto-accuracy-timing-c1-protocol.md).
+[C1 timing checkpoint](crypto-accuracy-timing-c1-checkpoint.md),
+[C1 timing protocol](crypto-accuracy-timing-c1-protocol.md),
+[C1 dataset checkpoint](crypto-accuracy-dataset-c1-checkpoint.md), and
+[C1 dataset protocol](crypto-accuracy-dataset-c1-protocol.md).

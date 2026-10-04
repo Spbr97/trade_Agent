@@ -115,6 +115,77 @@ async def test_crypto_accuracy_timing_is_forward_only_and_setup_separated(
 
 
 @pytest.mark.asyncio
+async def test_crypto_accuracy_dataset_is_compact_and_never_claims_live_readiness(
+    tmp_path, monkeypatch
+) -> None:
+    dataset = tmp_path / "dataset.json"
+    universe = tmp_path / "universe.json"
+    dataset.write_text(
+        json.dumps(
+            {
+                "id": "frozen-1",
+                "status": "not_ready_collecting_point_in_time_history",
+                "latest_closed_session": "2026-10-02",
+                "membership": {
+                    "pre_activation": "unknown_not_inferred",
+                    "point_in_time_sessions": 0,
+                    "minimum_point_in_time_sessions": 30,
+                    "required_active_pairs": 337,
+                    "pairs_meeting_minimum_sessions": 0,
+                    "minimum_pair_point_in_time_sessions": 1,
+                },
+                "coverage_summary": {
+                    "materialized_pairs": 339,
+                    "closed_daily_rows": 356183,
+                    "duplicate_daily_rows": 876,
+                    "label_rows": 1000000,
+                    "label_statuses": {"resolved": 0, "excluded": 1000000},
+                },
+                "coverage": [{"large": "payload-must-not-leak"}],
+                "contract": {"geometries": [{"name": "quick"}]},
+                "source_integrity": {"passed": True, "errors": []},
+                "baseline_improved": False,
+                "eligible_for_live": False,
+            }
+        ),
+        encoding="utf-8",
+    )
+    universe.write_text(
+        json.dumps(
+            {
+                "status": "collecting",
+                "observations": 1,
+                "current_active_pairs": 339,
+                "membership_before_activation": "unknown_not_inferred",
+                "pairs": {"large": "payload-must-not-leak"},
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(dashboard_app, "CRYPTO_ACCURACY_DATASET", dataset)
+    monkeypatch.setattr(dashboard_app, "CRYPTO_UNIVERSE_STATE", universe)
+    app = create_app(DashboardState())
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        response = await client.get("/api/crypto/accuracy-dataset")
+
+    body = response.json()
+    assert body["coverage_summary"]["materialized_pairs"] == 339
+    assert body["coverage_summary"]["duplicate_daily_rows"] == 876
+    assert body["coverage_summary"]["label_statuses"]["resolved"] == 0
+    assert body["membership"]["pre_activation"] == "unknown_not_inferred"
+    assert body["membership"]["minimum_pair_point_in_time_sessions"] == 1
+    assert body["membership"]["pairs_meeting_minimum_sessions"] == 0
+    assert body["membership"]["required_active_pairs"] == 337
+    assert body["source_integrity"]["passed"] is True
+    assert body["eligible_for_live"] is False
+    assert body["baseline_improved"] is False
+    assert "coverage" not in body
+    assert "pairs" not in body["universe"]
+
+
+@pytest.mark.asyncio
 async def test_accuracy_selector_reports_missing_artifact_as_not_trained(
     tmp_path, monkeypatch
 ) -> None:
