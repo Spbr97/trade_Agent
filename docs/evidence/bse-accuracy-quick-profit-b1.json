@@ -1,0 +1,421 @@
+{
+  "schema_version": "bse-accuracy-quick-profit-state-v1",
+  "created_at": "2026-10-04T18:36:33.138940+05:30",
+  "market": "bse",
+  "status": "collecting",
+  "live": false,
+  "baseline_improved": false,
+  "promotion_allowed": false,
+  "detail": "prospective BSE evidence is still collecting; pre-activation rows are transport diagnostics only",
+  "protocol": {
+    "version": "bse-accuracy-quick-profit-v1",
+    "state_schema_version": "bse-accuracy-quick-profit-state-v1",
+    "market": "bse",
+    "source_log": "data/reports/research_calls_bse.jsonl",
+    "source_db": "data/bse.duckdb",
+    "activation_date": "2026-10-04",
+    "provenance": "NSE M6 run 20261003-192811 development diagnostic",
+    "entry_mode": "next_session_open",
+    "stop_atr": 1.0,
+    "target_r": 0.5,
+    "max_hold_sessions": 3,
+    "min_resolved_calls": 100,
+    "min_active_sessions": 30,
+    "min_matched_control_sessions": 30,
+    "min_session_coverage": 0.4,
+    "min_observed_success": 0.8,
+    "min_wilson_lower": 0.7,
+    "min_session_target_rate": 0.7,
+    "min_after_cost_expectancy_r": 0.0,
+    "min_control_advantage_r": 0.1,
+    "familywise_alpha": 0.05,
+    "random_seed": 20261004,
+    "sign_flip_draws": 16384,
+    "sha256": "258aad3e74860a31bafccb19bf94c289b5e2c29414731a985637f5ed63aab615"
+  },
+  "geometry": {
+    "entry_mode": "next_session_open",
+    "stop_atr": 1.0,
+    "target_r": 0.5,
+    "max_hold_sessions": 3,
+    "trial_count": 1
+  },
+  "data_source": {
+    "log": "data/reports/research_calls_bse.jsonl",
+    "log_sha256": "7fd73a3a013f47089260f66958f48b267189753b5ad4ec71c224dfa0182764ba",
+    "database": "data/bse.duckdb",
+    "store": {
+      "daily_rows": 4502955,
+      "symbols": 2472,
+      "first_session": "2016-09-14",
+      "last_session": "2026-10-01"
+    },
+    "rows_read": 749,
+    "registered_bse_rows": 749
+  },
+  "readiness": {
+    "activation_date": "2026-10-04",
+    "prospective_source_sessions": 0,
+    "required_sessions": 30,
+    "rules_sample_ready": 0,
+    "registered_candidate_rules": 4
+  },
+  "development_transport": {
+    "use": "transport_diagnostic_only",
+    "source_rows": 749,
+    "source_sessions": 11,
+    "control": {
+      "rule": "random_eligible",
+      "resolved": 120,
+      "wins": 65,
+      "observed_strict_success": 0.5416666666666666,
+      "after_cost_expectancy_r": -0.37641350577055305,
+      "active_sessions": 8
+    },
+    "raw_pvalues": {
+      "rsi2_dip_ema50": 0.058365758754863814,
+      "rsi2_dip_vol": 0.21705426356589147,
+      "rsi2_deep_ema200": 0.13618677042801555,
+      "pullback_ema10_above_ema50": 0.15953307392996108
+    },
+    "trials": [
+      {
+        "rule": "rsi2_dip_ema50",
+        "verdict": "development_only",
+        "development_only": true,
+        "issued": 155,
+        "resolved": 96,
+        "unresolved_or_excluded": 59,
+        "status_counts": {
+          "awaiting_outcome_sessions": 34,
+          "resolved": 96,
+          "untradeable": 25
+        },
+        "wins": 59,
+        "observed_strict_success": 0.6145833333333334,
+        "wilson_lower_bound": 0.5146051824336462,
+        "after_cost_expectancy_r": -0.2019925243342946,
+        "active_sessions": 8,
+        "source_sessions": 11,
+        "session_coverage": 0.7272727272727273,
+        "sessions_meeting_80pct": 2,
+        "session_target_rate": 0.25,
+        "matched_control_sessions": 8,
+        "matched_control_advantage_r": 0.1604182571922299,
+        "matched_control_success_advantage": 0.027678173275999363,
+        "holm_adjusted_pvalue": 0.23346303501945526,
+        "sample_ready": false,
+        "sample_failures": [
+          "resolved calls 96 < 100",
+          "active sessions 8 < 30",
+          "matched control sessions 8 < 30"
+        ],
+        "evidence_failures": [
+          "observed strict success unavailable/below 80%",
+          "Wilson lower bound unavailable/below 70%",
+          "successful-session rate 0.250 < 0.700",
+          "after-cost expectancy unavailable/non-positive",
+          "Holm-adjusted paired-session p unavailable/above 0.050"
+        ],
+        "qualified": false
+      },
+      {
+        "rule": "rsi2_dip_vol",
+        "verdict": "development_only",
+        "development_only": true,
+        "issued": 54,
+        "resolved": 31,
+        "unresolved_or_excluded": 23,
+        "status_counts": {
+          "awaiting_outcome_sessions": 9,
+          "resolved": 31,
+          "untradeable": 14
+        },
+        "wins": 20,
+        "observed_strict_success": 0.6451612903225806,
+        "wilson_lower_bound": 0.46947638042814893,
+        "after_cost_expectancy_r": -0.12591485849882172,
+        "active_sessions": 7,
+        "source_sessions": 11,
+        "session_coverage": 0.6363636363636364,
+        "sessions_meeting_80pct": 3,
+        "session_target_rate": 0.42857142857142855,
+        "matched_control_sessions": 7,
+        "matched_control_advantage_r": 0.15481815050156503,
+        "matched_control_success_advantage": -0.02723181580324436,
+        "holm_adjusted_pvalue": 0.4085603112840467,
+        "sample_ready": false,
+        "sample_failures": [
+          "resolved calls 31 < 100",
+          "active sessions 7 < 30",
+          "matched control sessions 7 < 30"
+        ],
+        "evidence_failures": [
+          "observed strict success unavailable/below 80%",
+          "Wilson lower bound unavailable/below 70%",
+          "successful-session rate 0.429 < 0.700",
+          "after-cost expectancy unavailable/non-positive",
+          "Holm-adjusted paired-session p unavailable/above 0.050"
+        ],
+        "qualified": false
+      },
+      {
+        "rule": "rsi2_deep_ema200",
+        "verdict": "development_only",
+        "development_only": true,
+        "issued": 153,
+        "resolved": 87,
+        "unresolved_or_excluded": 66,
+        "status_counts": {
+          "awaiting_outcome_sessions": 36,
+          "resolved": 87,
+          "untradeable": 30
+        },
+        "wins": 52,
+        "observed_strict_success": 0.5977011494252874,
+        "wilson_lower_bound": 0.4926454875362509,
+        "after_cost_expectancy_r": -0.23559320215388743,
+        "active_sessions": 8,
+        "source_sessions": 11,
+        "session_coverage": 0.7272727272727273,
+        "sessions_meeting_80pct": 3,
+        "session_target_rate": 0.375,
+        "matched_control_sessions": 8,
+        "matched_control_advantage_r": 0.1798111319344158,
+        "matched_control_success_advantage": 0.08003010878010877,
+        "holm_adjusted_pvalue": 0.4085603112840467,
+        "sample_ready": false,
+        "sample_failures": [
+          "resolved calls 87 < 100",
+          "active sessions 8 < 30",
+          "matched control sessions 8 < 30"
+        ],
+        "evidence_failures": [
+          "observed strict success unavailable/below 80%",
+          "Wilson lower bound unavailable/below 70%",
+          "successful-session rate 0.375 < 0.700",
+          "after-cost expectancy unavailable/non-positive",
+          "Holm-adjusted paired-session p unavailable/above 0.050"
+        ],
+        "qualified": false
+      },
+      {
+        "rule": "pullback_ema10_above_ema50",
+        "verdict": "development_only",
+        "development_only": true,
+        "issued": 193,
+        "resolved": 119,
+        "unresolved_or_excluded": 74,
+        "status_counts": {
+          "awaiting_outcome_sessions": 41,
+          "resolved": 119,
+          "untradeable": 33
+        },
+        "wins": 69,
+        "observed_strict_success": 0.5798319327731093,
+        "wilson_lower_bound": 0.49001340101862806,
+        "after_cost_expectancy_r": -0.2997998768931285,
+        "active_sessions": 8,
+        "source_sessions": 11,
+        "session_coverage": 0.7272727272727273,
+        "sessions_meeting_80pct": 3,
+        "session_target_rate": 0.375,
+        "matched_control_sessions": 8,
+        "matched_control_advantage_r": 0.08645130877534837,
+        "matched_control_success_advantage": 0.0440521978021978,
+        "holm_adjusted_pvalue": 0.4085603112840467,
+        "sample_ready": false,
+        "sample_failures": [
+          "active sessions 8 < 30",
+          "matched control sessions 8 < 30"
+        ],
+        "evidence_failures": [
+          "observed strict success unavailable/below 80%",
+          "Wilson lower bound unavailable/below 70%",
+          "successful-session rate 0.375 < 0.700",
+          "after-cost expectancy unavailable/non-positive",
+          "matched-control advantage unavailable/below +0.10R",
+          "Holm-adjusted paired-session p unavailable/above 0.050"
+        ],
+        "qualified": false
+      }
+    ],
+    "qualified_rules": [],
+    "rules_sample_ready": 0
+  },
+  "prospective": {
+    "use": "prospective_evidence",
+    "source_rows": 0,
+    "source_sessions": 0,
+    "control": {
+      "rule": "random_eligible",
+      "resolved": 0,
+      "wins": 0,
+      "observed_strict_success": null,
+      "after_cost_expectancy_r": null,
+      "active_sessions": 0
+    },
+    "raw_pvalues": {
+      "rsi2_dip_ema50": null,
+      "rsi2_dip_vol": null,
+      "rsi2_deep_ema200": null,
+      "pullback_ema10_above_ema50": null
+    },
+    "trials": [
+      {
+        "rule": "rsi2_dip_ema50",
+        "verdict": "collecting",
+        "development_only": false,
+        "issued": 0,
+        "resolved": 0,
+        "unresolved_or_excluded": 0,
+        "status_counts": {},
+        "wins": 0,
+        "observed_strict_success": null,
+        "wilson_lower_bound": null,
+        "after_cost_expectancy_r": null,
+        "active_sessions": 0,
+        "source_sessions": 0,
+        "session_coverage": 0.0,
+        "sessions_meeting_80pct": 0,
+        "session_target_rate": 0.0,
+        "matched_control_sessions": 0,
+        "matched_control_advantage_r": null,
+        "matched_control_success_advantage": null,
+        "holm_adjusted_pvalue": null,
+        "sample_ready": false,
+        "sample_failures": [
+          "resolved calls 0 < 100",
+          "active sessions 0 < 30",
+          "matched control sessions 0 < 30",
+          "session coverage 0.000 < 0.400"
+        ],
+        "evidence_failures": [
+          "observed strict success unavailable/below 80%",
+          "Wilson lower bound unavailable/below 70%",
+          "successful-session rate 0.000 < 0.700",
+          "after-cost expectancy unavailable/non-positive",
+          "matched-control advantage unavailable/below +0.10R",
+          "Holm-adjusted paired-session p unavailable/above 0.050"
+        ],
+        "qualified": false
+      },
+      {
+        "rule": "rsi2_dip_vol",
+        "verdict": "collecting",
+        "development_only": false,
+        "issued": 0,
+        "resolved": 0,
+        "unresolved_or_excluded": 0,
+        "status_counts": {},
+        "wins": 0,
+        "observed_strict_success": null,
+        "wilson_lower_bound": null,
+        "after_cost_expectancy_r": null,
+        "active_sessions": 0,
+        "source_sessions": 0,
+        "session_coverage": 0.0,
+        "sessions_meeting_80pct": 0,
+        "session_target_rate": 0.0,
+        "matched_control_sessions": 0,
+        "matched_control_advantage_r": null,
+        "matched_control_success_advantage": null,
+        "holm_adjusted_pvalue": null,
+        "sample_ready": false,
+        "sample_failures": [
+          "resolved calls 0 < 100",
+          "active sessions 0 < 30",
+          "matched control sessions 0 < 30",
+          "session coverage 0.000 < 0.400"
+        ],
+        "evidence_failures": [
+          "observed strict success unavailable/below 80%",
+          "Wilson lower bound unavailable/below 70%",
+          "successful-session rate 0.000 < 0.700",
+          "after-cost expectancy unavailable/non-positive",
+          "matched-control advantage unavailable/below +0.10R",
+          "Holm-adjusted paired-session p unavailable/above 0.050"
+        ],
+        "qualified": false
+      },
+      {
+        "rule": "rsi2_deep_ema200",
+        "verdict": "collecting",
+        "development_only": false,
+        "issued": 0,
+        "resolved": 0,
+        "unresolved_or_excluded": 0,
+        "status_counts": {},
+        "wins": 0,
+        "observed_strict_success": null,
+        "wilson_lower_bound": null,
+        "after_cost_expectancy_r": null,
+        "active_sessions": 0,
+        "source_sessions": 0,
+        "session_coverage": 0.0,
+        "sessions_meeting_80pct": 0,
+        "session_target_rate": 0.0,
+        "matched_control_sessions": 0,
+        "matched_control_advantage_r": null,
+        "matched_control_success_advantage": null,
+        "holm_adjusted_pvalue": null,
+        "sample_ready": false,
+        "sample_failures": [
+          "resolved calls 0 < 100",
+          "active sessions 0 < 30",
+          "matched control sessions 0 < 30",
+          "session coverage 0.000 < 0.400"
+        ],
+        "evidence_failures": [
+          "observed strict success unavailable/below 80%",
+          "Wilson lower bound unavailable/below 70%",
+          "successful-session rate 0.000 < 0.700",
+          "after-cost expectancy unavailable/non-positive",
+          "matched-control advantage unavailable/below +0.10R",
+          "Holm-adjusted paired-session p unavailable/above 0.050"
+        ],
+        "qualified": false
+      },
+      {
+        "rule": "pullback_ema10_above_ema50",
+        "verdict": "collecting",
+        "development_only": false,
+        "issued": 0,
+        "resolved": 0,
+        "unresolved_or_excluded": 0,
+        "status_counts": {},
+        "wins": 0,
+        "observed_strict_success": null,
+        "wilson_lower_bound": null,
+        "after_cost_expectancy_r": null,
+        "active_sessions": 0,
+        "source_sessions": 0,
+        "session_coverage": 0.0,
+        "sessions_meeting_80pct": 0,
+        "session_target_rate": 0.0,
+        "matched_control_sessions": 0,
+        "matched_control_advantage_r": null,
+        "matched_control_success_advantage": null,
+        "holm_adjusted_pvalue": null,
+        "sample_ready": false,
+        "sample_failures": [
+          "resolved calls 0 < 100",
+          "active sessions 0 < 30",
+          "matched control sessions 0 < 30",
+          "session coverage 0.000 < 0.400"
+        ],
+        "evidence_failures": [
+          "observed strict success unavailable/below 80%",
+          "Wilson lower bound unavailable/below 70%",
+          "successful-session rate 0.000 < 0.700",
+          "after-cost expectancy unavailable/non-positive",
+          "matched-control advantage unavailable/below +0.10R",
+          "Holm-adjusted paired-session p unavailable/above 0.050"
+        ],
+        "qualified": false
+      }
+    ],
+    "qualified_rules": [],
+    "rules_sample_ready": 0
+  }
+}
