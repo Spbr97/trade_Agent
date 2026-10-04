@@ -1,7 +1,7 @@
 # Crypto accuracy improvement program
 
-Status: **C0 and C1 implemented; first C1 freeze verified and collecting; no accuracy
-improvement established; research-only**
+Status: **C0–C2 engineering implemented; C1 history and C2 evidence collecting; no
+accuracy improvement established; research-only**
 
 Market: **CoinDCX INR crypto pairs only**
 Evidence rule: **crypto is never pooled with NSE or BSE; historical backfill is never
@@ -46,12 +46,28 @@ C1 does not improve the baseline; it creates the auditable input needed to test 
 
 ## C2 — anticipatory mechanism and quick-profit geometry race
 
-- [ ] Test a bounded set of crypto-specific mechanisms: cross-sectional momentum,
-  pullback continuation, liquidity/volatility compression and BTC-relative strength.
-- [ ] Pair every mechanism with inverse, shuffled, random-coin and random-timing controls.
-- [ ] Search only preregistered stop/target/holding geometries that can support higher
-  accuracy while remaining positive after costs.
-- [ ] Stop rejected families instead of repeatedly retuning them.
+- [x] Freeze four crypto-specific mechanisms: seven-session cross-sectional momentum,
+  14/3-session pullback continuation, liquid 5-versus-prior-15-session true-range
+  compression and seven-session BTC-relative strength.
+- [x] Bind each mechanism to the three immutable C1 geometries: exactly 12 trials, with no
+  extra threshold, mechanism, model or geometry available after outcomes are inspected.
+- [x] Pair every trial with inverse, 1,000 within-session shuffle, 1,000 random-coin and
+  1,000 same-coin random-timing controls under seed `20261007`.
+- [x] Freeze the 200-coin/90%-coverage cross-section floors, family-wise max-statistic
+  correction, three-fold stability requirement and full accuracy/economic gate.
+- [x] Suppress partial results and represent immature accuracy, expectancy and control
+  evidence as unavailable—never zero or pass.
+- [ ] Evaluate all 12 trials once every trial/control is mature; reject and stop this
+  version if none passes, or authorize only C3 research if one qualifies.
+
+C2 implementation is complete, but **0 of 12 trials are evaluated** because current C1
+evidence still has one point-in-time session per required pair and no mature geometry
+labels. No predictive percentage exists yet. A complete C2 trial must have at least 100
+resolved calls over 30 active sessions, 80% observed accuracy, a 70% Wilson lower bound,
+positive net R, at least +0.10R and superior accuracy/net R versus every control, a
+family-wise corrected p-value no greater than 0.05, and favorable direction in all three
+chronological folds. Even a pass remains research-only with baseline and live eligibility
+false.
 
 ## C3 — precision selector
 
@@ -88,5 +104,7 @@ status.
 Evidence: [C0 baseline](crypto-accuracy-c0-checkpoint.md),
 [C1 timing checkpoint](crypto-accuracy-timing-c1-checkpoint.md),
 [C1 timing protocol](crypto-accuracy-timing-c1-protocol.md),
-[C1 dataset checkpoint](crypto-accuracy-dataset-c1-checkpoint.md), and
-[C1 dataset protocol](crypto-accuracy-dataset-c1-protocol.md).
+[C1 dataset checkpoint](crypto-accuracy-dataset-c1-checkpoint.md),
+[C1 dataset protocol](crypto-accuracy-dataset-c1-protocol.md),
+[C2 mechanism checkpoint](crypto-accuracy-mechanisms-c2-checkpoint.md), and
+[C2 mechanism protocol](crypto-accuracy-mechanisms-c2-protocol.md).
