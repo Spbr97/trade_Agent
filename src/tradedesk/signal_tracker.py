@@ -33,6 +33,7 @@ from tradedesk.config import Settings
 from tradedesk.data.candle_store import CandleStore
 from tradedesk.engine.signals import Signal
 from tradedesk.evidence import (
+    CONTRACTS,
     LEGACY_TRACKER_V1,
     ContractKind,
     OutcomeState,
@@ -43,6 +44,7 @@ from tradedesk.evidence import (
     is_trainable_outcome,
 )
 from tradedesk.markets import Market
+from tradedesk.outcome_resolver import resolve_versioned_call
 from tradedesk.prediction.labeling import triple_barrier
 from tradedesk.prediction_ledger import (
     LEDGER_SCHEMA_VERSION,
@@ -115,6 +117,24 @@ class TrackedSignal:
     strategy_version: str | None = None
     feature_version: str | None = None
     model_version: str | None = None
+    # Deterministic resolver audit fields (Milestone 3). Legacy rows keep None rather than
+    # receiving reconstructed facts their historical resolver did not record.
+    entry_on: str | None = None
+    actual_entry_price: float | None = None
+    exit_on: str | None = None
+    gross_r: float | None = None
+    execution_r: float | None = None
+    net_r: float | None = None
+    after_tax_r: float | None = None
+    fees: float | None = None
+    holding_sessions: int | None = None
+    time_to_entry_sessions: int | None = None
+    time_to_resolution_sessions: int | None = None
+    mfe_r: float | None = None
+    mae_r: float | None = None
+    first_event: str | None = None
+    resolution_rule: str | None = None
+    data_status: str | None = None
 
 
 def load_log(log_path: Path) -> dict[str, TrackedSignal]:
@@ -178,6 +198,34 @@ def resolve_outcomes(
             continue
         validate_prediction_record(asdict(row))
         df = store.load(row.scrip_code, Interval.D1, adjusted=False)
+        if row.contract_kind != ContractKind.LEGACY.value:
+            result = resolve_versioned_call(row, df)
+            if result is None:
+                continue
+            row.outcome = result.outcome
+            row.outcome_state = result.outcome_state
+            row.label = result.label
+            row.entry_on = result.entry_on
+            row.actual_entry_price = result.entry_price
+            row.exit_on = result.exit_on
+            row.exit_price = result.exit_price
+            row.gross_r = result.gross_r
+            row.execution_r = result.execution_r
+            row.net_r = result.net_r
+            row.after_tax_r = result.after_tax_r
+            row.fees = result.fees
+            row.holding_sessions = result.holding_sessions
+            row.time_to_entry_sessions = result.time_to_entry_sessions
+            row.time_to_resolution_sessions = result.time_to_resolution_sessions
+            row.mfe_r = result.mfe_r
+            row.mae_r = result.mae_r
+            row.first_event = result.first_event
+            row.resolution_rule = result.resolution_rule
+            row.data_status = result.data_status
+            row.r_multiple = result.gross_r
+            row.resolved_at = result.exit_on
+            resolved.append(row)
+            continue
         armed = date.fromisoformat(row.armed_on)
         idx_dates = pd.DatetimeIndex(df.index).date
         entry_dates = [d for d in idx_dates if d > armed]
@@ -259,10 +307,15 @@ def render_session_report(
     lines.append("")
     lines.append(f"Calls resolved today: {len(newly_resolved)}")
     for r in newly_resolved:
-        verdict = "RIGHT" if r.label == 1 else "WRONG"
+        if r.outcome_state == OutcomeState.RESOLVED_CALL.value:
+            verdict = "RIGHT" if r.label == 1 else "WRONG"
+            metric = f"{r.r_multiple:+.2f}R" if r.r_multiple is not None else "R unavailable"
+        else:
+            verdict = (r.outcome_state or "INVALID").replace("_", " ").upper()
+            metric = "excluded from performance learning"
         lines.append(
-            f"  - {r.symbol} {r.setup} armed {r.armed_on}: {verdict} ({r.outcome}, "
-            f"{r.r_multiple:+.2f}R)"
+            f"  - {r.symbol} {r.setup} armed {r.armed_on}: {verdict} "
+            f"({r.outcome}, {metric})"
         )
     lines.append("")
     lines.append("Running scoreboard:")
@@ -300,7 +353,8 @@ def render_dashboard_html(market: str, rows: dict[str, TrackedSignal]) -> str:
         if show_outcome:
             cls = "win" if r.label == 1 else "loss"
             r_mult = f"{r.r_multiple:+.2f}R" if r.r_multiple is not None else "-"
-            outcome_cell = f'<td class="{cls}">{r.outcome} ({r_mult})</td>'
+            net = f", net {r.net_r:+.2f}R" if r.net_r is not None else ""
+            outcome_cell = f'<td class="{cls}">{r.outcome} ({r_mult}{net})</td>'
         return (
             "<tr>"
             f"<td>{r.armed_on}</td><td>{r.symbol}</td>"
@@ -376,6 +430,7 @@ def log_new_signals(
     *,
     source: str = "live",
     market: str | None = None,
+    contract_version: str = LEGACY_TRACKER_V1.version,
 ) -> list[TrackedSignal]:
     """Every detected signal (`wl.entries`), not just `wl.active` - a rejected-for-sizing
     signal still answers "was the pattern right", which is a different question from "was
@@ -385,10 +440,18 @@ def log_new_signals(
     tracker.py and scripts/bse_signal_tracker.py need no change; backfill_watchlists() below
     passes "backfill" explicitly - see TrackedSignal.source for why the distinction exists."""
     new_rows: list[TrackedSignal] = []
+    if contract_version not in CONTRACTS:
+        raise ValueError(f"unknown outcome contract: {contract_version}")
+    contract = CONTRACTS[contract_version]
     for e in wl.entries:
         sig: Signal = e.signal
-        if sig.id in rows:
-            validate_prediction_record(asdict(rows[sig.id]))
+        ledger_id = (
+            sig.id
+            if contract.kind is ContractKind.LEGACY
+            else f"{sig.id}::{contract_version}"
+        )
+        if ledger_id in rows:
+            validate_prediction_record(asdict(rows[ledger_id]))
             continue
         effective_market = market or {
             "NSE": "nse",
@@ -402,17 +465,19 @@ def log_new_signals(
             for reason in e.rejected_for
         )
         evidence_class = classify_evidence(e.rejected_for, shadow=shadow).value
+        ledger_signal = sig if ledger_id == sig.id else sig.model_copy(update={"id": ledger_id})
+        ledger_entry = e if ledger_id == sig.id else e.model_copy(update={"signal": ledger_signal})
         payload = build_prediction_payload(
             watchlist=wl,
-            entry=e,
+            entry=ledger_entry,
             market=effective_market,
             source=source,
             evidence_class=evidence_class,
-            contract_kind=ContractKind.LEGACY.value,
-            contract_version=LEGACY_TRACKER_V1.version,
+            contract_kind=contract.kind.value,
+            contract_version=contract.version,
         )
         row = TrackedSignal(
-            signal_id=sig.id, scrip_code=sig.scrip_code, symbol=sig.symbol,
+            signal_id=ledger_id, scrip_code=sig.scrip_code, symbol=sig.symbol,
             setup=sig.setup.value, grade=e.grade.value, armed_on=sig.armed_on.isoformat(),
             entry=sig.trigger, stop=sig.stop, t1=sig.t1, t2=sig.t2,
             net_rr_t1=e.net_rr_t1, net_rr_t2=e.net_rr_t2, rejected_for=list(e.rejected_for),
@@ -420,10 +485,8 @@ def log_new_signals(
             shadow=shadow, market=effective_market,
             evidence_class=evidence_class,
             outcome_state=OutcomeState.PENDING_CALL.value,
-            # Milestone 1 defines the future quick/swing contracts but does not claim
-            # the legacy resolver enforces them. Activation belongs to Milestone 3.
-            contract_kind=ContractKind.LEGACY.value,
-            contract_version=LEGACY_TRACKER_V1.version,
+            contract_kind=contract.kind.value,
+            contract_version=contract.version,
             ledger_schema_version=LEDGER_SCHEMA_VERSION,
             prediction_payload=payload,
             prediction_sha256=seal_prediction(payload),
@@ -434,7 +497,7 @@ def log_new_signals(
             model_version=e.model_version,
         )  # fmt: skip
         validate_prediction_record(asdict(row))
-        rows[sig.id] = row
+        rows[ledger_id] = row
         new_rows.append(row)
     return new_rows
 

@@ -7,13 +7,20 @@ from __future__ import annotations
 
 import json
 from dataclasses import asdict
+from datetime import date
 from pathlib import Path
 
 import pytest
 
 from tradedesk.evidence import ContractKind, EvidenceClass, OutcomeState
 from tradedesk.review_queue import load_queue
-from tradedesk.signal_tracker import TrackedSignal, flag_setup_failures, load_log, save_log
+from tradedesk.signal_tracker import (
+    TrackedSignal,
+    flag_setup_failures,
+    load_log,
+    render_session_report,
+    save_log,
+)
 
 
 def _row(i: int, setup: str, outcome: str | None) -> TrackedSignal:
@@ -53,6 +60,17 @@ def test_duplicate_signal_ids_in_a_ledger_fail_closed(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="duplicate signal_id"):
         load_log(path)
+
+
+def test_invalid_resolution_is_not_reported_as_a_failed_call() -> None:
+    row = _row(1, "nr7_breakout", "unavailable")
+    row.outcome_state = "invalid_call"
+    row.label = None
+    row.r_multiple = None
+    text = render_session_report("nse", date(2026, 1, 2), [], [row], {row.signal_id: row})
+    assert "INVALID CALL" in text
+    assert "excluded from performance learning" in text
+    assert "WRONG" not in text
 
 
 def test_flag_setup_failures_flags_a_setup_below_the_hit_rate_floor(tmp_path: Path) -> None:

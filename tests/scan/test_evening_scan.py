@@ -497,6 +497,24 @@ def test_new_prediction_is_sealed_and_outcome_append_does_not_rewrite_it(
         load_log(path)
 
 
+def test_quick_and_swing_contracts_log_as_independent_sealed_rows(world) -> None:  # type: ignore[no-untyped-def]
+    from tradedesk.signal_tracker import log_new_signals
+
+    _store, cfg, md, res, settings = world
+    day = sorted({ts.signal.armed_on for ts in res.signals})[-1]
+    wl = build_watchlist(md, cfg, _settings_for(settings, cfg), day)
+    rows: dict = {}
+    quick = log_new_signals(
+        wl, rows, market="nse", contract_version="quick-profit-v1"
+    )
+    swing = log_new_signals(wl, rows, market="nse", contract_version="swing-v1")
+    assert quick and swing and len(quick) == len(swing)
+    assert {r.contract_kind for r in quick} == {"quick_profit"}
+    assert {r.contract_kind for r in swing} == {"swing"}
+    assert not ({r.signal_id for r in quick} & {r.signal_id for r in swing})
+    assert all(r.prediction_sha256 for r in [*quick, *swing])
+
+
 def test_watchlist_entries_are_priced_scored_and_serialisable(world, tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
     store, cfg, md, res, settings = world
     d = sorted({ts.signal.armed_on for ts in res.signals})[-1]

@@ -1590,6 +1590,43 @@ def create_app(
                         if r.get("ledger_schema_version") != "prediction-ledger-v1"
                     ),
                 },
+                "contract_performance": {
+                    name: {
+                        "resolved": sum(
+                            1
+                            for r in resolved
+                            if r.get("contract_kind") == name
+                        ),
+                        "successes": sum(
+                            1
+                            for r in resolved
+                            if r.get("contract_kind") == name and r.get("label") == 1
+                        ),
+                        "mean_net_r": (
+                            sum(
+                                float(r["net_r"])
+                                for r in resolved
+                                if r.get("contract_kind") == name
+                                and r.get("net_r") is not None
+                            )
+                            / len(
+                                [
+                                    r
+                                    for r in resolved
+                                    if r.get("contract_kind") == name
+                                    and r.get("net_r") is not None
+                                ]
+                            )
+                            if any(
+                                r.get("contract_kind") == name
+                                and r.get("net_r") is not None
+                                for r in resolved
+                            )
+                            else None
+                        ),
+                    }
+                    for name in ("legacy", "quick_profit", "swing")
+                },
             }
         return JSONResponse(out)
 

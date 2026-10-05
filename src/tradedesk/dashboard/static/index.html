@@ -1794,14 +1794,14 @@ function renderCalls(market) {
   const resolved = matched.filter(d => d.outcome);
   const byId = (o) => o === 'target' ? 'closed' : (o ? 'stopped' : '');
   const resultLabel = (o) => o === 'target' ? 'hit' : (o ? 'not hit' : 'pending');
-  rows($(`${market}-calls`), ['Sym','Setup','Grade','Armed','Evidence','Contract','Ledger','#Entry','#Exit','#Days','Tradeable','Result','#R','#% P/L'],
+  rows($(`${market}-calls`), ['Sym','Setup','Grade','Armed','Evidence','Contract','Ledger','#Entry','#Exit','#Days','Tradeable','Result','First event','#Gross R','#Net R','#MFE','#MAE','#% P/L'],
     data.map(d => {
       const p = plPct(d);
       const plClass = p == null ? '' : (p >= 0 ? 'pos' : 'neg');
       const dh = daysHeld(d);
       const daysText = dh == null ? '-' : (dh.pending ? `${dh.days}+` : `${dh.days}`);
       const ledger = d.ledger_schema_version === 'prediction-ledger-v1' ? 'sealed' : 'legacy';
-      return `<tr><td>${d.symbol}</td><td>${d.setup}${d.shadow ? ' <span class="muted" title="setup retired on this market by self-review - still tracked so the agent keeps learning, but not a call">(shadow)</span>' : ''}</td><td class="${d.grade}">${d.grade}</td><td>${d.armed_on}</td><td>${d.evidence_class || '-'}</td><td>${d.contract_kind || 'legacy'}</td><td title="${d.prediction_sha256 || 'historical unsealed row'}">${ledger}</td><td class="num">${fmt(d.entry)}</td><td class="num">${d.exit_price!=null?fmt(d.exit_price):'-'}</td><td class="num">${daysText}</td><td>${d.evidence_class === 'qualified_call' ? 'yes' : 'no'}</td><td class="${byId(d.outcome)}">${resultLabel(d.outcome)}${d.outcome && d.outcome !== 'target' ? ` (${d.outcome.replace('_',' ')})` : ''}</td><td class="num">${d.r_multiple!=null?fmt(d.r_multiple,2):'-'}</td><td class="num ${plClass}">${p!=null?pct(p):'-'}</td></tr>`;
+      return `<tr><td>${d.symbol}</td><td>${d.setup}${d.shadow ? ' <span class="muted" title="setup retired on this market by self-review - still tracked so the agent keeps learning, but not a call">(shadow)</span>' : ''}</td><td class="${d.grade}">${d.grade}</td><td>${d.armed_on}</td><td>${d.evidence_class || '-'}</td><td>${d.contract_kind || 'legacy'}</td><td title="${d.prediction_sha256 || 'historical unsealed row'}">${ledger}</td><td class="num">${fmt(d.entry)}</td><td class="num">${d.exit_price!=null?fmt(d.exit_price):'-'}</td><td class="num">${daysText}</td><td>${d.evidence_class === 'qualified_call' ? 'yes' : 'no'}</td><td class="${byId(d.outcome)}">${resultLabel(d.outcome)}${d.outcome && d.outcome !== 'target' ? ` (${d.outcome.replace('_',' ')})` : ''}</td><td>${d.first_event || '-'}</td><td class="num">${d.gross_r!=null?fmt(d.gross_r,2):(d.r_multiple!=null?fmt(d.r_multiple,2):'-')}</td><td class="num">${d.net_r!=null?fmt(d.net_r,2):'-'}</td><td class="num">${d.mfe_r!=null?fmt(d.mfe_r,2):'-'}</td><td class="num">${d.mae_r!=null?fmt(d.mae_r,2):'-'}</td><td class="num ${plClass}">${p!=null?pct(p):'-'}</td></tr>`;
     }));
   let countText = `${data.length} of ${matched.length} matched (${all.length} total)`;
   if (resolved.length) {
@@ -1943,7 +1943,7 @@ function renderPredictionsTable() {
     return;
   }
   rows($('predictions-table'),
-    ['Armed','Symbol','Setup','Grade','Evidence','Contract','Ledger','Model','#Model p','Tradeable','Outcome','#R','Note'],
+    ['Armed','Symbol','Setup','Grade','Evidence','Contract','Ledger','Model','#Model p','Tradeable','Outcome','#Gross R','#Net R','Note'],
     list.map(r_ => {
       const tradeable = (r_.rejected_for || []).length === 0;
       const outcomeClass = r_.outcome === 'target' ? 'triggered' : (r_.outcome && r_.outcome !== 'target' ? 'stopped' : 'planned');
@@ -1952,7 +1952,7 @@ function renderPredictionsTable() {
       return `<tr><td>${(r_.armed_on || r_.logged_at || '').slice(0, 10)}</td><td>${r_.symbol}</td><td>${r_.setup}</td>
         <td>${r_.grade}</td><td>${r_.evidence_class || '-'}</td><td>${r_.contract_kind || 'legacy'}</td><td title="${r_.prediction_sha256 || 'historical unsealed row'}">${r_.ledger_schema_version === 'prediction-ledger-v1' ? 'sealed' : 'legacy'}</td><td>${r_.model_version || 'none'}</td><td class="num">${r_.probability != null ? pct(r_.probability) : '-'}</td>
         <td>${r_.evidence_class === 'qualified_call' ? 'yes' : 'no'}</td><td class="${outcomeClass}">${outcomeText}</td>
-        <td class="num">${r_.r_multiple != null ? fmt(r_.r_multiple, 2) : '-'}</td><td>${note}</td></tr>`;
+        <td class="num">${r_.gross_r != null ? fmt(r_.gross_r, 2) : (r_.r_multiple != null ? fmt(r_.r_multiple, 2) : '-')}</td><td class="num">${r_.net_r != null ? fmt(r_.net_r, 2) : '-'}</td><td>${note}</td></tr>`;
     }));
 }
 function renderResearchSummary(summary) {

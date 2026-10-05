@@ -2,7 +2,7 @@
 
 Date created: 2026-10-06
 
-Status: in progress; Milestones 1-2 completed on 2026-10-06
+Status: in progress; Milestones 1-3 completed on 2026-10-06
 
 Primary objective: produce a small, useful set of personally tradeable calls with
 verifiable accuracy, positive after-cost expectancy, explicit risk levels and honest
@@ -81,29 +81,34 @@ Implementation record: [Milestone 2 immutable prediction ledger](self-learning-m
 
 ## Milestone 3 — Deterministic outcome resolver
 
-- [ ] Resolve each call as target, stop, timeout, invalidated or never triggered.
-- [ ] Record which price event occurred first.
-- [ ] Use an explicit conservative rule when target and stop occur in the same bar.
-- [ ] Calculate gross R and realized holding time.
-- [ ] Calculate net R after fees and slippage.
-- [ ] Calculate reporting-only after-tax R.
-- [ ] Record maximum favourable excursion and maximum adverse excursion.
-- [ ] Record time to entry and time to resolution.
-- [ ] Resolve quick-profit and swing contracts independently.
-- [ ] Stop resolution when required candles are missing or stale.
-- [ ] Prevent unresolved, invalid or corrupted records from entering training.
+- [x] Resolve each call as target, stop, timeout, invalidated or never triggered.
+- [x] Record which price event occurred first.
+- [x] Use an explicit conservative rule when target and stop occur in the same bar.
+- [x] Calculate gross R and realized holding time.
+- [x] Calculate net R after fees and slippage.
+- [x] Calculate reporting-only after-tax R where a frozen tax contract exists (crypto);
+  NSE/BSE remain explicitly unavailable rather than using a guessed personal-tax profile.
+- [x] Record maximum favourable excursion and maximum adverse excursion.
+- [x] Record time to entry and time to resolution.
+- [x] Resolve quick-profit and swing contracts independently.
+- [x] Stop resolution when required observed candles are missing; immature future windows
+  remain pending rather than inferred.
+- [x] Prevent unresolved, invalid or corrupted records from entering training.
 
 Scheduled resolution:
 
-- [ ] Crypto refreshes every 30 minutes.
-- [ ] NSE and BSE refresh during the session and finalize after close.
-- [ ] A finality check runs when the maximum holding period expires.
+- [x] Crypto refreshes every 30 minutes through its registered collection pipeline.
+- [x] NSE and BSE finalize through their market-specific collection pipelines after close;
+  live-session monitoring remains separate from daily-bar finality.
+- [x] Repeated tracker runs finalize a call when its maximum holding period expires.
 
 Acceptance criteria:
 
 - Re-running the resolver produces the same result from the same candles.
 - One signal cannot receive conflicting terminal outcomes.
 - Missing data produces an explicit unavailable state, never an inferred result.
+
+Implementation record: [Milestone 3 deterministic resolver](self-learning-m3-deterministic-resolver.md)
 
 ## Milestone 4 — Failure-attribution engine
 
@@ -353,7 +358,7 @@ personal-trading authority.
 
 1. [x] Evidence categories and frozen outcome contracts.
 2. [x] Immutable prediction ledger.
-3. [ ] Deterministic outcome resolver.
+3. [x] Deterministic outcome resolver.
 4. [ ] Failure-attribution engine.
 5. [ ] Learning-dataset builder.
 6. [ ] Full performance and self-learning dashboard panels.
