@@ -249,5 +249,14 @@ def score_watchlist(
                 grade=e.grade.value,
                 on=wl.on,
             )
-        entries.append(apply_probability(e, p, cfg))
+        scored = apply_probability(e, p, cfg)
+        entries.append(
+            scored.model_copy(
+                update={
+                    "model_version": b.version,
+                    "model_kind": b.kind,
+                    "feature_version": b.feature_version,
+                }
+            )
+        )
     return wl.model_copy(update={"entries": entries}), probs

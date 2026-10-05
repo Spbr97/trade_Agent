@@ -44,6 +44,13 @@ from tradedesk.evidence import (
 )
 from tradedesk.markets import Market
 from tradedesk.prediction.labeling import triple_barrier
+from tradedesk.prediction_ledger import (
+    LEDGER_SCHEMA_VERSION,
+    STRATEGY_VERSION,
+    build_prediction_payload,
+    seal_prediction,
+    validate_prediction_record,
+)
 from tradedesk.scan.evening_scan import (
     RESEARCH_ONLY_REASON_PREFIX,
     RETIRED_REASON_PREFIX,
@@ -97,6 +104,17 @@ class TrackedSignal:
     outcome_state: str | None = None
     contract_kind: str = ContractKind.LEGACY.value
     contract_version: str = "legacy-t1-tracker-v1"
+    # Milestone 2 seal. Historical rows remain explicitly unsealed; they are not
+    # retroactively described as immutable. New rows contain the complete prediction-time
+    # payload and hashes. Outcome fields above intentionally stay outside the seal.
+    ledger_schema_version: str = "legacy-unsealed-v0"
+    prediction_payload: dict[str, object] | None = None
+    prediction_sha256: str | None = None
+    source_snapshot_sha256: str | None = None
+    contract_sha256: str | None = None
+    strategy_version: str | None = None
+    feature_version: str | None = None
+    model_version: str | None = None
 
 
 def load_log(log_path: Path) -> dict[str, TrackedSignal]:
@@ -109,22 +127,36 @@ def load_log(log_path: Path) -> dict[str, TrackedSignal]:
     ]
     market = infer_market(log_path)
     enriched = [enrich_call_record(r, market=market) for r in rows]
+    for record in enriched:
+        validate_prediction_record(record)
+    ids = [str(record["signal_id"]) for record in enriched]
+    if len(ids) != len(set(ids)):
+        raise ValueError("duplicate signal_id in prediction ledger")
     return {r["signal_id"]: TrackedSignal(**r) for r in enriched}
 
 
 def save_log(rows: dict[str, TrackedSignal], log_path: Path) -> None:
     log_path.parent.mkdir(parents=True, exist_ok=True)
     market = infer_market(log_path)
-    with log_path.open("w", encoding="utf-8") as fh:
-        for r in rows.values():
-            record = enrich_call_record(asdict(r), market=market)
-            # Keep the in-memory row synchronized with the exact record written to disk.
-            r.market = record["market"]
-            r.evidence_class = record["evidence_class"]
-            r.outcome_state = record["outcome_state"]
-            r.contract_kind = record["contract_kind"]
-            r.contract_version = record["contract_version"]
+    records: list[dict[str, object]] = []
+    tracked_rows = list(rows.values())
+    for r in tracked_rows:
+        record = enrich_call_record(asdict(r), market=market)
+        validate_prediction_record(record)
+        records.append(record)
+    # Only mutate memory and disk after every row passed its integrity checks. A bad seal
+    # must never truncate the last known-good ledger.
+    for r, record in zip(tracked_rows, records, strict=True):
+        r.market = record["market"]  # type: ignore[assignment]
+        r.evidence_class = str(record["evidence_class"])
+        r.outcome_state = str(record["outcome_state"])
+        r.contract_kind = str(record["contract_kind"])
+        r.contract_version = str(record["contract_version"])
+    temporary = log_path.with_suffix(log_path.suffix + ".tmp")
+    with temporary.open("w", encoding="utf-8") as fh:
+        for record in records:
             fh.write(json.dumps(record) + "\n")
+    temporary.replace(log_path)
 
 
 def setup_hit_rate(setup: str, rows: dict[str, TrackedSignal]) -> dict[str, float | int | None]:
@@ -144,6 +176,7 @@ def resolve_outcomes(
     for row in rows.values():
         if row.outcome is not None:
             continue
+        validate_prediction_record(asdict(row))
         df = store.load(row.scrip_code, Interval.D1, adjusted=False)
         armed = date.fromisoformat(row.armed_on)
         idx_dates = pd.DatetimeIndex(df.index).date
@@ -275,17 +308,18 @@ def render_dashboard_html(market: str, rows: dict[str, TrackedSignal]) -> str:
             f"<td>{fmt_price(r.entry)}</td><td>{fmt_price(r.stop)}</td>"
             f"<td>{fmt_price(r.t1)}</td><td>{fmt_price(r.t2)}</td>"
             f"<td>{r.evidence_class or '-'}</td><td>{r.contract_kind}</td>"
+            f"<td>{'sealed' if r.prediction_sha256 else 'legacy'}</td>"
             f"<td>{tradeable}</td>" + outcome_cell + "</tr>"
         )
 
     pending_rows = "\n".join(row_html(r, show_outcome=False) for r in pending) or (
-        '<tr><td colspan="11">none open</td></tr>'
+        '<tr><td colspan="12">none open</td></tr>'
     )
     resolved_rows = "\n".join(row_html(r, show_outcome=True) for r in resolved) or (
-        '<tr><td colspan="12">none resolved yet</td></tr>'
+        '<tr><td colspan="13">none resolved yet</td></tr>'
     )
     excluded_rows = "\n".join(row_html(r, show_outcome=True) for r in excluded) or (
-        '<tr><td colspan="12">none invalid or never triggered</td></tr>'
+        '<tr><td colspan="13">none invalid or never triggered</td></tr>'
     )
     score_text = scoreboard(rows).replace("\n", "<br>")
 
@@ -311,19 +345,19 @@ th {{ background: #eee; }}
 
 <h2>Open calls (not yet resolved)</h2>
 <table><tr><th>Armed</th><th>Symbol</th><th>Setup</th><th>Grade</th><th>Entry</th>
-<th>Stop</th><th>T1</th><th>T2</th><th>Evidence</th><th>Contract</th><th>Tradeable</th></tr>
+<th>Stop</th><th>T1</th><th>T2</th><th>Evidence</th><th>Contract</th><th>Ledger</th><th>Tradeable</th></tr>
 {pending_rows}
 </table>
 
 <h2>Resolved calls</h2>
 <table><tr><th>Armed</th><th>Symbol</th><th>Setup</th><th>Grade</th><th>Entry</th>
-<th>Stop</th><th>T1</th><th>T2</th><th>Evidence</th><th>Contract</th><th>Tradeable</th><th>Outcome</th></tr>
+<th>Stop</th><th>T1</th><th>T2</th><th>Evidence</th><th>Contract</th><th>Ledger</th><th>Tradeable</th><th>Outcome</th></tr>
 {resolved_rows}
 </table>
 
 <h2>Invalid / never-triggered calls (visible, excluded from learning)</h2>
 <table><tr><th>Armed</th><th>Symbol</th><th>Setup</th><th>Grade</th><th>Entry</th>
-<th>Stop</th><th>T1</th><th>T2</th><th>Evidence</th><th>Contract</th><th>Tradeable</th><th>Outcome</th></tr>
+<th>Stop</th><th>T1</th><th>T2</th><th>Evidence</th><th>Contract</th><th>Ledger</th><th>Tradeable</th><th>Outcome</th></tr>
 {excluded_rows}
 </table>
 </body></html>
@@ -354,10 +388,28 @@ def log_new_signals(
     for e in wl.entries:
         sig: Signal = e.signal
         if sig.id in rows:
+            validate_prediction_record(asdict(rows[sig.id]))
             continue
+        effective_market = market or {
+            "NSE": "nse",
+            "BSE": "bse",
+            "CDX": "crypto",
+        }.get(sig.scrip_code.split("_", 1)[0])
+        if effective_market is None:
+            raise ValueError(f"market required for immutable prediction: {sig.scrip_code}")
         shadow = any(
             reason.startswith((RETIRED_REASON_PREFIX, RESEARCH_ONLY_REASON_PREFIX))
             for reason in e.rejected_for
+        )
+        evidence_class = classify_evidence(e.rejected_for, shadow=shadow).value
+        payload = build_prediction_payload(
+            watchlist=wl,
+            entry=e,
+            market=effective_market,
+            source=source,
+            evidence_class=evidence_class,
+            contract_kind=ContractKind.LEGACY.value,
+            contract_version=LEGACY_TRACKER_V1.version,
         )
         row = TrackedSignal(
             signal_id=sig.id, scrip_code=sig.scrip_code, symbol=sig.symbol,
@@ -365,14 +417,23 @@ def log_new_signals(
             entry=sig.trigger, stop=sig.stop, t1=sig.t1, t2=sig.t2,
             net_rr_t1=e.net_rr_t1, net_rr_t2=e.net_rr_t2, rejected_for=list(e.rejected_for),
             probability=e.probability, logged_at=datetime.now(IST).isoformat(), source=source,
-            shadow=shadow, market=market,
-            evidence_class=classify_evidence(e.rejected_for, shadow=shadow).value,
+            shadow=shadow, market=effective_market,
+            evidence_class=evidence_class,
             outcome_state=OutcomeState.PENDING_CALL.value,
             # Milestone 1 defines the future quick/swing contracts but does not claim
             # the legacy resolver enforces them. Activation belongs to Milestone 3.
             contract_kind=ContractKind.LEGACY.value,
             contract_version=LEGACY_TRACKER_V1.version,
+            ledger_schema_version=LEDGER_SCHEMA_VERSION,
+            prediction_payload=payload,
+            prediction_sha256=seal_prediction(payload),
+            source_snapshot_sha256=str(payload["source_snapshot_sha256"]),
+            contract_sha256=str(payload["contract"]["sha256"]),  # type: ignore[index]
+            strategy_version=STRATEGY_VERSION,
+            feature_version=str(payload["versions"]["feature_contract"]),  # type: ignore[index]
+            model_version=e.model_version,
         )  # fmt: skip
+        validate_prediction_record(asdict(row))
         rows[sig.id] = row
         new_rows.append(row)
     return new_rows

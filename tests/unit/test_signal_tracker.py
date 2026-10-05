@@ -5,6 +5,8 @@ scripts, which need real data and are covered by manual verification (see CLAUDE
 
 from __future__ import annotations
 
+import json
+from dataclasses import asdict
 from pathlib import Path
 
 import pytest
@@ -42,6 +44,15 @@ def test_dedicated_market_log_enforces_market_separation(tmp_path: Path) -> None
 
     with pytest.raises(ValueError, match="cross-market"):
         save_log({row.signal_id: row}, path)
+
+
+def test_duplicate_signal_ids_in_a_ledger_fail_closed(tmp_path: Path) -> None:
+    path = tmp_path / "log.jsonl"
+    record = asdict(_row(1, "nr7_breakout", None))
+    path.write_text(json.dumps(record) + "\n" + json.dumps(record) + "\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="duplicate signal_id"):
+        load_log(path)
 
 
 def test_flag_setup_failures_flags_a_setup_below_the_hit_rate_floor(tmp_path: Path) -> None:

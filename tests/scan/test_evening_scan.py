@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import date
 from pathlib import Path
 
@@ -445,6 +446,55 @@ def test_a_research_only_setup_is_rejected_and_logged_as_shadow(world) -> None: 
     logged = log_new_signals(wl, {})
     assert logged and all(r.shadow for r in logged)
     assert all(r.evidence_class == "shadow_call" for r in logged)
+
+
+def test_new_prediction_is_sealed_and_outcome_append_does_not_rewrite_it(
+    world, tmp_path: Path
+) -> None:  # type: ignore[no-untyped-def]
+    from tradedesk.signal_tracker import load_log, log_new_signals, save_log
+
+    _store, cfg, md, res, settings = world
+    day = sorted({ts.signal.armed_on for ts in res.signals})[-1]
+    wl = build_watchlist(md, cfg, _settings_for(settings, cfg), day)
+    rows: dict = {}
+    logged = log_new_signals(wl, rows, market="nse")
+    assert logged
+    row = logged[0]
+    digest = row.prediction_sha256
+    payload = row.prediction_payload
+    assert row.ledger_schema_version == "prediction-ledger-v1"
+    assert digest and payload
+    assert payload["market"] == "nse"
+    assert payload["decision"]["rule_score"] >= 0
+    assert payload["levels"]["entry_range"] == [row.entry, row.entry]
+    assert payload["execution"]["assumptions"]["slippage_pct"]
+    assert payload["versions"]["strategy"] == "evening-scan-v1"
+    assert payload["contract"]["sha256"] == row.contract_sha256
+
+    path = tmp_path / "nse_signal_tracking.jsonl"
+    save_log(rows, path)
+    assert log_new_signals(wl, rows, market="nse") == []
+    row.outcome = "stop"
+    row.label = 0
+    row.exit_price = row.stop
+    row.r_multiple = -1.0
+    save_log(rows, path)
+    restored = load_log(path)[row.signal_id]
+    assert restored.outcome == "stop"
+    assert restored.prediction_sha256 == digest
+    assert restored.prediction_payload == payload
+
+    last_good = path.read_bytes()
+    row.probability = 0.999
+    with pytest.raises(ValueError, match="immutable prediction field changed: probability"):
+        save_log(rows, path)
+    assert path.read_bytes() == last_good
+
+    tampered = json.loads(path.read_text(encoding="utf-8").splitlines()[0])
+    tampered["prediction_payload"]["decision"]["grade"] = "Z"
+    path.write_text(json.dumps(tampered) + "\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="immutable prediction payload hash mismatch"):
+        load_log(path)
 
 
 def test_watchlist_entries_are_priced_scored_and_serialisable(world, tmp_path: Path) -> None:  # type: ignore[no-untyped-def]

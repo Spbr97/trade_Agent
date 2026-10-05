@@ -828,6 +828,9 @@ def test_build_dataset_from_the_synthetic_backtest_and_score_watchlist(
     )
     assert set(probs) == {win.symbol} and 0.0 <= probs[win.symbol] <= 1.0
     assert scored.entries[0].grade is e.grade and scored.entries[0].qty == e.qty
+    assert scored.entries[0].model_version == rep.bundle.version
+    assert scored.entries[0].model_kind == rep.bundle.kind
+    assert scored.entries[0].feature_version == rep.bundle.feature_version
     assert len(read_shadow(tmp_path / "shadow.jsonl")) == 1
     assert isinstance(Decimal(str(probs[win.symbol])), Decimal)
 

@@ -75,6 +75,10 @@ async def test_potential_calls_summary_covers_all_three_markets(tmp_path: Path, 
             "invalid_call": 0,
             "never_triggered": 0,
         }
+        assert r["nse"]["prediction_ledger"] == {
+            "sealed": 0,
+            "legacy_unsealed": 3,
+        }
         empty = {
             "logged_today": 0,
             "n_total": 0,
@@ -92,6 +96,7 @@ async def test_potential_calls_summary_covers_all_three_markets(tmp_path: Path, 
                 "never_triggered": 0,
             },
             "contracts": {"legacy": 0, "quick_profit": 0, "swing": 0},
+            "prediction_ledger": {"sealed": 0, "legacy_unsealed": 0},
         }
         assert r["crypto"] == empty
         assert r["bse"] == empty

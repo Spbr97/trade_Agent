@@ -1577,6 +1577,19 @@ def create_app(
                     name: sum(1 for r in rows if r.get("contract_kind") == name)
                     for name in ("legacy", "quick_profit", "swing")
                 },
+                "prediction_ledger": {
+                    "sealed": sum(
+                        1
+                        for r in rows
+                        if r.get("ledger_schema_version") == "prediction-ledger-v1"
+                        and r.get("prediction_sha256")
+                    ),
+                    "legacy_unsealed": sum(
+                        1
+                        for r in rows
+                        if r.get("ledger_schema_version") != "prediction-ledger-v1"
+                    ),
+                },
             }
         return JSONResponse(out)
 

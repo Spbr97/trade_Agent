@@ -2,7 +2,7 @@
 
 Date created: 2026-10-06
 
-Status: in progress; Milestone 1 completed on 2026-10-06
+Status: in progress; Milestones 1-2 completed on 2026-10-06
 
 Primary objective: produce a small, useful set of personally tradeable calls with
 verifiable accuracy, positive after-cost expectancy, explicit risk levels and honest
@@ -57,17 +57,18 @@ Implementation record: [Milestone 1 evidence contracts](self-learning-m1-evidenc
 
 Record every evaluated candidate before its outcome is knowable:
 
-- [ ] Unique signal ID and immutable creation timestamp.
-- [ ] Market, symbol, setup and evidence class.
-- [ ] Entry range, stop, targets, expiry and intended holding period.
-- [ ] Quick-profit or swing classification.
-- [ ] Grade, rule score and calibrated model probability.
-- [ ] Market and sector regime.
-- [ ] Relative strength, volume, volatility and liquidity features.
-- [ ] Estimated slippage, fees and tax assumptions.
-- [ ] Every rejection reason.
-- [ ] Model, strategy and feature-contract versions.
-- [ ] Source-data snapshot and contract hashes.
+- [x] Unique signal ID and immutable creation timestamp.
+- [x] Market, symbol, setup and evidence class.
+- [x] Entry range, stop, targets, expiry and intended holding period.
+- [x] Versioned contract classification; current calls honestly remain `legacy` until the
+  quick-profit/swing resolver is activated.
+- [x] Grade, rule score and calibrated model probability.
+- [x] Market regime, sector identity and explicit unavailable sector-regime state.
+- [x] Relative strength, volume, volatility and liquidity feature context.
+- [x] Estimated slippage, fees and tax assumptions.
+- [x] Every rejection reason.
+- [x] Model, strategy and feature-contract versions.
+- [x] Source-data snapshot and contract hashes.
 
 Acceptance criteria:
 
@@ -75,6 +76,8 @@ Acceptance criteria:
 - Repeated scans do not duplicate a signal.
 - Resolution appends outcome fields without replacing original prediction fields.
 - Original confidence and rejection reasons remain reproducible and auditable.
+
+Implementation record: [Milestone 2 immutable prediction ledger](self-learning-m2-immutable-ledger.md)
 
 ## Milestone 3 — Deterministic outcome resolver
 
@@ -349,7 +352,7 @@ personal-trading authority.
 ## Implementation order
 
 1. [x] Evidence categories and frozen outcome contracts.
-2. [ ] Immutable prediction ledger.
+2. [x] Immutable prediction ledger.
 3. [ ] Deterministic outcome resolver.
 4. [ ] Failure-attribution engine.
 5. [ ] Learning-dataset builder.

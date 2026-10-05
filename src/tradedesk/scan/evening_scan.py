@@ -15,6 +15,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
+from numbers import Real
 from pathlib import Path
 from typing import Any
 
@@ -93,6 +94,16 @@ class WatchlistEntry(BaseModel):
     # None until scored (ml disabled/shadow off entirely, no bundle for this setup, or a
     # stale model_version was skipped - see predict.py::is_current).
     probability: float | None = None
+    sector: str | None = None
+    sector_percentile: float | None = None
+    # The exact adjusted feature row visible at decision time. This is deliberately a
+    # compact source snapshot, not a later reload from mutable candle storage.
+    source_bar: dict[str, float] = Field(default_factory=dict)
+    # Exact scorer identity captured with the prediction. None means no current model
+    # scored this entry; that is different from a model returning a low probability.
+    model_version: str | None = None
+    model_kind: str | None = None
+    feature_version: str | None = None
 
     @property
     def on_watchlist(self) -> bool:
@@ -108,6 +119,9 @@ class Watchlist(BaseModel):
     capital: float
     entries: list[WatchlistEntry]  # sorted by score, highest first; includes rejected ones
     open_positions: list[dict[str, Any]]
+    # Frozen fee/tax/slippage inputs used to create the displayed net R:R. Historical
+    # watchlists load with an empty mapping rather than receiving invented assumptions.
+    execution_assumptions: dict[str, Any] = Field(default_factory=dict)
 
     @property
     def active(self) -> list[WatchlistEntry]:
@@ -339,9 +353,24 @@ def build_watchlist(
                 atr_pct=atr_pct,
                 avg_turnover=turnover,
                 rejected_for=rejected,
+                sector=md.sector_of.get(sig.scrip_code),
+                sector_percentile=(sector_percentile or {}).get(sig.scrip_code),
+                source_bar={
+                    str(name): float(value)
+                    for name, value in last.items()
+                    if isinstance(value, Real) and value == value
+                },
             )
         )
     entries.sort(key=lambda e: (-e.score, e.signal.scrip_code))
+    schedule = getattr(market.costs, "schedule", None)
+    execution_assumptions = {
+        "cost_model": type(market.costs).__name__,
+        "slippage_pct": str(market.costs.slippage_pct),
+        "fee_tax_schedule": (
+            schedule.model_dump(mode="json") if schedule is not None else None
+        ),
+    }
     return Watchlist(
         on=on,
         generated_at=datetime.now(IST),
@@ -349,6 +378,7 @@ def build_watchlist(
         capital=capital,
         entries=entries,
         open_positions=[p.__dict__ for p in open_positions],
+        execution_assumptions=execution_assumptions,
     )
 
 
