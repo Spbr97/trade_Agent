@@ -11,14 +11,18 @@
 
 from __future__ import annotations
 
+import warnings
 from datetime import date, datetime, timedelta
 from datetime import time as dtime
 from decimal import Decimal
+from importlib import import_module
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import pytest
+import sklearn
+from sklearn.exceptions import InconsistentVersionWarning
 
 from tests.backtest.test_runner import BREAKOUT, CAL, run
 from tradedesk.broker.indstocks.models import IST
@@ -30,6 +34,7 @@ from tradedesk.prediction import (
     FEATURE_NAMES,
     FEATURE_VERSION,
     DriftReport,
+    ModelArtifactCompatibilityError,
     ModelBundle,
     apply_probability,
     build_dataset,
@@ -448,6 +453,7 @@ def test_training_recovers_signs_and_is_calibrated(tmp_path: Path) -> None:
             assert abs(mean_p - realised) < 0.15, (mean_p, realised, n)
     path = rep.bundle.save(tmp_path)
     loaded = ModelBundle.load(path)
+    assert loaded.runtime_versions["scikit_learn"] == sklearn.__version__
     assert latest_bundle(tmp_path) is not None
     f = dict.fromkeys(FEATURE_NAMES, 0.0)
     f["rs_percentile"], f["stop_atr"] = 95.0, 1.0
@@ -456,6 +462,47 @@ def test_training_recovers_signs_and_is_calibrated(tmp_path: Path) -> None:
     bad = probability(loaded, f)
     assert good > 0.6 > 0.4 > bad
     assert "folds" in rep.text()
+
+
+def test_model_bundle_load_fails_closed_on_sklearn_version_warning(
+    tmp_path: Path, monkeypatch
+) -> None:
+    training = import_module("tradedesk.prediction.train")
+
+    path = tmp_path / "incompatible.joblib"
+    path.write_bytes(b"not consulted")
+
+    def incompatible(_path):
+        warnings.warn(
+            InconsistentVersionWarning(
+                estimator_name="CalibratedClassifierCV",
+                current_sklearn_version="1.5.2",
+                original_sklearn_version="1.9.1",
+            ),
+            stacklevel=2,
+        )
+
+    monkeypatch.setattr(training.joblib, "load", incompatible)
+
+    with pytest.raises(ModelArtifactCompatibilityError, match="requires scikit-learn 1.9.1"):
+        ModelBundle.load(path)
+
+
+def test_latest_bundle_lookup_skips_incompatible_artifact(
+    tmp_path: Path, monkeypatch
+) -> None:
+    path = tmp_path / "20261005.joblib"
+    path.write_bytes(b"not consulted")
+    monkeypatch.setattr(
+        ModelBundle,
+        "load",
+        lambda _path: (_ for _ in ()).throw(
+            ModelArtifactCompatibilityError("incompatible runtime")
+        ),
+    )
+
+    with pytest.warns(RuntimeWarning, match="ML scoring disabled"):
+        assert latest_bundle(tmp_path) is None
 
 
 def test_training_refuses_a_one_class_dataset() -> None:

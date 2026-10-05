@@ -37,6 +37,26 @@ def test_missing_or_corrupt_file_skips_nothing(tmp_path: Path) -> None:
     assert ds.skip_set(bad, date(2026, 9, 1)) == set()
 
 
+def test_crypto_invalid_pair_errors_use_the_same_quarantine_contract(tmp_path: Path) -> None:
+    assert ds.is_invalid_error("CoinDCX API error 422: Invalid pair I-WAXL_INR")
+    assert ds.is_invalid_error('errorCode="BFF-SO-004"')
+    assert ds.is_invalid_error("HTTP 400 : Invalid scrip codes")
+    assert not ds.is_invalid_error("temporary timeout")
+
+    path = tmp_path / "crypto_dead.json"
+    day = date(2026, 10, 5)
+    for offset in range(ds.MIN_FAILURES):
+        ds.record(
+            path,
+            day + timedelta(days=offset),
+            invalid=["CDX_WAXLINR"],
+            succeeded=[],
+        )
+    snapshot = ds.status(path, day + timedelta(days=ds.MIN_FAILURES))
+    assert snapshot["registered"] == 1
+    assert snapshot["quarantined_today"] == 1
+
+
 class _ApiError(Exception):
     pass
 

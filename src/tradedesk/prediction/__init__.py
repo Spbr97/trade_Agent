@@ -23,6 +23,7 @@ from tradedesk.prediction.selective import (
     select_accuracy_operating_point,
 )
 from tradedesk.prediction.train import (
+    ModelArtifactCompatibilityError,
     ModelBundle,
     TrainReport,
     build_dataset,
@@ -39,6 +40,7 @@ __all__ = [
     "DriftReport",
     "Label",
     "ModelBundle",
+    "ModelArtifactCompatibilityError",
     "TrainReport",
     "apply_probability",
     "accuracy_coverage_curve",

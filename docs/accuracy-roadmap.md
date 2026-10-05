@@ -527,6 +527,11 @@ fresh evidence; missed targets remain visible.
   verified crypto first look, and expose separate freshness-limited NSE/BSE/crypto health.
   Collector completion is operational evidence only. See the
   [R2 checkpoint](accuracy-collector-integrity-r2-checkpoint.md).
+- [x] Repair the 2026-10-05 afternoon reliability findings without changing performance
+  authority: fail closed on incompatible sklearn artifacts, restore the byte-identical
+  frozen forward contract, avoid same-run duplicate requests for invalid equity codes,
+  and drive default crypto loading from CoinDCX's current active master. See the
+  [afternoon-run reliability checkpoint](afternoon-run-reliability-fixes.md).
 
 For each completed item, attach its artifact/run identifier, date, sample size and
 pass/fail result. Update this checklist at checkpoints. The 70–80% objective remains

@@ -15,6 +15,8 @@ tried only if importable and only kept if it beats the baseline out of sample.
 from __future__ import annotations
 
 import json
+import platform
+import warnings
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import date, datetime
@@ -24,6 +26,8 @@ from typing import Any
 import joblib
 import numpy as np
 import pandas as pd
+import sklearn
+from sklearn.exceptions import InconsistentVersionWarning
 
 from tradedesk.backtest.runner import BacktestResult, MarketData
 from tradedesk.broker.indstocks.models import IST
@@ -46,6 +50,17 @@ META_COLUMNS = [
     "realised_r",
     "plain_score",
 ]
+
+
+class ModelArtifactCompatibilityError(RuntimeError):
+    """A persisted estimator cannot be trusted under the active runtime."""
+
+
+def _runtime_versions() -> dict[str, str]:
+    return {
+        "python": platform.python_version(),
+        "scikit_learn": sklearn.__version__,
+    }
 
 
 # ------------------------------------------------------------------- dataset
@@ -582,6 +597,7 @@ class ModelBundle:
     feature_stability: dict[str, list[float]] | None = None
     accuracy_selector_curve: list[dict[str, Any]] = field(default_factory=list)
     accuracy_operating_point: dict[str, Any] | None = None
+    runtime_versions: dict[str, str] = field(default_factory=_runtime_versions)
 
     def predict_proba(self, X: pd.DataFrame) -> np.ndarray:
         return np.asarray(self.model.predict_proba(X[self.features].to_numpy(dtype=float))[:, 1])
@@ -599,6 +615,7 @@ class ModelBundle:
         return _feature_importance_of(self.model, self.features)
 
     def save(self, folder: Path) -> Path:
+        self.runtime_versions = _runtime_versions()
         folder.mkdir(parents=True, exist_ok=True)
         path = folder / f"{self.version}.joblib"
         joblib.dump(self, path)
@@ -623,6 +640,7 @@ class ModelBundle:
                     "per_setup": self.per_setup,
                     "accuracy_selector_curve": self.accuracy_selector_curve,
                     "accuracy_operating_point": self.accuracy_operating_point,
+                    "runtime_versions": self.runtime_versions,
                     "feature_importance": (
                         dict(list((importance or {}).items())[:10])
                     ),
@@ -637,8 +655,27 @@ class ModelBundle:
 
     @staticmethod
     def load(path: Path) -> ModelBundle:
-        obj = joblib.load(path)
-        assert isinstance(obj, ModelBundle)
+        try:
+            with warnings.catch_warnings():
+                warnings.simplefilter("error", InconsistentVersionWarning)
+                obj = joblib.load(path)
+        except InconsistentVersionWarning as exc:
+            raise ModelArtifactCompatibilityError(
+                f"{path.name} requires scikit-learn "
+                f"{exc.original_sklearn_version}; runtime is "
+                f"{exc.current_sklearn_version}"
+            ) from exc
+        if not isinstance(obj, ModelBundle):
+            raise ModelArtifactCompatibilityError(
+                f"{path.name} does not contain a ModelBundle"
+            )
+        recorded = getattr(obj, "runtime_versions", {}) or {}
+        trained_sklearn = recorded.get("scikit_learn")
+        if trained_sklearn and trained_sklearn != sklearn.__version__:
+            raise ModelArtifactCompatibilityError(
+                f"{path.name} requires scikit-learn {trained_sklearn}; "
+                f"runtime is {sklearn.__version__}"
+            )
         return obj
 
 

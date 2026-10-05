@@ -14,6 +14,7 @@ lower, and the calibration drift monitor.
 from __future__ import annotations
 
 import json
+import warnings
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -26,7 +27,11 @@ from tradedesk.config.models import MlConfig
 from tradedesk.engine.scoring import Grade
 from tradedesk.prediction.calibration import DriftReport, drift_check
 from tradedesk.prediction.features import FEATURE_NAMES, signal_features
-from tradedesk.prediction.train import ModelBundle, market_context
+from tradedesk.prediction.train import (
+    ModelArtifactCompatibilityError,
+    ModelBundle,
+    market_context,
+)
 from tradedesk.scan.evening_scan import Watchlist, WatchlistEntry
 
 __all__ = [
@@ -144,7 +149,17 @@ def latest_bundle(folder: Path) -> ModelBundle | None:
     and are skipped here via the glob, so a pooled-model call site never accidentally picks
     up one setup's specialised model."""
     files = sorted(f for f in folder.glob("*.joblib") if not _is_per_setup_bundle(f))
-    return ModelBundle.load(files[-1]) if files else None
+    if not files:
+        return None
+    try:
+        return ModelBundle.load(files[-1])
+    except ModelArtifactCompatibilityError as exc:
+        warnings.warn(
+            f"ML scoring disabled: {exc}",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+        return None
 
 
 def _is_per_setup_bundle(path: Path) -> bool:
@@ -168,7 +183,14 @@ def latest_bundles_by_setup(folder: Path) -> dict[str, ModelBundle]:
     for kind in SetupKind:
         files = sorted(folder.glob(f"*-{kind.value}.joblib"))
         if files:
-            out[kind.value] = ModelBundle.load(files[-1])
+            try:
+                out[kind.value] = ModelBundle.load(files[-1])
+            except ModelArtifactCompatibilityError as exc:
+                warnings.warn(
+                    f"ML scoring disabled for {kind.value}: {exc}",
+                    RuntimeWarning,
+                    stacklevel=2,
+                )
     return out
 
 

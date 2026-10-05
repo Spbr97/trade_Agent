@@ -17,6 +17,14 @@ from pathlib import Path
 
 MIN_FAILURES = 3
 RETRY_DAYS = 30
+INVALID_ERROR_MARKERS = ("invalid scrip", "invalid pair", "bff-so-004")
+
+
+def is_invalid_error(error: str | None) -> bool:
+    """True only for provider responses that explicitly reject the instrument identity."""
+
+    lowered = (error or "").lower()
+    return any(marker in lowered for marker in INVALID_ERROR_MARKERS)
 
 
 def _read(path: Path) -> dict[str, dict[str, object]]:
@@ -54,3 +62,16 @@ def record(
     tmp.write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8")
     tmp.replace(path)
     return data
+
+
+def status(path: Path, today: date) -> dict[str, object]:
+    """Compact operational state for logs/health reports; never a performance signal."""
+
+    data = _read(path)
+    return {
+        "path": str(path),
+        "registered": len(data),
+        "quarantined_today": len(skip_set(path, today)),
+        "minimum_failures": MIN_FAILURES,
+        "retry_days": RETRY_DAYS,
+    }

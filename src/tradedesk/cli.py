@@ -734,9 +734,15 @@ def data_load(
         async def go_crypto() -> None:
             async with CoinDcxClient() as c:
                 with _store(db) as store:
-                    targets = list(codes) if codes else store.instrument_codes(
-                        kind="equity", exch="CDX", series="INR"
-                    )  # fmt: skip
+                    # The live instrument master is authoritative. Using every code ever
+                    # stored kept delisted WAXL/INR in the half-hour loader after CoinDCX
+                    # had removed it, producing a permanent 422 on every run.
+                    instruments = await c.instruments()
+                    if not instruments:
+                        raise RuntimeError("CoinDCX returned no active INR instruments")
+                    store.upsert_instruments(instruments)
+                    active = sorted(instrument.scrip_code for instrument in instruments)
+                    targets = list(codes) if codes else active
                     if not targets:
                         raise typer.BadParameter(
                             "no codes: pass scrip codes or run "
@@ -747,7 +753,27 @@ def data_load(
                     # instruments table already has that mapping from sync-instruments,
                     # no extra API call needed. A code with none registered (never
                     # synced, or delisted since) just fetches nothing for that code.
-                    c.register_pairs(store.custom_symbols(targets))
+                    pair_mapping = {
+                        instrument.scrip_code: str(instrument.custom_symbol)
+                        for instrument in instruments
+                        if instrument.custom_symbol
+                    }
+                    if codes:
+                        pair_mapping.update(store.custom_symbols(targets))
+                    c.register_pairs(pair_mapping)
+                    from tradedesk.data import dead_scrips
+
+                    dead_path = Path(db).with_name("crypto_dead_scrips.json")
+                    skipped: set[str] = set()
+                    if not codes:
+                        skipped = dead_scrips.skip_set(dead_path, now.date())
+                        targets = [target for target in targets if target not in skipped]
+                        if skipped:
+                            typer.echo(
+                                f"skipping {len(skipped)} explicitly invalid CoinDCX pairs "
+                                f"({dead_path.name}; retried every "
+                                f"{dead_scrips.RETRY_DAYS} days)"
+                            )
                     typer.echo(
                         f"loading {iv.value} for {len(targets)} pairs "
                         f"from {start:%Y-%m-%d} into {db}"
@@ -760,6 +786,27 @@ def data_load(
                     typer.echo(f"fetched {summary.fetched} bars; {len(summary.errors)} errors")
                     for r in summary.errors[:20]:
                         typer.echo(f"  ERROR {r.scrip_code}: {r.error}")
+                    if not codes:
+                        dead_scrips.record(
+                            dead_path,
+                            now.date(),
+                            invalid=[
+                                result.scrip_code
+                                for result in summary.results
+                                if dead_scrips.is_invalid_error(result.error)
+                            ],
+                            succeeded=[
+                                result.scrip_code
+                                for result in summary.results
+                                if result.error is None
+                            ],
+                        )
+                        quarantine = dead_scrips.status(dead_path, now.date())
+                        typer.echo(
+                            "invalid-pair quarantine: "
+                            f"{quarantine['quarantined_today']} skipped today, "
+                            f"{quarantine['registered']} registered"
+                        )
 
         asyncio.run(go_crypto())
         return
@@ -832,9 +879,15 @@ def data_load(
                     invalid=[
                         r.scrip_code
                         for r in summary.results
-                        if r.error and "invalid scrip" in r.error.lower()
+                        if dead_scrips.is_invalid_error(r.error)
                     ],
                     succeeded=[r.scrip_code for r in summary.results if not r.error],
+                )
+                quarantine = dead_scrips.status(dead_path, date.today())
+                typer.echo(
+                    "invalid-scrip quarantine: "
+                    f"{quarantine['quarantined_today']} skipped today, "
+                    f"{quarantine['registered']} registered"
                 )
 
             # Straggler sweep. A pass can leave codes behind the newest bar while
@@ -851,13 +904,36 @@ def data_load(
                 newest = max(seen.values())
                 return sorted(x for x, t in seen.items() if t < newest), newest
 
+            failed = {result.scrip_code for result in summary.errors}
             behind, newest = behind_newest()
+            # Do not immediately retry explicit provider rejections from the same run.
+            # They were already isolated to one code and recorded above; retrying them
+            # cannot add a candle and previously doubled their API cost.
+            behind = [code for code in behind if code not in failed]
             if behind and newest is not None:
                 typer.echo(f"{len(behind)} codes still behind {newest:%Y-%m-%d}; retrying them")
                 retry = await load_history(
                     c, store, behind, iv, start=start, end=now, progress=make_progress(behind)
                 )
                 still, _ = behind_newest()
+                retry_failed = {result.scrip_code for result in retry.errors}
+                failed.update(retry_failed)
+                still = [code for code in still if code not in failed]
+                if not codes:
+                    dead_scrips.record(
+                        dead_path,
+                        date.today(),
+                        invalid=[
+                            result.scrip_code
+                            for result in retry.results
+                            if dead_scrips.is_invalid_error(result.error)
+                        ],
+                        succeeded=[
+                            result.scrip_code
+                            for result in retry.results
+                            if result.error is None
+                        ],
+                    )
                 typer.echo(
                     f"  retry fetched {retry.fetched} bars; {len(still)} still behind"
                     + (f" ({', '.join(still[:5])})" if still else "")
