@@ -103,7 +103,7 @@ part of deployment.
 |---|---|---|
 | NSE | canonical 149/693 = 21.50%; locked 186/223 = 83.41% remains historical-only; fresh prospective 0/4 ready at the prior checkpoint | unchanged / false |
 | BSE | prospective accuracy unavailable; 0/30 sessions and 0/4 rules ready at the prior checkpoint; 64.52% best transport result remains development-only and -0.126R | unavailable / false |
-| Crypto | latest scheduled run `20261005T060002-b67671f3b4`: 339/339 active pairs had the closed 4 October session; C1 remains at 2/30 minimum pair sessions; C2 remains 0/12 evaluated | unavailable / false |
+| Crypto | verified scheduled run `20261005T060002-b67671f3b4`: 339/339 active pairs had the closed 4 October session; C1 remains at 2/30 minimum pair sessions; C2 remains 0/12 evaluated | unavailable / false |
 
 R2 improves the probability that the next rows are valid evidence. It does **not** improve
 any baseline percentage by itself.
