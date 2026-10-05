@@ -43,6 +43,7 @@ sys.path.insert(0, str(ROOT))
 
 from tradedesk.data.candle_store import CandleStore  # noqa: E402
 from tradedesk.scan import load_watchlist  # noqa: E402
+from tradedesk.self_learning_workflow import refresh_learning_status  # noqa: E402
 from tradedesk.signal_tracker import (  # noqa: E402
     flag_setup_failures,
     load_log,
@@ -81,6 +82,7 @@ def main(*, strict_accuracy_refresh: bool = False) -> None:
         new_rows = log_new_signals(wl, rows, market="nse")
         newly_resolved = resolve_outcomes(store, rows, MAX_HOLD)
         save_log(rows, LOG)
+        refresh_learning_status("nse", rows, Path("data/reports/nse_self_learning_status.json"))
         save_dashboard("nse", rows, DASHBOARD)
         report = render_session_report("NSE", day, new_rows, newly_resolved, rows)
         report_path = save_session_report(day, report, SESSIONS_DIR)

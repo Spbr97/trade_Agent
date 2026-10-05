@@ -806,6 +806,13 @@
   </section>
   <section>
     <h2>EOD self-learning <span class="info-ic" title="retrain on this market's real forward evidence only, never the old backtest window. One row per run. Cannot alert - only ever flags Review if it clears the same evidence bar as everything else.">ⓘ</span></h2>
+    <div class="cards" style="margin-bottom:10px;">
+      <div class="card"><div class="label">Workflow state</div><div class="value" id="learning-workflow-state">-</div></div>
+      <div class="card"><div class="label">Eligible mature</div><div class="value" id="learning-workflow-eligible">-</div></div>
+      <div class="card"><div class="label">New for challenger</div><div class="value" id="learning-workflow-new">-</div></div>
+      <div class="card"><div class="label">Active model changed</div><div class="value" id="learning-workflow-active">-</div></div>
+    </div>
+    <div class="muted" id="learning-workflow-blockers" style="margin-bottom:10px;"></div>
     <table id="learning-table"></table>
   </section>
 </div>
@@ -1904,8 +1911,17 @@ $('research-market-select').addEventListener('change', loadResearch);
 // digging into another tab first) - reads the same /api/eod-learning endpoint.
 async function loadLearning() {
   const market = $('learning-market-select').value;
-  const r = await fetch(`/api/eod-learning?market=${market}`);
+  const [r, statusResponse] = await Promise.all([
+    fetch(`/api/eod-learning?market=${market}`),
+    fetch(`/api/self-learning/status?market=${market}`),
+  ]);
   renderLearningTable(r.ok ? await r.json() : []);
+  const status = statusResponse.ok ? await statusResponse.json() : {};
+  $('learning-workflow-state').textContent = status.status || '-';
+  $('learning-workflow-eligible').textContent = status.eligible_mature ?? '-';
+  $('learning-workflow-new').textContent = status.new_mature_since_last_refresh ?? '-';
+  $('learning-workflow-active').textContent = status.active_model_changed ? 'YES' : 'no';
+  $('learning-workflow-blockers').textContent = (status.blockers || []).join(' · ') || 'challenger dataset threshold reached; active model remains frozen';
 }
 $('learning-market-select').addEventListener('change', loadLearning);
 function renderLearningTable(history) {

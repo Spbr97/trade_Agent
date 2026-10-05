@@ -255,6 +255,7 @@ def test_strict_nse_tracker_propagates_degraded_m9(tmp_path, monkeypatch) -> Non
     monkeypatch.setattr(tracker, "log_new_signals", lambda *_args, **_kwargs: [])
     monkeypatch.setattr(tracker, "resolve_outcomes", lambda *_args: [])
     monkeypatch.setattr(tracker, "save_log", lambda *_args: None)
+    monkeypatch.setattr(tracker, "refresh_learning_status", lambda *_args, **_kwargs: {})
     monkeypatch.setattr(tracker, "save_dashboard", lambda *_args: None)
     monkeypatch.setattr(tracker, "render_session_report", lambda *_args: "report")
     monkeypatch.setattr(tracker, "save_session_report", lambda *_args: tmp_path / "report")

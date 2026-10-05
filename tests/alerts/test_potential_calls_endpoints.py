@@ -146,3 +146,16 @@ async def test_session_report_endpoint_reads_the_real_file(tmp_path: Path, monke
 
         r3 = await c.get("/api/session-report", params={"market": "bse"})
         assert r3.status_code == 404
+
+
+async def test_self_learning_status_never_implies_model_change_before_refresh(
+    tmp_path: Path, monkeypatch
+) -> None:  # noqa: ANN001
+    monkeypatch.chdir(tmp_path)
+    app = create_app(DashboardState())
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        payload = (await client.get("/api/self-learning/status?market=nse")).json()
+    assert payload["status"] == "waiting_for_first_refresh"
+    assert payload["active_model_changed"] is False
+    assert payload["promotion_authorized"] is False

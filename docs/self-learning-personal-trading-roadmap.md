@@ -2,7 +2,8 @@
 
 Date created: 2026-10-06
 
-Status: in progress; Milestones 1-5 completed on 2026-10-06
+Status: in progress; Milestones 1-5 complete and Milestone 6 session refresh implemented
+on 2026-10-06
 
 Primary objective: produce a small, useful set of personally tradeable calls with
 verifiable accuracy, positive after-cost expectancy, explicit risk levels and honest
@@ -182,11 +183,11 @@ Implementation record: [Milestone 5 learning dataset](self-learning-m5-learning-
 
 After every completed session:
 
-- [ ] Resolve mature calls.
+- [x] Resolve mature calls.
 - [ ] Refresh strict accuracy, calibration and expectancy.
-- [ ] Update failure attribution.
+- [x] Update failure attribution.
 - [ ] Detect performance, confidence and data drift.
-- [ ] Leave the active model unchanged.
+- [x] Leave the active model unchanged.
 
 Weekly, when enough new mature outcomes exist:
 
@@ -209,6 +210,9 @@ Acceptance criteria:
 - Learning produces versioned challengers, never silent active-model mutation.
 - Failed experiments remain in the registry and are not unknowingly repeated.
 - No challenger receives trade authority automatically.
+
+Session-refresh implementation record:
+[Milestone 6 checkpoint — session refresh](self-learning-m6-session-refresh.md)
 
 ## Milestone 7 — Precision selector
 

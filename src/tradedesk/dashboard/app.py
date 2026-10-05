@@ -1673,6 +1673,26 @@ def create_app(
             }
         )
 
+    @app.get("/api/self-learning/status")
+    async def api_self_learning_status(market: str = "nse") -> JSONResponse:
+        if market not in {"nse", "bse", "crypto"}:
+            return JSONResponse({"error": "invalid market"}, status_code=400)
+        path = Path(f"data/reports/{market}_self_learning_status.json")
+        if not path.exists():
+            return JSONResponse(
+                {
+                    "market": market,
+                    "status": "waiting_for_first_refresh",
+                    "eligible_mature": 0,
+                    "new_mature_since_last_refresh": 0,
+                    "remaining_for_challenger": 20,
+                    "active_model_changed": False,
+                    "promotion_authorized": False,
+                    "blockers": ["market tracker has not written its first refresh status"],
+                }
+            )
+        return JSONResponse(json.loads(path.read_text(encoding="utf-8")))
+
     @app.get("/api/session-report")
     async def api_session_report(
         market: Literal["nse", "crypto", "bse"] = "nse", on: str | None = None
