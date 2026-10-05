@@ -7,7 +7,7 @@ import asyncio
 import hashlib
 import json
 from collections.abc import AsyncIterator
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any, Literal
 
@@ -42,6 +42,9 @@ CRYPTO_UNIVERSE_STATE = Path(
     "data/m14_m18/crypto_accuracy_dataset/universe_state.json"
 )
 BSE_ACCURACY_QUICK_PROFIT = Path("data/m14_m18/bse_accuracy_quick_profit/state.json")
+ACCURACY_COLLECTION_HEALTH = Path("data/m14_m18/accuracy_collection_health")
+COLLECTOR_MAX_AGE_HOURS = {"nse": 120.0, "bse": 120.0, "crypto": 2.0}
+COLLECTOR_RUNNING_MAX_AGE_HOURS = 6.0
 
 
 def _read_call_log(log_path: Path, limit: int) -> list[dict[str, Any]]:
@@ -112,6 +115,122 @@ def create_app(
                 "min_expectancy_r": gate.min_expectancy_r,
                 "must_beat_random_by_r": gate.must_beat_random_by_r,
                 "research_only": research_only,
+            }
+        )
+
+    @app.get("/api/accuracy-collection-health")
+    async def api_accuracy_collection_health() -> JSONResponse:
+        """Operational freshness for each independent evidence collector.
+
+        A completed collector run is not a performance pass and cannot improve a baseline.
+        """
+
+        markets: dict[str, Any] = {}
+        for market in ("nse", "bse", "crypto"):
+            path = ACCURACY_COLLECTION_HEALTH / f"{market}.json"
+            if not path.exists():
+                markets[market] = {
+                    "status": "not_available",
+                    "integrity_passed": False,
+                    "freshness_passed": False,
+                    "age_hours": None,
+                    "max_age_hours": COLLECTOR_MAX_AGE_HOURS[market],
+                    "run_id": None,
+                    "started_at": None,
+                    "finished_at": None,
+                    "source": None,
+                    "failed_stage": None,
+                    "detail": "collector health is unavailable — not a pass",
+                }
+                continue
+            try:
+                report = json.loads(path.read_text(encoding="utf-8"))
+                if not isinstance(report, dict):
+                    raise ValueError("collector health must be an object")
+                hash_payload = {
+                    key: value for key, value in report.items() if key != "report_sha256"
+                }
+                actual_hash = hashlib.sha256(
+                    json.dumps(
+                        hash_payload,
+                        sort_keys=True,
+                        separators=(",", ":"),
+                        default=str,
+                        allow_nan=False,
+                    ).encode()
+                ).hexdigest()
+                run_identity_passed = True
+                if report.get("status") != "running":
+                    run_path = (
+                        ACCURACY_COLLECTION_HEALTH
+                        / "runs"
+                        / market
+                        / f"{report.get('run_id')}.json"
+                    )
+                    immutable = json.loads(run_path.read_text(encoding="utf-8"))
+                    run_identity_passed = bool(immutable == report)
+                integrity_passed = bool(
+                    report.get("version") == "accuracy-collection-health-v1"
+                    and report.get("market") == market
+                    and report.get("status") in {"running", "completed", "degraded", "failed"}
+                    and report.get("report_sha256") == actual_hash
+                    and run_identity_passed
+                    and report.get("baseline_improved") is False
+                    and report.get("eligible_for_live") is False
+                )
+            except (OSError, TypeError, ValueError, json.JSONDecodeError):
+                report = {}
+                integrity_passed = False
+            reported_status = report.get("status")
+            timestamp_name = "updated_at" if reported_status == "running" else "finished_at"
+            max_age_hours = (
+                COLLECTOR_RUNNING_MAX_AGE_HOURS
+                if reported_status == "running"
+                else COLLECTOR_MAX_AGE_HOURS[market]
+            )
+            try:
+                observed_at = datetime.fromisoformat(str(report[timestamp_name]))
+                if observed_at.tzinfo is None:
+                    observed_at = observed_at.replace(tzinfo=UTC)
+                age_hours = (
+                    datetime.now(UTC) - observed_at.astimezone(UTC)
+                ).total_seconds() / 3600
+            except (KeyError, TypeError, ValueError):
+                age_hours = None
+            freshness_passed = bool(
+                integrity_passed
+                and age_hours is not None
+                and -0.25 <= age_hours <= max_age_hours
+            )
+            status = (
+                str(reported_status)
+                if integrity_passed and freshness_passed
+                else "stale"
+                if integrity_passed
+                else "invalid"
+            )
+            detail = report.get("detail", "collector health is invalid — not a pass")
+            if integrity_passed and not freshness_passed:
+                detail = "collector health is stale — not a pass"
+            markets[market] = {
+                "status": status,
+                "integrity_passed": integrity_passed,
+                "freshness_passed": freshness_passed,
+                "age_hours": age_hours,
+                "max_age_hours": max_age_hours,
+                "run_id": report.get("run_id"),
+                "started_at": report.get("started_at"),
+                "finished_at": report.get("finished_at"),
+                "source": report.get("source"),
+                "failed_stage": report.get("failed_stage"),
+                "detail": detail,
+            }
+        return JSONResponse(
+            {
+                "markets": markets,
+                "baseline_improved": False,
+                "eligible_for_live": False,
+                "detail": "Collection health is operational evidence, never an accuracy pass.",
             }
         )
 
@@ -286,14 +405,29 @@ def create_app(
                 }
             )
 
-        if not CRYPTO_ACCURACY_MECHANISMS.exists():
-            return unavailable("not_run", "crypto C2 mechanism race has not run")
-        try:
-            payload = json.loads(CRYPTO_ACCURACY_MECHANISMS.read_text(encoding="utf-8"))
-            if not isinstance(payload, dict):
-                raise ValueError("crypto C2 state must be an object")
-        except (OSError, ValueError, json.JSONDecodeError):
-            return unavailable("invalid", "crypto C2 mechanism state is unreadable")
+        terminal_path = CRYPTO_ACCURACY_MECHANISMS.parent / "terminal-first-look.json"
+        terminal_verified = False
+        payload: dict[str, Any] | None = None
+        if terminal_path.exists():
+            try:
+                from tradedesk_lab.crypto_accuracy_mechanisms import verify_crypto_terminal
+
+                payload = verify_crypto_terminal(CRYPTO_ACCURACY_MECHANISMS.parent)
+                terminal_verified = True
+            except (ImportError, OSError, KeyError, TypeError, ValueError, json.JSONDecodeError):
+                return unavailable(
+                    "blocked_invalid_terminal_integrity",
+                    "crypto C2 first-look terminal integrity failed — not a pass",
+                )
+        if payload is None:
+            if not CRYPTO_ACCURACY_MECHANISMS.exists():
+                return unavailable("not_run", "crypto C2 mechanism race has not run")
+            try:
+                payload = json.loads(CRYPTO_ACCURACY_MECHANISMS.read_text(encoding="utf-8"))
+                if not isinstance(payload, dict):
+                    raise ValueError("crypto C2 state must be an object")
+            except (OSError, ValueError, json.JSONDecodeError):
+                return unavailable("invalid", "crypto C2 mechanism state is unreadable")
 
         mechanism_rows = payload.get("mechanisms")
         mechanisms = []
@@ -324,10 +458,17 @@ def create_app(
         if source_integrity["passed"] is not True:
             reported_status = "blocked_invalid_source_integrity"
         first_look_latched = bool(
-            source_integrity["passed"] is True
+            terminal_verified
+            and payload.get("first_look_latched") is True
+            and source_integrity["passed"] is True
             and reported_status
             in {"mechanism_race_passed_research_only", "mechanism_race_rejected"}
         )
+        if reported_status in {
+            "mechanism_race_passed_research_only",
+            "mechanism_race_rejected",
+        } and not first_look_latched:
+            reported_status = "blocked_unverified_first_look"
         return JSONResponse(
             {
                 "status": reported_status,

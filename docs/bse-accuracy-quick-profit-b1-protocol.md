@@ -1,10 +1,11 @@
 # BSE B1 protocol: transported quick-profit accuracy test
 
-Status: **preregistered before the first BSE quick-profit replay**
+Status: **v1 preregistered before replay; v2 fail-closed provenance amendment applied
+before any eligible prospective result**
 
 Date: 4 October 2026
 
-Protocol: `bse-accuracy-quick-profit-v1`
+Protocol: `bse-accuracy-quick-profit-v2`
 
 ## Question
 
@@ -65,7 +66,11 @@ gate, never a pass.
 
 - Rows armed before **4 October 2026** are `development_transport` diagnostics only. They
   may show whether the transported mechanism is plausible, but can never qualify it.
-- Only rows armed on or after 4 October 2026 accumulate prospective evidence.
+- Only rows armed on or after 4 October 2026 can accumulate prospective evidence. They
+  must also have a non-empty unique `call_id`, a parseable `logged_at`, and an IST
+  `logged_at` date exactly equal to `armed_on`. Missing, duplicate or later catch-up
+  registration is excluded entirely from prospective evidence and reported through
+  `prospective_registration_exclusions`; it is not relabeled as development or a loss.
 - Missing bars, incomplete outcome windows, invalid OHLC/ATR and untradeable position sizes
   remain counted by status. They are not silently converted to losses or removed from the
   audit, and they never pass a gate.
@@ -90,6 +95,16 @@ percentage is high. Passing later means `qualified_research_only`, not live elig
 The state always carries `live=false`, `baseline_improved=false` and
 `promotion_allowed=false`; an independent review and a separately frozen promotion cohort
 would be required to change those claims.
+
+## R2 provenance amendment
+
+The original v1 protocol did not state the same-session durable-registration condition.
+R2 discovered that a catch-up scan can write an old `armed_on` row days later, after its
+next-session open is knowable. Because no eligible prospective B1 result existed, the
+protocol was versioned to v2 before a first look rather than allowing those rows into the
+cohort. Geometry, four candidate rules, control, sample size, 80%/70% accuracy gates,
+economics and terminal decision rule are unchanged. The forward sampler now uses a stable
+SHA-256-derived seed and enforces the per-rule/session cap across reruns.
 
 ## Dashboard-ready state
 

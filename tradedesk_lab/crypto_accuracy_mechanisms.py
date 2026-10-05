@@ -9,7 +9,11 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import os
 import shutil
+import time
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
@@ -38,6 +42,11 @@ from tradedesk_lab.crypto_accuracy_dataset import (
 
 VERSION = "crypto-accuracy-mechanisms-v1"
 DEFAULT_OUTPUT = OUTPUT / "crypto_accuracy_mechanisms"
+TERMINAL_VERSION = "crypto-accuracy-mechanisms-first-look-v1"
+TERMINAL_FILE = "terminal-first-look.json"
+TERMINAL_STATUSES = frozenset(
+    {"mechanism_race_rejected", "mechanism_race_passed_research_only"}
+)
 BTC_CODE = "CDX_BTCINR"
 MECHANISM_IDS = (
     "cross_sectional_momentum",
@@ -880,10 +889,182 @@ def _blocked_state(status: str, detail: str, errors: list[str]) -> dict[str, Any
             for name in MECHANISM_IDS
         ],
         "source_integrity": {"passed": False, "errors": errors},
+        "first_look_latched": False,
         "baseline_improved": False,
         "eligible_for_live": False,
         "detail": detail,
     }
+
+
+def _verified_terminal(output: Path) -> dict[str, Any]:
+    """Return the immutable first C2 decision or fail closed on any mismatch."""
+
+    terminal_path = output / TERMINAL_FILE
+    try:
+        envelope = json.loads(terminal_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        raise ValueError("crypto C2 terminal artifact is unreadable") from exc
+    report = envelope.get("report") if isinstance(envelope, dict) else None
+    if not isinstance(report, dict):
+        raise ValueError("crypto C2 terminal report is missing")
+    errors: list[str] = []
+    if envelope.get("version") != TERMINAL_VERSION:
+        errors.append("terminal_version")
+    if envelope.get("report_sha256") != _json_hash(report):
+        errors.append("report_sha256")
+    if report.get("version") != VERSION:
+        errors.append("report_version")
+    if report.get("status") not in TERMINAL_STATUSES:
+        errors.append("status")
+    if report.get("first_look_latched") is not True:
+        errors.append("first_look_latched")
+    if report.get("baseline_improved") is not False:
+        errors.append("baseline_improved")
+    if report.get("eligible_for_live") is not False:
+        errors.append("eligible_for_live")
+    if report.get("evidence_scope") != "crypto_only_never_pooled_with_nse_or_bse":
+        errors.append("evidence_scope")
+    integrity = report.get("source_integrity")
+    if not isinstance(integrity, dict) or integrity.get("passed") is not True:
+        errors.append("source_integrity")
+    counts = report.get("trial_counts")
+    if not isinstance(counts, dict):
+        errors.append("trial_counts")
+    else:
+        registered = counts.get("registered")
+        evaluated = counts.get("evaluated")
+        passed = counts.get("passed")
+        rejected = counts.get("rejected")
+        incomplete = counts.get("incomplete")
+        if (registered, evaluated, incomplete) != (12, 12, 0):
+            errors.append("all_trials_evaluated")
+        if not isinstance(passed, int) or not isinstance(rejected, int) or passed + rejected != 12:
+            errors.append("trial_decisions")
+        elif report.get("status") == "mechanism_race_rejected" and passed != 0:
+            errors.append("rejected_status")
+        elif report.get("status") == "mechanism_race_passed_research_only" and passed < 1:
+            errors.append("passed_status")
+        elif (
+            report.get("status") == "mechanism_race_passed_research_only"
+            and not isinstance(report.get("best_trial"), dict)
+        ):
+            errors.append("best_trial")
+    readiness = report.get("c1_readiness")
+    if not isinstance(readiness, dict):
+        errors.append("c1_readiness")
+    else:
+        if readiness.get("development_window_mature") is not True:
+            errors.append("development_window_mature")
+        minimum_sessions = readiness.get("minimum_pair_sessions")
+        required_sessions = readiness.get("required_pair_sessions")
+        if (
+            not isinstance(minimum_sessions, int)
+            or not isinstance(required_sessions, int)
+            or minimum_sessions < required_sessions
+        ):
+            errors.append("pair_sessions")
+        ready_pairs = readiness.get("ready_pairs")
+        required_pairs = readiness.get("required_pairs")
+        if (
+            not isinstance(ready_pairs, int)
+            or not isinstance(required_pairs, int)
+            or required_pairs < 1
+            or ready_pairs != required_pairs
+        ):
+            errors.append("ready_pairs")
+    run_id = report.get("id")
+    if not isinstance(run_id, str) or not run_id:
+        errors.append("run_id")
+    else:
+        manifest_path = output / "runs" / run_id / "manifest.json"
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError, json.JSONDecodeError):
+            errors.append("run_manifest")
+        else:
+            if _json_hash(manifest) != _json_hash(report):
+                errors.append("terminal_manifest_identity")
+        verification = verify_crypto_accuracy_mechanisms(output, run_id=run_id)
+        if verification.get("passed") is not True:
+            errors.append("run_integrity")
+    if errors:
+        raise ValueError(
+            "crypto C2 terminal artifact failed verification: " + ", ".join(errors)
+        )
+    return report
+
+
+def verify_crypto_terminal(output: Path = DEFAULT_OUTPUT) -> dict[str, Any]:
+    """Public fail-closed verifier for the immutable first C2 decision."""
+
+    try:
+        return _verified_terminal(Path(output))
+    except ValueError:
+        raise
+    except Exception as exc:
+        raise ValueError("crypto C2 terminal artifact failed verification") from exc
+
+
+@contextmanager
+def _terminal_publish_lock(output: Path) -> Iterator[None]:
+    """Serialize atomic terminal publication across manual and scheduled processes."""
+
+    path = output / ".terminal-first-look.lock"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a+b") as stream:
+        stream.seek(0, os.SEEK_END)
+        if stream.tell() == 0:
+            stream.write(b"0")
+            stream.flush()
+        stream.seek(0)
+        if os.name == "nt":
+            import msvcrt
+
+            while True:
+                try:
+                    msvcrt.locking(stream.fileno(), msvcrt.LK_NBLCK, 1)
+                    break
+                except OSError:
+                    time.sleep(0.05)
+        else:
+            import fcntl
+
+            fcntl.flock(stream.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            stream.seek(0)
+            if os.name == "nt":
+                msvcrt.locking(stream.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                fcntl.flock(stream.fileno(), fcntl.LOCK_UN)
+
+
+def _latch_terminal(output: Path, report: dict[str, Any]) -> dict[str, Any]:
+    """Create the first terminal C2 envelope exactly once."""
+
+    output.mkdir(parents=True, exist_ok=True)
+    terminal_path = output / TERMINAL_FILE
+    envelope = {
+        "version": TERMINAL_VERSION,
+        "latched_at": report.get("created_at"),
+        "report_sha256": _json_hash(report),
+        "report": report,
+    }
+    with _terminal_publish_lock(output):
+        if terminal_path.exists():
+            return _verified_terminal(output)
+        temporary = output / f".{TERMINAL_FILE}.{uuid4().hex}.tmp"
+        try:
+            with temporary.open("x", encoding="utf-8") as stream:
+                json.dump(envelope, stream, indent=2, sort_keys=True)
+                stream.write("\n")
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temporary, terminal_path)
+        finally:
+            temporary.unlink(missing_ok=True)
+    return _verified_terminal(output)
 
 
 def run_crypto_accuracy_mechanisms(
@@ -895,23 +1076,10 @@ def run_crypto_accuracy_mechanisms(
 ) -> dict[str, Any]:
     """Materialize C2, or publish an honest collecting/blocked state."""
     c1_output, c1_db_path, output = Path(c1_output), Path(c1_db_path), Path(output)
-    existing_state_path = output / "state.json"
-    if existing_state_path.exists():
-        try:
-            existing_state = json.loads(existing_state_path.read_text(encoding="utf-8"))
-        except (OSError, ValueError, json.JSONDecodeError):
-            existing_state = None
-        if isinstance(existing_state, dict) and existing_state.get("status") in {
-            "mechanism_race_rejected",
-            "mechanism_race_passed_research_only",
-        }:
-            existing_id = existing_state.get("id")
-            frozen_check = verify_crypto_accuracy_mechanisms(
-                output, run_id=str(existing_id) if existing_id else None
-            )
-            if not frozen_check["passed"]:
-                raise ValueError("frozen final C2 result failed integrity verification")
-            return existing_state
+    if (output / TERMINAL_FILE).exists():
+        terminal = _verified_terminal(output)
+        write_json(output / "state.json", terminal)
+        return terminal
     latest_path = c1_output / "latest.json"
     if not latest_path.exists():
         state = _blocked_state(
@@ -1001,6 +1169,8 @@ def run_crypto_accuracy_mechanisms(
         if not verification_c2["passed"]:
             raise ValueError("existing C2 artifact failed integrity verification")
         state = json.loads((target / "manifest.json").read_text(encoding="utf-8"))
+        if state.get("status") in TERMINAL_STATUSES:
+            state = _latch_terminal(output, state)
         write_json(output / "state.json", state)
         write_json(output / "latest.json", {"id": run_id, "path": str(target / "manifest.json")})
         return state
@@ -1140,6 +1310,7 @@ def run_crypto_accuracy_mechanisms(
         },
         "source_integrity": {"passed": True, "errors": []},
         "evidence_scope": "crypto_only_never_pooled_with_nse_or_bse",
+        "first_look_latched": status in TERMINAL_STATUSES,
         "baseline_improved": False,
         "eligible_for_live": False,
         "next_checkpoint": (
@@ -1160,6 +1331,8 @@ def run_crypto_accuracy_mechanisms(
     except Exception:
         shutil.rmtree(temporary, ignore_errors=True)
         raise
+    if status in TERMINAL_STATUSES:
+        state = _latch_terminal(output, state)
     write_json(output / "state.json", state)
     write_json(output / "latest.json", {"id": run_id, "path": str(target / "manifest.json")})
     return state
@@ -1188,6 +1361,14 @@ def verify_crypto_accuracy_mechanisms(
         errors.append("C2 cannot improve the canonical baseline")
     if manifest.get("eligible_for_live") is not False:
         errors.append("C2 cannot grant live authority")
+    terminal_status = manifest.get("status") in TERMINAL_STATUSES
+    if bool(manifest.get("first_look_latched")) != terminal_status:
+        errors.append("C2 first-look state is inconsistent")
+    counts = manifest.get("trial_counts") or {}
+    if terminal_status and (
+        counts.get("registered"), counts.get("evaluated"), counts.get("incomplete")
+    ) != (12, 12, 0):
+        errors.append("C2 terminal result is not a complete 12-trial first look")
     for name, artifact in (manifest.get("artifacts") or {}).items():
         path = Path(artifact.get("path", ""))
         if not path.exists():

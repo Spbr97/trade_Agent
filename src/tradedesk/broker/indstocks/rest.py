@@ -133,7 +133,7 @@ class IndstocksClient:
 
             if status in (401, 403) and not refreshed:
                 # TokenException: regenerate once, then retry the same request.
-                await self.tokens.refresh()
+                await self.tokens.refresh(rejected_token=token)
                 refreshed = True
                 continue
             retryable = status == 429 or status >= 500 or error_type in _RETRYABLE_TYPES

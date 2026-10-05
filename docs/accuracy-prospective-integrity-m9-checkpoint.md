@@ -11,6 +11,12 @@ model, features, threshold, top-k, geometry, predictions, outcomes, or activatio
   unique signal identities, source-watchlist hashes and the frozen selection rule.
 - [x] Detect a post-activation watchlist containing eligible setup candidates that the
   M8 collector did not record.
+- [x] Derive every expected post-activation NSE session from stored benchmark bars. An
+  entirely absent watchlist now fails integrity as `missing_watchlist_session`; a present
+  zero-candidate watchlist remains a valid zero-call session.
+- [x] Verify that a watchlist was durably generated before M8's frozen next-entry deadline.
+  A late catch-up—even with zero candidates—fails as `late_watchlist_registration` and
+  cannot masquerade as a valid zero-call session.
 - [x] Report observed, evaluated, selected and zero-selected sessions plus selected-session
   coverage. A no-call session remains visible rather than disappearing from the denominator.
 - [x] Add deterministic session-cluster and ISO-week-cluster bootstrap lower bounds. These
@@ -28,8 +34,17 @@ The cohort still has zero post-activation calls. Therefore accuracy, clustered u
 and stress results are correctly unavailable. This checkpoint improves the trustworthiness
 of future evidence; it does not claim or manufacture an accuracy improvement.
 
-Initial monitor run: 2026-10-03 23:58 IST  
-Integrity: `healthy` (no failures)  
-Audit events: 1 activation, 0 predictions, 0 resolutions  
-Audit head SHA-256: `348d65fe0721a76877487d3545bb745660ba9e9074caf2f4055eae81ad616316`  
+Initial monitor run: 2026-10-03 23:58 IST (historical seven-check implementation)
+
+Integrity at that initial run: `healthy` (no failures)
+
+Audit events: 1 activation, 0 predictions, 0 resolutions
+
+Audit head SHA-256: `348d65fe0721a76877487d3545bb745660ba9e9074caf2f4055eae81ad616316`
+
 End-to-end NSE tracker result: M8 collecting, M9 healthy, review-ready false.
+
+R2 expands the integrity report to nine checks. The benchmark comparison detects a
+missing whole watchlist session after benchmark data exists; it cannot prove that the
+benchmark load itself ran. The separate R2 collector-health receipt covers that operational
+dependency. No post-R2 `healthy` claim is made until a new strict pipeline run produces it.

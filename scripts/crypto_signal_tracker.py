@@ -23,6 +23,7 @@ outcomes resolve (rewrite-the-file style, small enough not to need anything fanc
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import json
 import sys
@@ -65,7 +66,8 @@ UNIVERSE_REPORT = Path("data/reports/crypto_universe_latest.json")
 MAX_HOLD = 10  # sessions -> calendar days for a 24/7 market; matches config/risk.yaml
 
 
-def main() -> None:
+def main(*, strict_accuracy_refresh: bool = False) -> None:
+    accuracy_failures: list[str] = []
     settings = load_config(".")
     market = crypto_market(settings)
     with CandleStore(DB) as store:
@@ -123,7 +125,10 @@ def main() -> None:
         # here would arm signals off a not-yet-final close.
         today = store.last_closed_ts(reference, Interval.D1)
         if today is None:
-            print("no fully-closed bar for the watchlist yet; aborting")
+            detail = "no fully-closed bar for the watchlist yet; aborting"
+            print(detail)
+            if strict_accuracy_refresh:
+                raise RuntimeError(detail)
             return
         day = today.date()
 
@@ -191,6 +196,13 @@ def main() -> None:
             print(f"flagged for review: {', '.join(flagged)}")
         if universe_history_error:
             print(f"Crypto universe history degraded: {universe_history_error}")
+            accuracy_failures.append(f"universe history: {universe_history_error}")
+        if fetch_errors:
+            accuracy_failures.append(f"daily candle refresh errors: {fetch_errors}")
+        if closed_on_day != len(universe):
+            accuracy_failures.append(
+                f"closed-session coverage: {closed_on_day}/{len(universe)}"
+            )
 
     # Independent forward-only accuracy control.  It reads the saved crypto log and
     # candles after the established tracker closes them; failures cannot stop tracking.
@@ -206,6 +218,7 @@ def main() -> None:
         )
     except Exception as exc:
         print(f"Crypto timing control degraded: {type(exc).__name__}: {exc}")
+        accuracy_failures.append(f"timing: {type(exc).__name__}: {exc}")
 
 
     try:
@@ -217,11 +230,22 @@ def main() -> None:
             f"C1 status={accuracy['c1']['status']}, "
             f"C2 status={accuracy['c2']['status']}"
         )
+        if str(accuracy["c2"].get("status", "")).startswith("blocked"):
+            accuracy_failures.append(
+                f"C2 status: {accuracy['c2'].get('status')}"
+            )
     except Exception as exc:
         # The point-in-time collection above is already durable. Keep the
         # tracker successful and let the next run retry these derived outputs.
         print(f"Crypto accuracy evidence degraded: {type(exc).__name__}: {exc}")
+        accuracy_failures.append(f"C1/C2: {type(exc).__name__}: {exc}")
+
+    if strict_accuracy_refresh and accuracy_failures:
+        raise RuntimeError("; ".join(accuracy_failures))
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--strict-accuracy-refresh", action="store_true")
+    arguments = parser.parse_args()
+    main(strict_accuracy_refresh=arguments.strict_accuracy_refresh)

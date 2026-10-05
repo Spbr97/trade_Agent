@@ -31,6 +31,7 @@ def _compact(state: dict) -> dict:
             "best_trial",
             "mechanisms",
             "source_integrity",
+            "first_look_latched",
             "baseline_improved",
             "eligible_for_live",
             "detail",

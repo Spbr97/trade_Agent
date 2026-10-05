@@ -13,8 +13,9 @@ This checkpoint adds the missing atomic review over the four fresh-evidence stre
 - M8: at least 100 resolved forward-only calls over 30 active sessions, at least 80%
   strict accuracy, at least 70% Wilson lower bound, at least 70% successful sessions,
   and positive after-cost expectancy;
-- M9: source/model integrity, positive doubled-slippage expectancy, and session- and
-  week-cluster lower bounds of at least 70%;
+- M9: source/model integrity including no missing whole benchmark-expected watchlist session
+  and no late catch-up after the frozen entry deadline, positive doubled-slippage expectancy,
+  and session- and week-cluster lower bounds of at least 70%;
 - M10: matched same-session random-stock selection control with at least +0.10R advantage
   and one-sided empirical p no greater than 0.05; and
 - M11: same-stock random-future-session timing control with the same +0.10R and p-value

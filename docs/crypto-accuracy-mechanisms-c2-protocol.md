@@ -129,6 +129,24 @@ Before maturity, every unavailable metric is represented as unavailable with a n
 value. It is never displayed or interpreted as zero, failure, success or pass. A
 right-censored label is pending evidence, not a losing call.
 
+## Immutable terminal first look
+
+The first complete 12-trial result is published once as `terminal-first-look.json` under
+envelope version `crypto-accuracy-mechanisms-first-look-v1`. Terminal authority requires:
+
+- a canonical report hash and exact identity with its immutable run manifest;
+- exactly 12 registered, 12 evaluated and zero incomplete trials, with pass/reject counts
+  consistent with the reported status and a best trial present on a pass;
+- a mature C1 development window, every required pair ready, crypto-only evidence scope,
+  and `source_integrity.passed=true`;
+- verification of the C2 contract, implementation and output artifacts plus the pinned C1
+  manifest, daily and label sources; and
+- hard-false baseline and live authority.
+
+Publication is serialized and atomic: a complete temporary envelope is flushed before it
+replaces the final path. A corrupt, partial, mismatched or missing dependency fails closed.
+Mutable `state.json` is never terminal authority and cannot reopen a completed first look.
+
 ## Frozen pass gate
 
 A trial passes only if every condition below is true:

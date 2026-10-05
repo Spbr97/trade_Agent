@@ -15,9 +15,11 @@ at most two calls per arming session.
 1. **M8 accuracy:** 100 resolved calls, 30 active sessions, at least 80% strict success,
    at least 70% Wilson lower bound, at least 70% successful-session rate, and positive
    mean after-cost R.
-2. **M9 integrity and stress:** frozen model/source integrity, positive doubled-slippage
-   expectancy over at least 100 resolved calls, and session- and week-cluster 95% lower
-   bounds of at least 70%.
+2. **M9 integrity and stress:** frozen model/source integrity, no absent whole watchlist for
+   any post-activation session present in stored benchmark bars, no watchlist generated
+   after M8's frozen next-entry deadline, positive doubled-slippage expectancy over at least
+   100 resolved calls, and session- and week-cluster 95% lower bounds of at least 70%. A
+   timely present zero-candidate watchlist remains a valid zero-call day.
 3. **M10 selection control:** at least 100 paired calls and 30 sessions, at least +0.10R
    over 1,000 same-session matched-random stock selections, and one-sided empirical
    p <= 0.05.

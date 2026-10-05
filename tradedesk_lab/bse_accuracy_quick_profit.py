@@ -148,12 +148,13 @@ FROZEN_RULES = (CONTROL_RULE, *CANDIDATE_RULES)
 class BseQuickProfitProtocol:
     """One transported geometry and the complete fail-closed evidence contract."""
 
-    version: str = "bse-accuracy-quick-profit-v1"
+    version: str = "bse-accuracy-quick-profit-v2"
     state_schema_version: str = "bse-accuracy-quick-profit-state-v1"
     market: str = "bse"
     source_log: str = "data/reports/research_calls_bse.jsonl"
     source_db: str = "data/bse.duckdb"
     activation_date: str = "2026-10-04"
+    registration_timing: str = "logged_on_arming_session"
     provenance: str = "NSE M6 run 20261003-192811 development diagnostic"
     entry_mode: str = "next_session_open"
     stop_atr: float = 1.0
@@ -207,6 +208,13 @@ def _source_rows(path: Path) -> list[dict[str, Any]]:
             if isinstance(value, dict):
                 rows.append(value)
     return rows
+
+
+def _safe_date(value: Any) -> date:
+    try:
+        return date.fromisoformat(str(value))
+    except (TypeError, ValueError):
+        return date.min
 
 
 def _date_index(bars: pd.DataFrame) -> np.ndarray[Any, np.dtype[np.object_]]:
@@ -386,28 +394,51 @@ def _cohort_rows(
     source_rows: list[dict[str, Any]], *, prospective: bool, protocol: BseQuickProfitProtocol
 ) -> list[dict[str, Any]]:
     output = []
+    call_id_counts = Counter(
+        str(row.get("call_id", "")) for row in source_rows if str(row.get("call_id", ""))
+    )
     for row in source_rows:
         if not str(row.get("scrip_code", "")).startswith("BSE_"):
             continue
         if str(row.get("rule", "")) not in FROZEN_RULES:
             continue
+        call_id = str(row.get("call_id", ""))
+        if not call_id or call_id_counts[call_id] != 1:
+            continue
         try:
             armed_on = date.fromisoformat(str(row["armed_on"]))
         except (KeyError, TypeError, ValueError):
             continue
-        if (armed_on >= protocol.activation_on) == prospective:
+        if prospective:
+            if armed_on < protocol.activation_on:
+                continue
+            try:
+                logged_at = datetime.fromisoformat(str(row["logged_at"]))
+            except (KeyError, TypeError, ValueError):
+                continue
+            # Conservative forward provenance: B1 accepts only calls durably logged on
+            # their arming session.  A catch-up replay on a later date may already know
+            # the next-session open and can never be relabeled as prospective evidence.
+            logged_on = logged_at.astimezone(IST).date() if logged_at.tzinfo else logged_at.date()
+            if logged_on != armed_on:
+                continue
+            output.append(row)
+        elif armed_on < protocol.activation_on:
             output.append(row)
     return output
 
 
 def _cohort_records(
-    records: list[QuickProfitRecord], *, prospective: bool, protocol: BseQuickProfitProtocol
+    records: list[QuickProfitRecord], source_rows: list[dict[str, Any]]
 ) -> list[QuickProfitRecord]:
-    return [
-        row
-        for row in records
-        if row.armed_on != date.min and (row.armed_on >= protocol.activation_on) == prospective
-    ]
+    source_counts = Counter(str(row.get("call_id", "")) for row in source_rows)
+    record_counts = Counter(row.call_id for row in records)
+    allowed = {
+        call_id
+        for call_id, count in source_counts.items()
+        if call_id and count == 1 and record_counts[call_id] == 1
+    }
+    return [row for row in records if row.call_id in allowed]
 
 
 def _trial_summary(
@@ -677,8 +708,8 @@ def run_bse_quick_profit(
 
     development_rows = _cohort_rows(source_rows, prospective=False, protocol=protocol)
     prospective_rows = _cohort_rows(source_rows, prospective=True, protocol=protocol)
-    development_records = _cohort_records(records, prospective=False, protocol=protocol)
-    prospective_records = _cohort_records(records, prospective=True, protocol=protocol)
+    development_records = _cohort_records(records, development_rows)
+    prospective_records = _cohort_records(records, prospective_rows)
     development = summarize_cohort(
         development_records,
         development_rows,
@@ -692,6 +723,14 @@ def run_bse_quick_profit(
         development_only=False,
     )
     qualified = prospective["qualified_rules"]
+    prospective_ids = {str(row.get("call_id", "")) for row in prospective_rows}
+    prospective_registration_exclusions = sum(
+        str(row.get("scrip_code", "")).startswith("BSE_")
+        and str(row.get("rule", "")) in FROZEN_RULES
+        and _safe_date(row.get("armed_on")) >= protocol.activation_on
+        and str(row.get("call_id", "")) not in prospective_ids
+        for row in source_rows
+    )
     all_trials_decided = all(
         row["verdict"] in {"rejected", "qualified_research_only"}
         for row in prospective["trials"]
@@ -735,6 +774,8 @@ def run_bse_quick_profit(
                 and str(row.get("rule", "")) in FROZEN_RULES
                 for row in source_rows
             ),
+            "prospective_registration_contract": "logged_on_arming_session",
+            "prospective_registration_exclusions": prospective_registration_exclusions,
         },
         "readiness": {
             "activation_date": protocol.activation_date,

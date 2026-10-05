@@ -205,6 +205,8 @@
         <div class="card"><div class="label">Prospective sessions</div><div class="value" id="bse-b1-sessions">-</div></div>
         <div class="card"><div class="label">Sample-ready rules</div><div class="value" id="bse-b1-ready">-</div></div>
         <div class="card"><div class="label">First-look decision</div><div class="value" id="bse-b1-first-look">-</div></div>
+        <div class="card"><div class="label">Collector health</div><div class="value" id="bse-collector-health">-</div></div>
+        <div class="card"><div class="label">Collected source session</div><div class="value" id="bse-collector-session">-</div></div>
         <div class="card"><div class="label">Prospective accuracy</div><div class="value" id="bse-b1-accuracy">-</div></div>
         <div class="card"><div class="label">Development-only best</div><div class="value" id="bse-b1-development-best">-</div></div>
         <div class="card"><div class="label">Development-only net R</div><div class="value" id="bse-b1-development-netr">-</div></div>
@@ -431,6 +433,8 @@
       <div class="card"><div class="label">Evaluated trials</div><div class="value" id="crypto-mechanisms-evaluated">-</div></div>
       <div class="card"><div class="label">Passing trials</div><div class="value" id="crypto-mechanisms-passing">-</div></div>
       <div class="card"><div class="label">First-look decision</div><div class="value" id="crypto-mechanisms-first-look">-</div></div>
+      <div class="card"><div class="label">Collector health</div><div class="value" id="crypto-collector-health">-</div></div>
+      <div class="card"><div class="label">Collected source session</div><div class="value" id="crypto-collector-session">-</div></div>
       <div class="card"><div class="label">Best observed accuracy</div><div class="value" id="crypto-mechanisms-accuracy">-</div></div>
       <div class="card"><div class="label">Best Wilson lower</div><div class="value" id="crypto-mechanisms-wilson">-</div></div>
     </div>
@@ -764,6 +768,8 @@
       <div class="card"><div class="label">Prospective qualification</div><div class="value" id="nse-qualification-status">-</div></div>
       <div class="card"><div class="label">Ready components</div><div class="value" id="nse-qualification-ready">-</div></div>
       <div class="card"><div class="label">First-look decision</div><div class="value" id="nse-qualification-first-look">-</div></div>
+      <div class="card"><div class="label">Collector health</div><div class="value" id="nse-collector-health">-</div></div>
+      <div class="card"><div class="label">Collected source session</div><div class="value" id="nse-collector-session">-</div></div>
       <div class="card"><div class="label">Canonical baseline</div><div class="value" id="nse-qualification-baseline">-</div></div>
       <div class="card"><div class="label">Locked challenger · historical-only</div><div class="value" id="nse-qualification-challenger">-</div></div>
       <div class="card"><div class="label">Fresh prospective accuracy</div><div class="value" id="nse-qualification-fresh">-</div></div>
@@ -1275,6 +1281,35 @@ async function loadAccuracyPolicy() {
 }
 loadAccuracyPolicy();
 setInterval(loadAccuracyPolicy, 60000);
+
+async function loadAccuracyCollectionHealth() {
+  const unavailable = 'not available — not a pass';
+  try {
+    const response = await fetch('/api/accuracy-collection-health');
+    if (!response.ok) throw new Error('collection health unavailable');
+    const payload = await response.json();
+    const markets = payload.markets || {};
+    for (const market of ['nse', 'bse', 'crypto']) {
+      const value = markets[market] || {};
+      const valid = value.integrity_passed === true && value.freshness_passed === true;
+      const status = valid
+        ? String(value.status || 'invalid').replaceAll('_', ' ')
+        : unavailable;
+      const source = value.source || {};
+      $(`${market}-collector-health`).textContent = status;
+      $(`${market}-collector-session`).textContent = valid && source.available === true && source.session
+        ? source.session
+        : unavailable;
+    }
+  } catch (e) {
+    for (const market of ['nse', 'bse', 'crypto']) {
+      $(`${market}-collector-health`).textContent = unavailable;
+      $(`${market}-collector-session`).textContent = unavailable;
+    }
+  }
+}
+loadAccuracyCollectionHealth();
+setInterval(loadAccuracyCollectionHealth, 60000);
 
 async function loadProspectiveQualification() {
   const unavailable = 'not available — not a pass';

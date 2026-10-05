@@ -81,3 +81,21 @@ Do not add a new selector while these registered cohorts are immature. Let the s
 runs collect fresh sessions. At each first mature look, accept only the already-frozen
 accuracy, Wilson-confidence, session-consistency, after-cost, stress and matched-control
 gates. A rejection closes that version; it does not authorize retuning on the same cohort.
+
+## R2 audit correction — 5 October 2026
+
+R1 installed the refresh hooks and first-look behavior, but a later end-to-end operations
+audit found that this did **not** yet guarantee every unattended dependency completed:
+
+- independent NSE/BSE catch-up tasks could collide while generating the shared INDstocks
+  token;
+- the scheduled BSE tracker ran before the BSE load/scan task, and its derived B1 import
+  could fail after the base research work had already succeeded;
+- the crypto terminal decision still depended on mutable `state.json` rather than an
+  exclusive immutable terminal envelope; and
+- the real refreshes listed above describe those observed invocations, not proof that every
+  later unattended run completed its full dependency chain.
+
+R2 closes those scheduler, provenance, strict-exit and terminal-integrity gaps. See the
+[R2 collector-integrity checkpoint](accuracy-collector-integrity-r2-checkpoint.md). This
+correction does not change any R1 result, baseline, live flag or promotion authority.

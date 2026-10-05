@@ -521,6 +521,12 @@ fresh evidence; missed targets remain visible.
   exactly one terminal decision at the first mature M8–M11 cohort; later samples cannot
   turn a rejection into a pass. The current 0-call bundle remains collecting and is not
   latched. See the [R1 checkpoint](accuracy-evidence-refresh-r1-checkpoint.md).
+- [x] Add R2 collector integrity without changing a model or baseline. Serialize equity
+  pipelines and token generation, enforce dependency order and strict nonzero failures,
+  detect missing whole NSE sessions, exclude late BSE registrations, atomically latch the
+  verified crypto first look, and expose separate freshness-limited NSE/BSE/crypto health.
+  Collector completion is operational evidence only. See the
+  [R2 checkpoint](accuracy-collector-integrity-r2-checkpoint.md).
 
 For each completed item, attach its artifact/run identifier, date, sample size and
 pass/fail result. Update this checklist at checkpoints. The 70–80% objective remains
@@ -540,7 +546,8 @@ the NSE M1–M11 sequence, and NSE cannot borrow crypto evidence.
 The crypto C1 prospective timing foundation is also active. It excludes all 54 existing
 live-tagged calls, registers only later unresolved calls, evaluates each setup independently
 against 1,000 same-coin random future timings, and applies crypto-specific slippage,
-fee/GST/TDS economics. Current evidence is empty and collecting; see the
+fee/GST/TDS economics. Current evidence has seven registered calls across two setups but
+zero paired outcomes, so it remains collecting with no percentage; see the
 [crypto C1 timing checkpoint](crypto-accuracy-timing-c1-checkpoint.md).
 
 The C1 all-pair dataset and label implementation is also complete. It records exact
@@ -548,12 +555,13 @@ append-only active/delisted universe snapshots without inferring membership befo
 activation; freezes only fully closed candles with explicit missing, stale and invalid
 states; and applies three preregistered ATR quick-profit geometries with causal next-open,
 gap and stop-wins-ties rules. Gross, after-cost and reporting-only VDA after-tax R remain
-separate. The first accepted verified freeze
-(`2026-10-03-095a9bcdc03d-f991d060-394b1f39`) contains 339
-pairs, 355,278 raw closed rows and 354,402 canonical daily rows after removing 876 known
+separate. The latest accepted verified freeze
+(`2026-10-04-9a42a7f4d9f8-f991d060-394b1f39`) contains 339
+pairs, 355,617 raw closed rows and 354,741 canonical daily rows after removing 876 known
 duplicate IST-day fillers, plus 7,058 explicit absent sessions and 673 invalid OHLCV rows.
-Three exact universe observations now cover one session per required pair; 0 of 337 pairs
-meet the 30-session gate and all 1,011 geometry rows are excluded rather than resolved.
+Exact observations now cover two sessions per required pair; 0 of 337 pairs meet the
+30-session gate. Of 2,022 geometry rows, 1,014 are excluded, 1,008 are pending and none is
+resolved.
 Evidence is collecting and no baseline improvement is claimed. See the
 [C1 dataset checkpoint](crypto-accuracy-dataset-c1-checkpoint.md) and
 [frozen dataset protocol](crypto-accuracy-dataset-c1-protocol.md).
@@ -579,11 +587,12 @@ research-only, leaves `baseline_improved` and live eligibility false, and author
 C3. See the [C2 checkpoint](crypto-accuracy-mechanisms-c2-checkpoint.md) and
 [frozen C2 protocol](crypto-accuracy-mechanisms-c2-protocol.md).
 
-C1 and C2 now refresh automatically after the established daily crypto tracker. C2 is
-skipped on any C1 integrity failure, and a refresh failure cannot erase the point-in-time
-universe observation or stop the base tracker. The first real automated refresh remains
-0/12 evaluated and non-terminal; see the
-[R1 checkpoint](accuracy-evidence-refresh-r1-checkpoint.md).
+C1 and C2 now refresh through the ordered strict crypto pipeline after the established
+daily tracker work. C2 is skipped on any C1 integrity failure, and terminal authority
+requires the verified R2 immutable envelope rather than mutable state. The first real
+automated refresh remains 0/12 evaluated and non-terminal; see the
+[R1 checkpoint](accuracy-evidence-refresh-r1-checkpoint.md) and
+[R2 checkpoint](accuracy-collector-integrity-r2-checkpoint.md).
 
 ## Parallel BSE accuracy program
 
@@ -603,7 +612,10 @@ promotion authority all false. See the
 [BSE B1 checkpoint](bse-accuracy-quick-profit-b1-checkpoint.md) and
 [frozen B1 protocol](bse-accuracy-quick-profit-b1-protocol.md).
 
-B1 now refreshes automatically after the BSE forward-research tracker and writes runtime
-state outside tracked documentation. Its first mature `research_qualified` or `rejected`
-result is terminal and hash-verified, preventing optional stopping; see the
-[R1 checkpoint](accuracy-evidence-refresh-r1-checkpoint.md).
+B1 now runs in the ordered load → scan → signal-tracker → research/B1 pipeline and writes
+runtime state outside tracked documentation. Strict failure reaches Task Scheduler, and
+late/missing/duplicate catch-up registration is excluded from prospective evidence. Its
+first mature `research_qualified` or `rejected` result is terminal and hash-verified,
+preventing optional stopping; see the
+[R1 checkpoint](accuracy-evidence-refresh-r1-checkpoint.md) and
+[R2 checkpoint](accuracy-collector-integrity-r2-checkpoint.md).

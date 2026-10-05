@@ -41,7 +41,7 @@ was designed to prevent.
 | Registered trials | 12 |
 | Evaluated trials | 0 |
 | Passing trials | 0 |
-| C1 minimum point-in-time sessions per required pair | 1 of 30 |
+| C1 minimum point-in-time sessions per required pair | 2 of 30 |
 | Required pairs at the C1 session gate | 0 of 337 |
 | Mature C1 geometry labels | 0 |
 | Accuracy / Wilson lower bound | Not available |
@@ -76,3 +76,11 @@ R1 now refreshes C1 and then C2 automatically after the daily crypto tracker. C2
 called when C1 source integrity is missing or false, and a derived refresh failure cannot
 undo the recorded point-in-time universe observation. See the
 [R1 evidence-refresh checkpoint](accuracy-evidence-refresh-r1-checkpoint.md).
+
+R2 corrects the earlier implication that mutable terminal state was sufficient. C2 now
+uses an exclusive, atomically published `terminal-first-look.json` bound to the exact run
+manifest, all C2 artifacts, pinned C1 sources, complete 12/12 trial counts and mature pair
+readiness. The dashboard consumes the same authoritative verifier. Current evidence remains
+0/12 evaluated, so no terminal envelope exists, `first_look_latched=false`, and no
+predictive percentage is available. See the
+[R2 collector-integrity checkpoint](accuracy-collector-integrity-r2-checkpoint.md).

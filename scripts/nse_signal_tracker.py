@@ -32,6 +32,7 @@ an edge, and is a real compute cost (~2,600 codes x ~750 sessions) worth a delib
 
 from __future__ import annotations
 
+import argparse
 import sys
 from datetime import date
 from pathlib import Path
@@ -62,10 +63,14 @@ WATCHLIST_DIR = Path("data/watchlists")
 MAX_HOLD = 10  # sessions; matches config/risk.yaml's default
 
 
-def main() -> None:
+def main(*, strict_accuracy_refresh: bool = False) -> None:
+    accuracy_failures: list[str] = []
     candidates = sorted(WATCHLIST_DIR.glob("*.json"))
     if not candidates:
-        print(f"no watchlist found in {WATCHLIST_DIR}; run `tradedesk scan` first; aborting")
+        detail = f"no watchlist found in {WATCHLIST_DIR}; run `tradedesk scan` first; aborting"
+        print(detail)
+        if strict_accuracy_refresh:
+            raise RuntimeError(detail)
         return
     watchlist_path = candidates[-1]
     wl = load_watchlist(watchlist_path)
@@ -103,10 +108,16 @@ def main() -> None:
             f"{summary['selected_calls']} selected, {summary['resolved_calls']} resolved, "
             f"status={summary['status']}"
         )
+        if shadow.get("current_errors"):
+            accuracy_failures.append(
+                f"M8 current errors: {len(shadow['current_errors'])}"
+            )
     except FileNotFoundError:
         print("M8 prospective shadow: not activated")
+        accuracy_failures.append("M8 prospective shadow is not activated")
     except Exception as exc:
         print(f"M8 prospective shadow degraded: {type(exc).__name__}: {exc}")
+        accuracy_failures.append(f"M8: {type(exc).__name__}: {exc}")
     else:
         try:
             from tradedesk_lab.accuracy_prospective_monitor import run_monitor
@@ -118,8 +129,16 @@ def main() -> None:
                 f"audit_events={monitor['audit']['events']}, "
                 f"review_ready={monitor['review_ready']}"
             )
+            if monitor["integrity"].get("passed") is not True:
+                accuracy_failures.append(
+                    "M9 integrity: "
+                    + ", ".join(monitor["integrity"].get("failures") or ["failed"])
+                )
+            if (monitor.get("double_slippage_stress") or {}).get("status") == "degraded":
+                accuracy_failures.append("M9 double-slippage stress degraded")
         except Exception as exc:
             print(f"M9 evidence monitor degraded: {type(exc).__name__}: {exc}")
+            accuracy_failures.append(f"M9: {type(exc).__name__}: {exc}")
         try:
             from tradedesk_lab.accuracy_prospective_control import collect_control
 
@@ -131,8 +150,11 @@ def main() -> None:
                 f"{control_summary['mature_sessions']} mature sessions, "
                 f"status={control_summary['status']}"
             )
+            if control_summary.get("status") == "degraded":
+                accuracy_failures.append("M10 selection control degraded")
         except Exception as exc:
             print(f"M10 selection control degraded: {type(exc).__name__}: {exc}")
+            accuracy_failures.append(f"M10: {type(exc).__name__}: {exc}")
         try:
             from tradedesk_lab.accuracy_prospective_timing import collect_timing
 
@@ -144,8 +166,11 @@ def main() -> None:
                 f"{timing_summary['active_sessions']} active sessions, "
                 f"status={timing_summary['status']}"
             )
+            if timing_summary.get("status") == "degraded":
+                accuracy_failures.append("M11 random-timing control degraded")
         except Exception as exc:
             print(f"M11 random-timing control degraded: {type(exc).__name__}: {exc}")
+            accuracy_failures.append(f"M11: {type(exc).__name__}: {exc}")
         try:
             from tradedesk_lab.accuracy_prospective_qualification import run_qualification
 
@@ -156,9 +181,19 @@ def main() -> None:
                 f"review_authorized={qualification['review_authorized']}, "
                 f"live_eligible={qualification['eligible_for_live']}"
             )
+            if qualification.get("status") in {"not_available", "degraded"}:
+                accuracy_failures.append(
+                    f"qualification status: {qualification.get('status')}"
+                )
         except Exception as exc:
             print(f"NSE prospective qualification degraded: {type(exc).__name__}: {exc}")
+            accuracy_failures.append(f"qualification: {type(exc).__name__}: {exc}")
+    if strict_accuracy_refresh and accuracy_failures:
+        raise RuntimeError("; ".join(accuracy_failures))
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--strict-accuracy-refresh", action="store_true")
+    arguments = parser.parse_args()
+    main(strict_accuracy_refresh=arguments.strict_accuracy_refresh)

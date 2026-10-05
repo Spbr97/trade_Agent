@@ -29,6 +29,7 @@ here re-tags or discards it.
 
 from __future__ import annotations
 
+import argparse
 import sys
 from datetime import date
 from pathlib import Path
@@ -57,13 +58,16 @@ WATCHLIST_DIR = Path("data/watchlists/bse")
 MAX_HOLD = 10  # sessions; matches config/risk.yaml's default
 
 
-def main() -> None:
+def main(*, strict_accuracy_refresh: bool = False) -> None:
     candidates = sorted(WATCHLIST_DIR.glob("*.json"))
     if not candidates:
-        print(
+        detail = (
             f"no watchlist found in {WATCHLIST_DIR}; "
             "run `tradedesk scan --market bse` first; aborting"
         )
+        print(detail)
+        if strict_accuracy_refresh:
+            raise RuntimeError(detail)
         return
     watchlist_path = candidates[-1]
     wl = load_watchlist(watchlist_path)
@@ -91,4 +95,7 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--strict-accuracy-refresh", action="store_true")
+    arguments = parser.parse_args()
+    main(strict_accuracy_refresh=arguments.strict_accuracy_refresh)

@@ -2,7 +2,9 @@
 
 Date: 4 October 2026
 
-Protocol: `bse-accuracy-quick-profit-v1`
+Current protocol: `bse-accuracy-quick-profit-v2`
+
+Historical committed development snapshot: `bse-accuracy-quick-profit-v1`
 
 State schema: `bse-accuracy-quick-profit-state-v1`
 
@@ -84,8 +86,14 @@ lead to a newly preregistered BSE mechanism, not a wider search over this cohort
 Dashboard work was intentionally deferred to the parent integration checkpoint. The JSON
 state is ready to expose read-only without recomputation or evidence pooling.
 
-R1 subsequently wired B1 into the successful BSE research-tracker path, moved its changing
-prospective state to `data/m14_m18/bse_accuracy_quick_profit/state.json`, and added a
-hash-verified terminal first-look lock. The committed file in `docs/evidence/` remains the
-original development/activation snapshot. See the
-[R1 evidence-refresh checkpoint](accuracy-evidence-refresh-r1-checkpoint.md).
+R1 subsequently added a B1 hook to the BSE research tracker, moved its changing prospective
+state to `data/m14_m18/bse_accuracy_quick_profit/state.json`, and added a hash-verified
+terminal first-look lock. R2 later found that the unattended order was wrong and that a
+module-path failure could skip B1 while the base research process still appeared successful.
+R2 fixes the import path, runs load → scan → signal tracker → research/B1 in one strict
+pipeline, propagates derived failure to Task Scheduler, excludes late/missing/duplicate
+registration, and makes same-day sampling deterministic across processes and reruns. The
+committed file in `docs/evidence/` remains the original v1 development/activation snapshot;
+the 64.52% / -0.126R best development diagnostic is still not a baseline. See the
+[R1 evidence-refresh checkpoint](accuracy-evidence-refresh-r1-checkpoint.md) and
+[R2 collector-integrity checkpoint](accuracy-collector-integrity-r2-checkpoint.md).

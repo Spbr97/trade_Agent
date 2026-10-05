@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sys
 from dataclasses import FrozenInstanceError, asdict, fields, replace
 from pathlib import Path
@@ -7,6 +8,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import pytest
+import tradedesk_lab.crypto_accuracy_mechanisms as mechanisms_module
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
@@ -19,12 +21,16 @@ from tradedesk_lab.crypto_accuracy_mechanisms import (  # noqa: E402
     DEFAULT_CONTRACT,
     GEOMETRY_IDS,
     MECHANISM_IDS,
+    VERSION,
     CryptoMechanismContract,
     _control_indices,
+    _latch_terminal,
+    _verified_terminal,
     build_feature_panel,
     evaluate_mechanism_race,
     join_frozen_labels,
     mechanism_metrics,
+    run_crypto_accuracy_mechanisms,
 )
 
 FORBIDDEN_OUTCOME_COLUMNS = {
@@ -412,3 +418,142 @@ def test_full_race_evaluates_exactly_twelve_trials_and_rejects_weak_signal() -> 
     assert summary["nominee"] is None
     assert {row["status"] for row in trials} == {"rejected_stopped"}
     assert len(controls) == 12 * 3 * DEFAULT_CONTRACT.cohort_repetitions
+
+
+def _terminal_report(output: Path, status: str) -> dict:
+    passed = 1 if status == "mechanism_race_passed_research_only" else 0
+    report = {
+        "version": VERSION,
+        "id": "terminal-run",
+        "status": status,
+        "created_at": "2026-11-05T00:00:00+00:00",
+        "c1_readiness": {
+            "minimum_pair_sessions": 30,
+            "required_pair_sessions": 30,
+            "ready_pairs": 337,
+            "required_pairs": 337,
+            "development_window_mature": True,
+        },
+        "trial_counts": {
+            "registered": 12,
+            "evaluated": 12,
+            "passed": passed,
+            "rejected": 12 - passed,
+            "incomplete": 0,
+        },
+        "best_trial": {"mechanism": "cross_sectional_momentum"} if passed else None,
+        "source_integrity": {"passed": True, "errors": []},
+        "evidence_scope": "crypto_only_never_pooled_with_nse_or_bse",
+        "first_look_latched": True,
+        "baseline_improved": False,
+        "eligible_for_live": False,
+    }
+    run = output / "runs" / "terminal-run"
+    run.mkdir(parents=True)
+    (run / "manifest.json").write_text(
+        json.dumps(report, sort_keys=True), encoding="utf-8"
+    )
+    return report
+
+
+@pytest.mark.parametrize(
+    "status",
+    ("mechanism_race_rejected", "mechanism_race_passed_research_only"),
+)
+def test_first_terminal_crypto_decision_survives_mutable_state_and_missing_c1(
+    monkeypatch, tmp_path, status: str
+) -> None:
+    output = tmp_path / "c2"
+    report = _terminal_report(output, status)
+    monkeypatch.setattr(
+        mechanisms_module,
+        "verify_crypto_accuracy_mechanisms",
+        lambda *_args, **_kwargs: {"passed": True, "errors": []},
+    )
+    latched = _latch_terminal(output, report)
+    terminal_bytes = (output / "terminal-first-look.json").read_bytes()
+    (output / "state.json").write_text(
+        json.dumps({"status": "mechanism_race_rejected"}), encoding="utf-8"
+    )
+
+    repeated = run_crypto_accuracy_mechanisms(
+        c1_output=tmp_path / "missing-c1",
+        c1_db_path=tmp_path / "missing.duckdb",
+        output=output,
+    )
+
+    assert repeated == latched == report
+    assert (output / "terminal-first-look.json").read_bytes() == terminal_bytes
+
+
+def test_crypto_terminal_tamper_fails_closed_before_reopening_c1(
+    monkeypatch, tmp_path
+) -> None:
+    output = tmp_path / "c2"
+    report = _terminal_report(output, "mechanism_race_rejected")
+    monkeypatch.setattr(
+        mechanisms_module,
+        "verify_crypto_accuracy_mechanisms",
+        lambda *_args, **_kwargs: {"passed": True, "errors": []},
+    )
+    _latch_terminal(output, report)
+    path = output / "terminal-first-look.json"
+    envelope = json.loads(path.read_text(encoding="utf-8"))
+    envelope["report"]["status"] = "mechanism_race_passed_research_only"
+    path.write_text(json.dumps(envelope), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="terminal artifact failed verification"):
+        run_crypto_accuracy_mechanisms(
+            c1_output=tmp_path / "missing-c1",
+            c1_db_path=tmp_path / "missing.duckdb",
+            output=output,
+        )
+
+
+def test_crypto_terminal_publish_is_atomic_when_replace_fails(monkeypatch, tmp_path) -> None:
+    output = tmp_path / "c2"
+    report = _terminal_report(output, "mechanism_race_rejected")
+
+    def fail_replace(_source, _target) -> None:
+        raise OSError("simulated interrupted publish")
+
+    monkeypatch.setattr(mechanisms_module.os, "replace", fail_replace)
+
+    with pytest.raises(OSError, match="interrupted publish"):
+        _latch_terminal(output, report)
+
+    assert not (output / "terminal-first-look.json").exists()
+    assert list(output.glob(".terminal-first-look.json.*.tmp")) == []
+
+
+def test_crypto_terminal_is_bound_to_its_immutable_run_manifest(
+    monkeypatch, tmp_path
+) -> None:
+    output = tmp_path / "c2"
+    report = _terminal_report(output, "mechanism_race_rejected")
+    monkeypatch.setattr(
+        mechanisms_module,
+        "verify_crypto_accuracy_mechanisms",
+        lambda *_args, **_kwargs: {"passed": True, "errors": []},
+    )
+    _latch_terminal(output, report)
+    manifest_path = output / "runs" / "terminal-run" / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["trial_counts"]["passed"] = 12
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="terminal_manifest_identity"):
+        _verified_terminal(output)
+
+
+def test_public_crypto_terminal_verifier_normalizes_unexpected_errors(
+    monkeypatch, tmp_path
+) -> None:
+    monkeypatch.setattr(
+        mechanisms_module,
+        "_verified_terminal",
+        lambda _output: (_ for _ in ()).throw(AttributeError("malformed manifest")),
+    )
+
+    with pytest.raises(ValueError, match="terminal artifact failed verification"):
+        mechanisms_module.verify_crypto_terminal(tmp_path)

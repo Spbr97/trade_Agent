@@ -29,9 +29,11 @@ from tradedesk_lab.accuracy_prospective_shadow import (
     M7_ARTIFACT,
     MODEL_FILE,
     _contract_hashes,
+    _index_codes,
     _load_bars,
     _prediction_hash,
     _quick_outcome,
+    _score_deadline,
     summarize,
 )
 from tradedesk_lab.artifacts import OUTPUT, ROOT, digest, write_json
@@ -209,8 +211,7 @@ def _watchlist_availability(root: Path, state: dict[str, Any]) -> dict[str, Any]
     evaluated_days = {
         row["armed_on"] for row in records if row.get("prospective_eligible") is True
     }
-    sessions = []
-    missing_collections = []
+    watchlists: dict[str, dict[str, Any]] = {}
     for path in sorted((root / "data/watchlists").glob("*.json")):
         try:
             raw = path.read_bytes()
@@ -223,6 +224,39 @@ def _watchlist_availability(root: Path, state: dict[str, Any]) -> dict[str, Any]
             continue
         if armed <= cutoff or generated < activated:
             continue
+        watchlist["_registration_valid"] = (
+            generated.astimezone(UTC) < _score_deadline(armed).astimezone(UTC)
+        )
+        watchlists[armed.isoformat()] = watchlist
+
+    settings = load_config(root)
+    with duckdb.connect(str(root / "data/tradedesk.duckdb"), read_only=True) as con:
+        benchmark_code = _index_codes(con).get(settings.universe.benchmark.upper())
+        if benchmark_code is None:
+            raise ValueError("NSE benchmark code is unavailable for M9 availability")
+        benchmark = _load_bars(con, benchmark_code)
+    expected_days = sorted(
+        {day.isoformat() for day in benchmark.index.date if day > cutoff}
+    )
+
+    sessions = []
+    missing_watchlists = []
+    missing_collections = []
+    late_watchlists = []
+    for armed_on in expected_days:
+        watchlist = watchlists.get(armed_on)
+        if watchlist is None:
+            sessions.append(
+                {
+                    "on": armed_on,
+                    "watchlist_available": False,
+                    "candidate_count": None,
+                    "evaluated": False,
+                    "selected": False,
+                }
+            )
+            missing_watchlists.append(armed_on)
+            continue
         candidates = [
             entry
             for entry in watchlist.get("entries", [])
@@ -230,21 +264,30 @@ def _watchlist_availability(root: Path, state: dict[str, Any]) -> dict[str, Any]
             == activation["candidate"]["setup"]
         ]
         row = {
-            "on": armed.isoformat(),
+            "on": armed_on,
+            "watchlist_available": True,
+            "registration_valid": watchlist.get("_registration_valid") is True,
             "candidate_count": len(candidates),
-            "evaluated": armed.isoformat() in evaluated_days,
-            "selected": armed.isoformat() in selected_days,
+            "evaluated": armed_on in evaluated_days,
+            "selected": armed_on in selected_days,
         }
         sessions.append(row)
+        if not row["registration_valid"]:
+            late_watchlists.append(armed_on)
+            continue
         if candidates and not row["evaluated"]:
-            missing_collections.append(armed.isoformat())
+            missing_collections.append(armed_on)
     selected_sessions = sum(row["selected"] for row in sessions)
     return {
+        "expected_sessions": len(expected_days),
+        "watchlist_sessions": len(watchlists),
         "observed_sessions": len(sessions),
         "evaluated_sessions": sum(row["evaluated"] for row in sessions),
         "selected_sessions": selected_sessions,
         "zero_selected_sessions": len(sessions) - selected_sessions,
         "selected_session_coverage": selected_sessions / len(sessions) if sessions else None,
+        "missing_watchlist_sessions": missing_watchlists,
+        "late_watchlist_sessions": late_watchlists,
         "missing_collection_sessions": missing_collections,
         "sessions": sessions[-100:],
     }
@@ -397,13 +440,17 @@ def _integrity_checks(root: Path, state: dict[str, Any]) -> dict[str, Any]:
     if any(stored.get(name) != recomputed.get(name) for name in compared):
         failures.append("summary_mismatch")
     availability = _watchlist_availability(root, state)
+    if availability["missing_watchlist_sessions"]:
+        failures.append("missing_watchlist_session")
+    if availability["late_watchlist_sessions"]:
+        failures.append("late_watchlist_registration")
     if availability["missing_collection_sessions"]:
         failures.append("uncollected_watchlist_session")
     return {
         "status": "healthy" if not failures else "degraded",
         "passed": not failures,
         "failures": failures,
-        "checks": 7,
+        "checks": 9,
     }
 
 

@@ -21,4 +21,10 @@ zero integrity errors. `collecting_insufficient_evidence` is not a pass. The che
 cannot improve the historical baseline by itself; it creates honest forward evidence for
 future crypto improvements.
 
+After the verified R2 collector run, the current state has seven registered forward calls:
+four `nr7_breakout` and three `trend_pullback`, across the 3 and 4 October sessions. None is
+paired/mature yet, so model accuracy, expectancy, timing-control accuracy, advantage and
+p-value all remain unavailable. Qualified setups remain zero and live eligibility remains
+false.
+
 See the [frozen protocol](crypto-accuracy-timing-c1-protocol.md).

@@ -55,6 +55,7 @@ USDTINR/USDCINR peg noise out of every other crypto scan in this project)."""
 
 from __future__ import annotations
 
+import hashlib
 import json
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
@@ -96,6 +97,43 @@ def market_for(market: str, settings: Settings) -> Market:
 # unbiased sample of it (deliberately NOT "the most extreme N" - the cross-sectional test
 # measured that ranking by signal strength adds nothing).
 MAX_PER_RULE = 15
+
+ResearchHit = tuple[str, str, float, float]
+
+
+def _stable_new_hits(
+    rule: str,
+    armed_on: date,
+    hits: list[ResearchHit],
+    existing_ids: set[str],
+    *,
+    limit: int = MAX_PER_RULE,
+) -> list[ResearchHit]:
+    """Return a process-stable sample without exceeding the per-session cap.
+
+    Python's built-in ``hash`` is randomized for every process, so it cannot preregister a
+    forward sample.  A SHA-256-derived seed plus sorted inputs makes the choice reproducible.
+    Existing rows count against the cap, including rows created by an older implementation.
+    """
+
+    slots = max(0, limit - len(existing_ids))
+    if not slots:
+        return []
+    ordered = sorted(hits, key=lambda item: item[0])
+    if len(ordered) > limit:
+        material = f"{rule}\0{armed_on.isoformat()}".encode()
+        seed = int.from_bytes(hashlib.sha256(material).digest()[:8], "big")
+        permutation = np.random.default_rng(seed).permutation(len(ordered))
+        ordered = [ordered[int(index)] for index in permutation]
+    selected: list[ResearchHit] = []
+    for hit in ordered:
+        call_id = f"{rule}:{hit[0]}:{armed_on.isoformat()}"
+        if call_id in existing_ids:
+            continue
+        selected.append(hit)
+        if len(selected) == slots:
+            break
+    return selected
 
 # Measured round-trip cost drag in R for a 3xATR stop at 0.25% risk-per-trade
 # (CLAUDE.md 2026-09-13: 0.128R @0.25%, 0.084R @0.5%, 0.056R @1%). Applied in the report as
@@ -259,7 +297,7 @@ def scan_universe(
     log = log if log is not None else log_path_for(market)
     rows = load_log(log)
 
-    fired: dict[str, list[tuple[str, str, float, float]]] = {c.name: [] for c in CANDIDATES}
+    fired: dict[str, list[ResearchHit]] = {c.name: [] for c in CANDIDATES}
     scan_date: date | None = on
 
     with CandleStore(db) as store:
@@ -305,15 +343,15 @@ def scan_universe(
         hits = fired[cand.name]
         if not hits:
             continue
-        if len(hits) > MAX_PER_RULE:
-            # Seeded by (rule, date) so a re-run of the same session picks the same sample.
-            rng = np.random.default_rng(abs(hash((cand.name, scan_date.isoformat()))) % (2**32))
-            idx = rng.choice(len(hits), size=MAX_PER_RULE, replace=False)
-            hits = [hits[i] for i in sorted(idx)]
-        for code, sym, close, atr in hits:
+        existing_ids = {
+            row.call_id
+            for row in rows.values()
+            if row.rule == cand.name and row.armed_on == scan_date.isoformat()
+        }
+        for code, sym, close, atr in _stable_new_hits(
+            cand.name, scan_date, hits, existing_ids
+        ):
             call_id = f"{cand.name}:{code}:{scan_date.isoformat()}"
-            if call_id in rows:
-                continue
             rows[call_id] = ResearchCall(
                 call_id=call_id, rule=cand.name, scrip_code=code, symbol=sym,
                 armed_on=scan_date.isoformat(), close_at_arm=close, atr_at_arm=atr,

@@ -18,8 +18,13 @@ Doc facts encoded here:
 from __future__ import annotations
 
 import asyncio
+import os
+import tempfile
 import time
+from collections.abc import AsyncIterator, Callable
+from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Protocol
 
 import httpx
@@ -35,6 +40,58 @@ KEY_TOKEN_LAST_ATTEMPT = "token_last_attempt"
 
 TOKEN_TTL_SECONDS = 24 * 3600
 GENERATION_MIN_GAP_SECONDS = 60
+TOKEN_GENERATION_LOCK_PATH = (
+    Path(tempfile.gettempdir()) / "tradedesk-indstocks-token-generation.lock"
+)
+
+
+@asynccontextmanager
+async def token_generation_lock(
+    path: Path = TOKEN_GENERATION_LOCK_PATH,
+) -> AsyncIterator[None]:
+    """Serialize token generation across independently scheduled processes.
+
+    The keyring cache is shared, but an asyncio lock is not.  After Windows resumes,
+    several ``StartWhenAvailable`` tasks can otherwise observe the same empty/expired
+    cache and all POST ``/generate/token`` together.  The broker permits only one token
+    generation per minute and rejects the rest.
+
+    This lock contains no credentials and is released by the OS if a process exits.
+    """
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a+b") as stream:
+        stream.seek(0, os.SEEK_END)
+        if stream.tell() == 0:
+            stream.write(b"0")
+            stream.flush()
+        stream.seek(0)
+        if os.name == "nt":
+            import msvcrt
+
+            while True:
+                try:
+                    msvcrt.locking(stream.fileno(), msvcrt.LK_NBLCK, 1)
+                    break
+                except OSError:
+                    await asyncio.sleep(0.1)
+        else:
+            import fcntl
+
+            while True:
+                try:
+                    fcntl.flock(stream.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    break
+                except BlockingIOError:
+                    await asyncio.sleep(0.1)
+        try:
+            yield
+        finally:
+            stream.seek(0)
+            if os.name == "nt":
+                msvcrt.locking(stream.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                fcntl.flock(stream.fileno(), fcntl.LOCK_UN)
 
 
 class SecretStore(Protocol):
@@ -129,6 +186,9 @@ class TokenProvider:
     http: httpx.AsyncClient
     store: SecretStore = field(default_factory=KeyringStore)
     clock: Any = time.time
+    generation_lock: Callable[[], AbstractAsyncContextManager[None]] = field(
+        default=token_generation_lock, repr=False
+    )
     _token: str | None = field(default=None, init=False)
     _issued_at: float | None = field(default=None, init=False)
     _last_attempt: float | None = field(default=None, init=False)
@@ -156,6 +216,18 @@ class TokenProvider:
         if self._last_attempt is None:
             self._last_attempt = _as_float(self.store.get(KEY_TOKEN_LAST_ATTEMPT))
 
+    def _reload_shared_state(self) -> bool:
+        """Re-read keyring state after taking the cross-process generation lock."""
+
+        token = self.store.get(KEY_TOKEN)
+        issued = _as_float(self.store.get(KEY_TOKEN_ISSUED_AT))
+        self._last_attempt = _as_float(self.store.get(KEY_TOKEN_LAST_ATTEMPT))
+        if token and issued is not None and self.clock() - issued < TOKEN_TTL_SECONDS:
+            self._token, self._issued_at = token, issued
+            return True
+        self._token, self._issued_at = None, None
+        return False
+
     def _persist(self) -> None:
         if self._token and self._issued_at is not None:
             self.store.set(KEY_TOKEN, self._token)
@@ -175,20 +247,55 @@ class TokenProvider:
                 return self._token
             return await self._generate()
 
-    async def refresh(self) -> str:
-        """Force a new token (after a TokenException). Still honours the 60 s throttle."""
+    async def refresh(self, rejected_token: str | None = None) -> str:
+        """Replace a rejected token without invalidating another process's winner.
+
+        ``rejected_token`` is the credential that received TokenException.  When another
+        process has already replaced it while this caller waits for the cross-process lock,
+        adopt that replacement instead of deleting it and generating yet another token.
+        Calls without an explicit token retain the historical force-refresh behaviour.
+        """
+
         async with self._lock:
-            self.invalidate()
-            return await self._generate()
+            expected = rejected_token or self._token or self.store.get(KEY_TOKEN)
+            async with self.generation_lock():
+                shared_is_valid = self._reload_shared_state()
+                if (
+                    rejected_token is not None
+                    and shared_is_valid
+                    and self._token != rejected_token
+                ):
+                    return self._token or ""
+
+                shared_token = self.store.get(KEY_TOKEN)
+                if expected is None or shared_token == expected:
+                    self.store.delete(KEY_TOKEN)
+                    self.store.delete(KEY_TOKEN_ISSUED_AT)
+                self._token = None
+                self._issued_at = None
+                return await self._generate_locked(rejected_token=expected)
 
     async def _generate(self) -> str:
-        if self._last_attempt is None:
-            self._last_attempt = _as_float(self.store.get(KEY_TOKEN_LAST_ATTEMPT))
+        async with self.generation_lock():
+            # Another scheduled process may have generated and persisted a token while
+            # this process waited for the lock.  Adopt it instead of issuing a second POST.
+            if self._reload_shared_state():
+                return self._token or ""  # narrowed by _reload_shared_state
+            return await self._generate_locked()
+
+    async def _generate_locked(self, *, rejected_token: str | None = None) -> str:
+        """Generate while the caller owns ``generation_lock``."""
+
         now = self.clock()
         if self._last_attempt is not None:
             wait = GENERATION_MIN_GAP_SECONDS - (now - self._last_attempt)
             if wait > 0:
                 await asyncio.sleep(wait)
+                # Compatibility with a still-running pre-R2 process that does not take
+                # this lock: prefer its newly persisted token after the wait, but never
+                # re-adopt the exact credential that this refresh just rejected.
+                if self._reload_shared_state() and self._token != rejected_token:
+                    return self._token or ""
         creds = Credentials.from_store(self.store)
         self._last_attempt = self.clock()
         self.store.set(KEY_TOKEN_LAST_ATTEMPT, repr(self._last_attempt))

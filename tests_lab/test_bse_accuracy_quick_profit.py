@@ -12,6 +12,8 @@ from tradedesk_lab.bse_accuracy_quick_profit import (
     CANDIDATE_RULES,
     DEFAULT_BSE_QUICK_PROFIT_PROTOCOL,
     QuickProfitRecord,
+    _cohort_records,
+    _cohort_rows,
     holm_adjusted_pvalues,
     one_sided_sign_flip_pvalue,
     refresh_bse_quick_profit,
@@ -53,12 +55,113 @@ def _row(rule: str = "rsi2_dip_ema50") -> dict[str, object]:
     }
 
 
+def test_prospective_b1_requires_same_session_registration() -> None:
+    base = {
+        "rule": "rsi2_dip_ema50",
+        "scrip_code": "BSE_1",
+        "armed_on": "2026-10-05",
+    }
+    rows = [
+        base | {
+            "call_id": "on-time",
+            "logged_at": "2026-10-05T16:40:00+05:30",
+        },
+        base | {
+            "call_id": "late-catch-up",
+            "logged_at": "2026-10-06T08:00:00+05:30",
+        },
+        base | {"call_id": "missing-registration"},
+    ]
+
+    prospective = _cohort_rows(
+        rows, prospective=True, protocol=DEFAULT_BSE_QUICK_PROFIT_PROTOCOL
+    )
+
+    assert [row["call_id"] for row in prospective] == ["on-time"]
+
+
+def test_prospective_registration_uses_ist_date_and_rejects_duplicate_ids() -> None:
+    base = {
+        "rule": "rsi2_dip_ema50",
+        "scrip_code": "BSE_1",
+        "armed_on": "2026-10-05",
+    }
+    rows = [
+        base
+        | {
+            "call_id": "utc-on-time",
+            "logged_at": "2026-10-04T19:00:00+00:00",
+        },
+        base
+        | {
+            "call_id": "duplicate",
+            "logged_at": "2026-10-05T16:40:00+05:30",
+        },
+        base
+        | {
+            "call_id": "duplicate",
+            "logged_at": "2026-10-06T16:40:00+05:30",
+        },
+    ]
+
+    prospective = _cohort_rows(
+        rows, prospective=True, protocol=DEFAULT_BSE_QUICK_PROFIT_PROTOCOL
+    )
+
+    assert [row["call_id"] for row in prospective] == ["utc-on-time"]
+
+
+def test_duplicate_resolved_call_id_cannot_hitchhike_into_cohort() -> None:
+    source = [{"call_id": "same-id"}]
+    records = [
+        QuickProfitRecord(
+            "same-id",
+            "rsi2_dip_ema50",
+            "BSE_1",
+            date(2026, 10, 5),
+            None,
+            "resolved",
+            1,
+            0.5,
+        ),
+        QuickProfitRecord(
+            "same-id",
+            "rsi2_dip_ema50",
+            "BSE_1",
+            date(2026, 10, 5),
+            None,
+            "resolved",
+            0,
+            -1.0,
+        ),
+    ]
+
+    assert _cohort_records(records, source) == []
+
+
+def test_development_b1_rows_remain_transport_only_without_registration_time() -> None:
+    row = {
+        "call_id": "development",
+        "rule": "rsi2_dip_ema50",
+        "scrip_code": "BSE_1",
+        "armed_on": "2026-10-02",
+    }
+
+    development = _cohort_rows(
+        [row], prospective=False, protocol=DEFAULT_BSE_QUICK_PROFIT_PROTOCOL
+    )
+
+    assert development == [row]
+
+
 def test_protocol_is_one_transported_geometry_and_is_bse_only() -> None:
     protocol = DEFAULT_BSE_QUICK_PROFIT_PROTOCOL
+    assert protocol.version == "bse-accuracy-quick-profit-v2"
     assert protocol.market == "bse"
     assert protocol.entry_mode == "next_session_open"
     assert (protocol.stop_atr, protocol.target_r, protocol.max_hold_sessions) == (1.0, 0.5, 3)
     assert protocol.activation_date == "2026-10-04"
+    assert protocol.registration_timing == "logged_on_arming_session"
     assert len(protocol.sha256) == 64
 
 

@@ -17,13 +17,18 @@ market's data is 24/7 rather than one session a day).
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 import typer
 
-from tradedesk.analysis import db_for
-from tradedesk.config import load_config
-from tradedesk.research_tracker import (
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "src"))
+sys.path.insert(0, str(ROOT))
+
+from tradedesk.analysis import db_for  # noqa: E402
+from tradedesk.config import load_config  # noqa: E402
+from tradedesk.research_tracker import (  # noqa: E402
     build_report,
     cost_r_for,
     flag_research_findings,
@@ -132,6 +137,7 @@ def run(
     root: Path = typer.Option(Path("."), "--root"),
     max_codes: int = typer.Option(0, "--max-codes"),
     log: Path | None = typer.Option(None, "--log"),
+    strict_accuracy_refresh: bool = False,
 ) -> None:
     """The nightly job: grade what's ripe, log tonight's calls, flag anything that has
     cleared the evidence bar, run the EOD self-learning step, write the report."""
@@ -167,6 +173,8 @@ def run(
             )
         except Exception as exc:
             typer.echo(f"BSE B1 accuracy evidence degraded: {type(exc).__name__}: {exc}")
+            if strict_accuracy_refresh:
+                raise typer.Exit(code=2) from None
 
 
 if __name__ == "__main__":

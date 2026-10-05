@@ -1,6 +1,6 @@
 # Crypto accuracy C1 — all-pair point-in-time dataset checkpoint
 
-Status: **implemented and first real materialization verified; collecting/not ready; no
+Status: **implemented and latest real materialization verified; collecting/not ready; no
 accuracy improvement claimed**
 
 C1 now has the machinery needed to turn exact future crypto-universe observations into an
@@ -31,30 +31,31 @@ deterministic next-open labels, favorable/adverse gaps and same-bar ordering.
 
 ## Current evidence
 
-The first exact-code observation and freeze ran on 4 October 2026:
+The first exact-code observation and freeze ran on 4 October 2026. The verified R2
+collection run then added the next fully closed point-in-time session:
 
 | Measure | Result |
 |---|---:|
-| Dataset ID | `2026-10-03-095a9bcdc03d-f991d060-394b1f39` |
+| Dataset ID | `2026-10-04-9a42a7f4d9f8-f991d060-394b1f39` |
 | Observed-active INR pairs | 339 |
 | Configured exclusions retained for audit | 2 |
-| Raw / canonical closed daily rows | 355,278 / 354,402 |
+| Raw / canonical closed daily rows | 355,617 / 354,741 |
 | Duplicate IST-day fillers removed | 876 |
 | Explicit absent daily sessions | 7,058 |
 | Invalid OHLCV sessions | 673 |
 | No-history / stale pairs | 0 / 0 |
-| Global / minimum-per-pair PIT sessions | 1 / 1 of 30 minimum |
+| Global / minimum-per-pair PIT sessions | 2 / 2 of 30 minimum |
 | Required pairs meeting 30-session gate | 0 of 337 |
-| Geometry rows | 1,011 excluded; 0 resolved |
+| Geometry rows | 2,022 total: 1,014 excluded, 1,008 pending, 0 resolved |
 | Source verification | passed |
 | Live eligibility | false |
 
 Universe activation occurred at `2026-10-03T23:13:41Z`. Earlier candles remain useful for
 coverage and data-quality inspection, but their active membership is unknown and they are
-not relabelled as point-in-time evidence. Of the first session's 1,011 geometry rows, 1,008
-have no next closed entry session yet and three lack a contiguous valid ATR lookback.
-Accuracy, expectancy and after-tax expectancy therefore remain unavailable—not zero,
-passed, failed or improved.
+not relabelled as point-in-time evidence. Across the two accepted sessions, 1,014 geometry
+rows are explicitly excluded and 1,008 remain pending; none is resolved. Accuracy,
+expectancy and after-tax expectancy therefore remain unavailable—not zero, passed, failed
+or improved.
 
 The earlier C1 prospective timing observer remains a separate forward evidence stream. Its
 calls cannot be pooled with this historical/development dataset, with another setup, or

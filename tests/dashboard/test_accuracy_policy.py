@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import httpx
 import pytest
@@ -25,6 +27,108 @@ async def test_accuracy_policy_exposes_live_gate_and_shadow_detectors() -> None:
     assert body["min_trades"] == 500
     assert body["min_oos_trades"] == 100
     assert "crypto:r_adx_thrust_tsmom_up_trend_trail" in body["research_only"]
+
+
+@pytest.mark.asyncio
+async def test_collection_health_is_hash_bound_and_never_promotes(
+    tmp_path, monkeypatch
+) -> None:
+    health = tmp_path / "health"
+    health.mkdir()
+    report = {
+        "version": "accuracy-collection-health-v1",
+        "run_id": "run-1",
+        "market": "nse",
+        "status": "completed",
+        "started_at": (datetime.now(UTC) - timedelta(minutes=30)).isoformat(),
+        "updated_at": datetime.now(UTC).isoformat(),
+        "finished_at": datetime.now(UTC).isoformat(),
+        "source": {"available": True, "session": "2026-10-05"},
+        "failed_stage": None,
+        "baseline_improved": False,
+        "eligible_for_live": False,
+        "detail": "collection completed",
+    }
+    report["report_sha256"] = hashlib.sha256(
+        json.dumps(
+            report, sort_keys=True, separators=(",", ":"), default=str, allow_nan=False
+        ).encode()
+    ).hexdigest()
+    (health / "nse.json").write_text(json.dumps(report), encoding="utf-8")
+    run = health / "runs" / "nse"
+    run.mkdir(parents=True)
+    (run / "run-1.json").write_text(json.dumps(report), encoding="utf-8")
+    monkeypatch.setattr(dashboard_app, "ACCURACY_COLLECTION_HEALTH", health)
+    app = create_app(DashboardState())
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        first = (await client.get("/api/accuracy-collection-health")).json()
+        report["status"] = "failed"
+        report["report_sha256"] = hashlib.sha256(
+            json.dumps(
+                {key: value for key, value in report.items() if key != "report_sha256"},
+                sort_keys=True,
+                separators=(",", ":"),
+                default=str,
+                allow_nan=False,
+            ).encode()
+        ).hexdigest()
+        (health / "nse.json").write_text(json.dumps(report), encoding="utf-8")
+        tampered = (await client.get("/api/accuracy-collection-health")).json()
+
+    assert first["markets"]["nse"]["status"] == "completed"
+    assert first["markets"]["nse"]["integrity_passed"] is True
+    assert first["markets"]["nse"]["freshness_passed"] is True
+    assert first["markets"]["bse"]["status"] == "not_available"
+    assert first["baseline_improved"] is False
+    assert first["eligible_for_live"] is False
+    assert tampered["markets"]["nse"]["status"] == "invalid"
+    assert tampered["markets"]["nse"]["integrity_passed"] is False
+
+
+@pytest.mark.asyncio
+async def test_collection_health_marks_old_hash_valid_receipt_stale(
+    tmp_path, monkeypatch
+) -> None:
+    health = tmp_path / "health"
+    health.mkdir()
+    finished_at = datetime.now(UTC) - timedelta(hours=37)
+    report = {
+        "version": "accuracy-collection-health-v1",
+        "run_id": "old-crypto-run",
+        "market": "crypto",
+        "status": "completed",
+        "started_at": (finished_at - timedelta(minutes=30)).isoformat(),
+        "updated_at": finished_at.isoformat(),
+        "finished_at": finished_at.isoformat(),
+        "source": {"available": True, "session": "2026-10-01"},
+        "failed_stage": None,
+        "baseline_improved": False,
+        "eligible_for_live": False,
+        "detail": "collection completed",
+    }
+    report["report_sha256"] = hashlib.sha256(
+        json.dumps(
+            report, sort_keys=True, separators=(",", ":"), default=str, allow_nan=False
+        ).encode()
+    ).hexdigest()
+    (health / "crypto.json").write_text(json.dumps(report), encoding="utf-8")
+    run = health / "runs" / "crypto"
+    run.mkdir(parents=True)
+    (run / "old-crypto-run.json").write_text(json.dumps(report), encoding="utf-8")
+    monkeypatch.setattr(dashboard_app, "ACCURACY_COLLECTION_HEALTH", health)
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=create_app(DashboardState())),
+        base_url="http://test",
+    ) as client:
+        body = (await client.get("/api/accuracy-collection-health")).json()
+
+    assert body["markets"]["crypto"]["status"] == "stale"
+    assert body["markets"]["crypto"]["integrity_passed"] is True
+    assert body["markets"]["crypto"]["freshness_passed"] is False
+    assert body["markets"]["crypto"]["detail"] == "collector health is stale — not a pass"
 
 
 @pytest.mark.asyncio
@@ -364,6 +468,124 @@ async def test_crypto_accuracy_mechanisms_is_compact_and_overrides_authority(
         "stopped",
     }
     assert set(body["source_integrity"]) == {"passed", "errors"}
+
+
+@pytest.mark.asyncio
+async def test_crypto_first_look_requires_verified_terminal_envelope(
+    tmp_path, monkeypatch
+) -> None:
+    state_path = tmp_path / "state.json"
+    contract = {"mechanisms": ["registered"]}
+    contract_hash = hashlib.sha256(
+        json.dumps(contract, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+
+    def pinned_file(name: str, content: bytes = b"pinned") -> tuple[str, str]:
+        path = tmp_path / name
+        path.write_bytes(content)
+        return str(path), hashlib.sha256(content).hexdigest()
+
+    implementation_path, implementation_hash = pinned_file("implementation.py")
+    features_path, features_hash = pinned_file("features.parquet")
+    trials_path, trials_hash = pinned_file("trials.json", b"[]")
+    controls_path, controls_hash = pinned_file("controls.parquet")
+    c1_manifest_path, c1_manifest_hash = pinned_file("c1-manifest.json", b"{}")
+    c1_daily_path, c1_daily_hash = pinned_file("c1-daily.parquet")
+    c1_labels_path, c1_labels_hash = pinned_file("c1-labels.parquet")
+    report = {
+        "version": "crypto-accuracy-mechanisms-v1",
+        "id": "terminal-run",
+        "status": "mechanism_race_rejected",
+        "created_at": "2026-11-05T00:00:00+00:00",
+        "contract": contract,
+        "contract_sha256": contract_hash,
+        "implementation": {
+            "path": implementation_path,
+            "sha256": implementation_hash,
+        },
+        "c1_dataset": {
+            "id": "c1",
+            "manifest_path": c1_manifest_path,
+            "manifest_sha256": c1_manifest_hash,
+            "daily_path": c1_daily_path,
+            "daily_sha256": c1_daily_hash,
+            "labels_path": c1_labels_path,
+            "labels_sha256": c1_labels_hash,
+        },
+        "c1_readiness": {
+            "development_window_mature": True,
+            "minimum_pair_sessions": 60,
+            "required_pair_sessions": 60,
+            "ready_pairs": 338,
+            "required_pairs": 338,
+        },
+        "trial_counts": {
+            "registered": 12,
+            "evaluated": 12,
+            "passed": 0,
+            "rejected": 12,
+            "incomplete": 0,
+        },
+        "best_trial": None,
+        "mechanisms": [],
+        "artifacts": {
+            "features": {"path": features_path, "sha256": features_hash},
+            "trials": {"path": trials_path, "sha256": trials_hash},
+            "control_distributions": {
+                "path": controls_path,
+                "sha256": controls_hash,
+            },
+        },
+        "source_integrity": {"passed": True, "errors": []},
+        "evidence_scope": "crypto_only_never_pooled_with_nse_or_bse",
+        "first_look_latched": True,
+        "baseline_improved": False,
+        "eligible_for_live": False,
+        "detail": "terminal rejection",
+    }
+    state_path.write_text(json.dumps(report), encoding="utf-8")
+    run = tmp_path / "runs" / "terminal-run"
+    run.mkdir(parents=True)
+    (run / "manifest.json").write_text(json.dumps(report), encoding="utf-8")
+    report_hash = hashlib.sha256(
+        json.dumps(
+            report, sort_keys=True, separators=(",", ":"), default=str, allow_nan=False
+        ).encode()
+    ).hexdigest()
+    terminal_path = tmp_path / "terminal-first-look.json"
+    terminal_path.write_text(
+        json.dumps(
+            {
+                "version": "crypto-accuracy-mechanisms-first-look-v1",
+                "latched_at": report["created_at"],
+                "report_sha256": report_hash,
+                "report": report,
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(dashboard_app, "CRYPTO_ACCURACY_MECHANISMS", state_path)
+    app = create_app(DashboardState())
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        verified = (await client.get("/api/crypto/accuracy-mechanisms")).json()
+        Path(features_path).write_bytes(b"tampered")
+        artifact_tampered = (await client.get("/api/crypto/accuracy-mechanisms")).json()
+        Path(features_path).write_bytes(b"pinned")
+        envelope = json.loads(terminal_path.read_text(encoding="utf-8"))
+        envelope["report"]["trial_counts"]["passed"] = 12
+        terminal_path.write_text(json.dumps(envelope), encoding="utf-8")
+        tampered = (await client.get("/api/crypto/accuracy-mechanisms")).json()
+
+    assert verified["status"] == "mechanism_race_rejected"
+    assert verified["first_look_latched"] is True
+    assert verified["baseline_improved"] is False
+    assert verified["eligible_for_live"] is False
+    assert artifact_tampered["status"] == "blocked_invalid_terminal_integrity"
+    assert artifact_tampered["first_look_latched"] is False
+    assert tampered["status"] == "blocked_invalid_terminal_integrity"
+    assert tampered["first_look_latched"] is False
 
 
 @pytest.mark.asyncio
@@ -719,6 +941,12 @@ async def test_parallel_accuracy_cards_are_present_and_explicitly_labeled() -> N
         html = (await client.get("/")).text
 
     for element_id in (
+        "nse-collector-health",
+        "nse-collector-session",
+        "bse-collector-health",
+        "bse-collector-session",
+        "crypto-collector-health",
+        "crypto-collector-session",
         "nse-qualification-status",
         "nse-qualification-ready",
         "nse-qualification-first-look",
@@ -739,6 +967,7 @@ async def test_parallel_accuracy_cards_are_present_and_explicitly_labeled() -> N
     assert "Development-only net R" in html
     assert "fetch('/api/accuracy-prospective-qualification')" in html
     assert "fetch('/api/bse/accuracy-quick-profit')" in html
+    assert "fetch('/api/accuracy-collection-health')" in html
     assert "not available — not a pass" in html
 
 

@@ -36,13 +36,14 @@ reported separately because its no-loss-offset treatment can reverse the practic
   ambiguity rules frozen.
 - [x] Attach fee/slippage economics and reporting-only VDA after-tax economics per trade.
 
-C1 engineering is complete and its corrected all-pair freeze passed source verification:
-339 pairs, 355,278 raw closed rows, 354,402 canonical daily rows after removing 876
-duplicate IST-day fillers, 7,058 explicit absent sessions and 673 invalid OHLCV rows. It
-has three exact universe observations, one point-in-time session per required pair, and
-0 of 337 required pairs at the 30-session gate. All 1,011 geometry rows are excluded, none
-resolved. Accuracy and expectancy remain unavailable—not zero and not a pass. Completing
-C1 does not improve the baseline; it creates the auditable input needed to test C2.
+C1 engineering is complete and its latest corrected all-pair freeze passed source
+verification: 339 pairs, 355,617 raw closed rows, 354,741 canonical daily rows after
+removing 876 duplicate IST-day fillers, 7,058 explicit absent sessions and 673 invalid
+OHLCV rows. Exact observations now cover two point-in-time sessions per required pair;
+0 of 337 required pairs meet the 30-session gate. Of 2,022 geometry rows, 1,014 are
+excluded and 1,008 pending; none is resolved. Accuracy and expectancy remain
+unavailable—not zero and not a pass. Completing C1 does not improve the baseline; it
+creates the auditable input needed to test C2.
 
 ## C2 — anticipatory mechanism and quick-profit geometry race
 
@@ -59,17 +60,24 @@ C1 does not improve the baseline; it creates the auditable input needed to test 
   evidence as unavailable—never zero or pass.
 - [ ] Evaluate all 12 trials once every trial/control is mature; reject and stop this
   version if none passes, or authorize only C3 research if one qualifies.
-- [x] Refresh C1 and then C2 automatically after the established daily tracker; skip C2
+- [x] Refresh C1 and then C2 automatically after the established crypto tracker cadence; skip C2
   on any C1 integrity failure and keep tracker collection durable on refresh failure.
+- [x] Run collection through one strict ordered crypto pipeline and publish hash-bound,
+  freshness-limited collector health; operational completion is never a performance pass.
+- [x] Latch the first complete C2 decision in an atomically published immutable envelope
+  verified against the exact run, artifacts, C1 sources and complete 12-trial denominator.
 
 C2 implementation is complete, but **0 of 12 trials are evaluated** because current C1
-evidence still has one point-in-time session per required pair and no mature geometry
+evidence still has only two point-in-time sessions per required pair and no mature geometry
 labels. No predictive percentage exists yet. A complete C2 trial must have at least 100
 resolved calls over 30 active sessions, 80% observed accuracy, a 70% Wilson lower bound,
 positive net R, at least +0.10R and superior accuracy/net R versus every control, a
 family-wise corrected p-value no greater than 0.05, and favorable direction in all three
 chronological folds. Even a pass remains research-only with baseline and live eligibility
 false.
+
+C3 remains blocked until C2 produces one verified terminal result. A completed collector
+run, a mutable state file or partial trial maturity cannot authorize C3.
 
 ## C3 — precision selector
 

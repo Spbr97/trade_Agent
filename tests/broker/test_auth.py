@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 
 import httpx
@@ -9,11 +10,14 @@ import respx
 
 from tests.broker.fakes import TOTP_SECRET, FakeClock, MemoryStore
 from tradedesk.broker.indstocks.auth import (
+    KEY_TOKEN,
+    KEY_TOKEN_ISSUED_AT,
     KEY_TOTP_SECRET,
     Credentials,
     MissingSecret,
     TokenGenerationError,
     TokenProvider,
+    token_generation_lock,
 )
 from tradedesk.broker.indstocks.rest import BASE_URL
 
@@ -171,3 +175,97 @@ async def test_throttle_is_honoured_across_processes(
     finally:
         auth_mod.asyncio.sleep = orig  # type: ignore[assignment]
     assert slept and 49 <= slept[0] <= 50  # waited out the remainder of the 60 s gap
+
+
+@respx.mock
+async def test_concurrent_providers_generate_once_and_share_the_winner(
+    http: httpx.AsyncClient,
+    store: MemoryStore,
+    clock: FakeClock,
+    tmp_path,
+) -> None:
+    route = respx.post(f"{BASE_URL}/generate/token").mock(
+        return_value=httpx.Response(200, json={"token": "shared-token"})
+    )
+    lock_path = tmp_path / "token-generation.lock"
+
+    def shared_lock():
+        return token_generation_lock(lock_path)
+
+    first = TokenProvider(
+        http=http, store=store, clock=clock, generation_lock=shared_lock
+    )
+    second = TokenProvider(
+        http=http, store=store, clock=clock, generation_lock=shared_lock
+    )
+    tokens = await asyncio.gather(first.get_token(), second.get_token())
+
+    assert tokens == ["shared-token", "shared-token"]
+    assert route.call_count == 1
+    assert store.get(KEY_TOKEN) == "shared-token"
+    assert store.get(KEY_TOKEN_ISSUED_AT) is not None
+
+
+@respx.mock
+async def test_generation_lock_releases_after_failure(
+    http: httpx.AsyncClient,
+    store: MemoryStore,
+    clock: FakeClock,
+    tmp_path,
+) -> None:
+    route = respx.post(f"{BASE_URL}/generate/token").mock(
+        side_effect=[
+            httpx.Response(401, json={"message": "Invalid TOTP"}),
+            httpx.Response(200, json={"token": "recovered-token"}),
+        ]
+    )
+    lock_path = tmp_path / "token-generation.lock"
+
+    def shared_lock():
+        return token_generation_lock(lock_path)
+
+    first = TokenProvider(
+        http=http, store=store, clock=clock, generation_lock=shared_lock
+    )
+    with pytest.raises(TokenGenerationError, match="Invalid TOTP"):
+        await first.get_token()
+
+    clock.advance(61)
+    second = TokenProvider(
+        http=http, store=store, clock=clock, generation_lock=shared_lock
+    )
+    assert await second.get_token() == "recovered-token"
+    assert route.call_count == 2
+
+
+@respx.mock
+async def test_concurrent_rejected_token_refresh_adopts_first_winner(
+    http: httpx.AsyncClient,
+    store: MemoryStore,
+    clock: FakeClock,
+    tmp_path,
+) -> None:
+    store.set(KEY_TOKEN, "rejected-token")
+    store.set(KEY_TOKEN_ISSUED_AT, repr(clock()))
+    route = respx.post(f"{BASE_URL}/generate/token").mock(
+        return_value=httpx.Response(200, json={"token": "replacement-token"})
+    )
+    lock_path = tmp_path / "token-generation.lock"
+
+    def shared_lock():
+        return token_generation_lock(lock_path)
+
+    first = TokenProvider(
+        http=http, store=store, clock=clock, generation_lock=shared_lock
+    )
+    second = TokenProvider(
+        http=http, store=store, clock=clock, generation_lock=shared_lock
+    )
+    tokens = await asyncio.gather(
+        first.refresh(rejected_token="rejected-token"),
+        second.refresh(rejected_token="rejected-token"),
+    )
+
+    assert tokens == ["replacement-token", "replacement-token"]
+    assert route.call_count == 1
+    assert store.get(KEY_TOKEN) == "replacement-token"
