@@ -841,6 +841,16 @@
     </div>
     <table id="failure-attribution-table" style="margin-top:10px;"></table>
   </section>
+  <section>
+    <h2>Learning dataset eligibility <span class="info-ic" title="Prospective, sealed, mature, market-matched rows only. Pending, invalid, never-triggered, backfill, duplicate, unsealed or hash-mismatched records are excluded with reasons.">ⓘ</span></h2>
+    <div class="cards">
+      <div class="card"><div class="label">Eligible sealed rows</div><div class="value" id="dataset-eligible">-</div></div>
+      <div class="card"><div class="label">Source records checked</div><div class="value" id="dataset-source">-</div></div>
+      <div class="card"><div class="label">Excluded</div><div class="value" id="dataset-excluded">-</div></div>
+      <div class="card"><div class="label">Dataset version</div><div class="value" id="dataset-version">-</div></div>
+    </div>
+    <div class="muted" id="dataset-detail" style="margin-top:8px;"></div>
+  </section>
 </div>
 
 <div id="tab-lab" class="subtab" hidden>
@@ -1941,6 +1951,7 @@ async function loadPredictions() {
   predictionsCache = rows_;
   renderPredictionsTable();
   loadFailureAttribution(market);
+  loadLearningDatasetSummary(market);
 }
 $('predictions-market-select').addEventListener('change', loadPredictions);
 $('predictions-filter-status').addEventListener('change', renderPredictionsTable);
@@ -1979,6 +1990,21 @@ async function loadFailureAttribution(market) {
       categories.length ? categories.map(c => `<tr><td>${c.code}</td><td class="num">${c.failures}</td><td class="num">${c.share_of_failures != null ? pct(c.share_of_failures) : '-'}</td><td class="num">${c.sessions}</td><td>${c.recurring ? 'yes' : 'no'}</td><td>${Object.keys(c.evidence_levels || {}).join(', ') || '-'}</td><td class="num">${c.mean_gross_r != null ? fmt(c.mean_gross_r, 2) : '-'}</td><td class="num">${c.mean_net_r != null ? fmt(c.mean_net_r, 2) : '-'}</td></tr>`) : ['<tr><td colspan="8" class="empty-note">no valid failed calls classified yet</td></tr>']);
   } catch (e) {
     $('failure-top').textContent = 'n/a';
+  }
+}
+async function loadLearningDatasetSummary(market) {
+  try {
+    const r = await fetch(`/api/learning-dataset/summary?market=${market}&purpose=prospective`);
+    const report = r.ok ? await r.json() : {};
+    $('dataset-eligible').textContent = report.eligible_rows ?? '-';
+    $('dataset-source').textContent = report.source_records ?? '-';
+    const excluded = Object.values(report.exclusions || {}).reduce((a, b) => a + b, 0);
+    $('dataset-excluded').textContent = excluded;
+    $('dataset-version').textContent = report.version || '-';
+    const reasons = Object.entries(report.exclusions || {}).map(([k,v]) => `${k}: ${v}`).join(' · ');
+    $('dataset-detail').textContent = reasons || `dataset ${report.dataset_id || '-'} — no exclusions`;
+  } catch (e) {
+    $('dataset-eligible').textContent = 'n/a';
   }
 }
 function renderResearchSummary(summary) {

@@ -6,6 +6,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+from collections import Counter
 from collections.abc import AsyncIterator
 from datetime import UTC, date, datetime
 from pathlib import Path
@@ -1644,6 +1645,33 @@ def create_app(
         if market != "nse":
             rows = [r for r in rows if r.get("source") == "live"]
         return JSONResponse(failure_attribution_summary(rows))
+
+    @app.get("/api/learning-dataset/summary")
+    async def api_learning_dataset_summary(
+        market: str = "nse", purpose: str = "prospective"
+    ) -> JSONResponse:
+        from tradedesk.analysis import BSE_LOG, CRYPTO_LOG, NSE_LOG
+        from tradedesk.learning_dataset import build_learning_dataset
+
+        logs = {"nse": NSE_LOG, "crypto": CRYPTO_LOG, "bse": BSE_LOG}
+        if market not in logs or purpose not in {"development", "locked_test", "prospective"}:
+            return JSONResponse({"error": "invalid market or dataset purpose"}, status_code=400)
+        rows = _read_call_log(logs[market], 100_000)
+        dataset = build_learning_dataset(rows, market=market, purpose=purpose)  # type: ignore[arg-type]
+        evidence = Counter(str(row["evidence_class"]) for row in dataset.rows)
+        return JSONResponse(
+            {
+                "dataset_id": dataset.dataset_id,
+                "version": dataset.version,
+                "market": market,
+                "purpose": purpose,
+                "source_records": dataset.source_records,
+                "eligible_rows": len(dataset.rows),
+                "exclusions": dataset.exclusions,
+                "evidence_classes": dict(evidence),
+                "setups": dict(Counter(str(row["setup"]) for row in dataset.rows)),
+            }
+        )
 
     @app.get("/api/session-report")
     async def api_session_report(

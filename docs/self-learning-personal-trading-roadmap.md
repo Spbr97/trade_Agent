@@ -2,7 +2,7 @@
 
 Date created: 2026-10-06
 
-Status: in progress; Milestones 1-4 completed on 2026-10-06
+Status: in progress; Milestones 1-5 completed on 2026-10-06
 
 Primary objective: produce a small, useful set of personally tradeable calls with
 verifiable accuracy, positive after-cost expectancy, explicit risk levels and honest
@@ -153,21 +153,21 @@ Implementation record: [Milestone 4 failure attribution](self-learning-m4-failur
 
 Include:
 
-- [ ] Mature successful calls.
-- [ ] Mature failed calls.
-- [ ] Mature rejected and shadow calls as counterfactual evidence.
-- [ ] Original prediction-time features only.
-- [ ] Outcome, net R, resolution time and failure categories.
-- [ ] Market, sector and regime context.
+- [x] Mature successful calls.
+- [x] Mature failed calls.
+- [x] Mature rejected and shadow calls as counterfactual evidence.
+- [x] Original sealed prediction-time features only.
+- [x] Outcome, net R, resolution time and failure categories.
+- [x] Market, sector and regime context.
 
 Exclude:
 
-- [ ] Pending calls.
-- [ ] Invalid calls.
-- [ ] Rows containing future information.
-- [ ] Duplicate predictions.
-- [ ] Backfilled rows from prospective evidence.
-- [ ] Rows with missing or mismatched contract hashes.
+- [x] Pending calls.
+- [x] Invalid calls.
+- [x] Rows containing future information.
+- [x] Duplicate predictions.
+- [x] Backfilled rows from prospective evidence.
+- [x] Rows with missing or mismatched contract hashes.
 
 Acceptance criteria:
 
@@ -175,6 +175,8 @@ Acceptance criteria:
 - Development, locked-test and prospective rows are explicitly labelled.
 - NSE, BSE and crypto cannot be pooled accidentally.
 - The same locked outcome is never reused as fresh evidence by a later challenger.
+
+Implementation record: [Milestone 5 learning dataset](self-learning-m5-learning-dataset.md)
 
 ## Milestone 6 — Scheduled self-learning workflow
 
@@ -364,7 +366,7 @@ personal-trading authority.
 2. [x] Immutable prediction ledger.
 3. [x] Deterministic outcome resolver.
 4. [x] Failure-attribution engine.
-5. [ ] Learning-dataset builder.
+5. [x] Learning-dataset builder.
 6. [ ] Full performance and self-learning dashboard panels.
 7. [ ] Scheduled challenger-training workflow.
 8. [ ] Quick-profit versus swing experiments.

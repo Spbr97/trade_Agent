@@ -117,6 +117,16 @@ async def test_potential_calls_summary_covers_all_three_markets(tmp_path: Path, 
         assert failures["invalid_calls_excluded"] == 0
         assert failures["categories"][0]["code"] == "unclassified_failure"
 
+        dataset = (
+            await c.get(
+                "/api/learning-dataset/summary",
+                params={"market": "nse", "purpose": "prospective"},
+            )
+        ).json()
+        assert dataset["source_records"] == 3
+        assert dataset["eligible_rows"] == 0
+        assert dataset["exclusions"] == {"missing_signal_id": 3}
+
 
 async def test_session_report_endpoint_reads_the_real_file(tmp_path: Path, monkeypatch) -> None:  # noqa: ANN001, E501
     monkeypatch.chdir(tmp_path)
