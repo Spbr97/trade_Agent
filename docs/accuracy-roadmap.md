@@ -594,6 +594,24 @@ automated refresh remains 0/12 evaluated and non-terminal; see the
 [R1 checkpoint](accuracy-evidence-refresh-r1-checkpoint.md) and
 [R2 checkpoint](accuracy-collector-integrity-r2-checkpoint.md).
 
+Crypto R3 also tested the requested smaller, quicker profit path independently of the
+immature C1/C2 trial evidence. Its frozen 64-trial race used backfill only for selection,
+purged chronological folds for out-of-sample ranking, and the explicitly marked live
+tracker cohort only as a final retrospective diagnostic. No setup cleared the gates. The
+strongest backfill/walk-forward diagnostic was `nr7_breakout` at a 0.75R target and
+seven-session hold, but walk-forward accuracy was only 43/206 (20.87%) with -1.113 mean
+net R and -0.842 mean after-tax R; the separate live diagnostic was 4/47 (8.51%) with
+-1.647 mean net R. Smaller targets alone therefore do not improve the baseline. R3 is
+integrated into the strict collector and dashboard but remains research-only; see the
+[R3 checkpoint](crypto-accuracy-recovery-r3-checkpoint.md) and
+[frozen R3 protocol](crypto-accuracy-recovery-r3-protocol.md).
+
+The next crypto experiment changes selection rather than reopening exit geometry: a
+causal, setup-separated precision meta-selector with calibration inside purged folds,
+explicit abstention, minimum volume, Wilson support, positive after-cost/after-tax
+expectancy and an untouched prospective cohort. C1 outcomes cannot train it until those
+labels mature.
+
 ## Parallel BSE accuracy program
 
 BSE evidence remains independent of both NSE and crypto. B1 transports exactly one

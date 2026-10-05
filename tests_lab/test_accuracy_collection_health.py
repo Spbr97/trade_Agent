@@ -36,6 +36,17 @@ def test_registered_nse_pipeline_keeps_m8_m11_after_scan() -> None:
     assert names.index("signal_and_m8_m11") < names.index("research_tracker")
 
 
+def test_registered_crypto_pipeline_runs_recovery_after_c1_c2_as_optional() -> None:
+    steps = pipeline_steps("crypto", python="python")
+
+    assert [step.name for step in steps] == [
+        "data_load",
+        "signal_c1_c2",
+        "accuracy_recovery_r3",
+    ]
+    assert steps[-1].critical is False
+
+
 def test_critical_failure_stops_dependent_evidence_and_is_hash_bound(tmp_path) -> None:
     calls: list[str] = []
 

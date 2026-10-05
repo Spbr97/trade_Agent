@@ -66,6 +66,10 @@ creates the auditable input needed to test C2.
   freshness-limited collector health; operational completion is never a performance pass.
 - [x] Latch the first complete C2 decision in an atomically published immutable envelope
   verified against the exact run, artifacts, C1 sources and complete 12-trial denominator.
+- [x] Run the independent R3 quick-profit geometry recovery over the historical tracker,
+  with backfill-only selection, purged chronological folds and a separate live
+  retrospective cohort. All 64 registered trials were rejected; baseline and live
+  authority remain false.
 
 C2 implementation is complete, but **0 of 12 trials are evaluated** because current C1
 evidence still has only two point-in-time sessions per required pair and no mature geometry
@@ -117,4 +121,6 @@ Evidence: [C0 baseline](crypto-accuracy-c0-checkpoint.md),
 [C1 dataset checkpoint](crypto-accuracy-dataset-c1-checkpoint.md),
 [C1 dataset protocol](crypto-accuracy-dataset-c1-protocol.md),
 [C2 mechanism checkpoint](crypto-accuracy-mechanisms-c2-checkpoint.md), and
-[C2 mechanism protocol](crypto-accuracy-mechanisms-c2-protocol.md).
+[C2 mechanism protocol](crypto-accuracy-mechanisms-c2-protocol.md),
+[R3 recovery checkpoint](crypto-accuracy-recovery-r3-checkpoint.md), and
+[R3 recovery protocol](crypto-accuracy-recovery-r3-protocol.md).

@@ -90,6 +90,11 @@ def pipeline_steps(market: str, python: str | None = None) -> tuple[PipelineStep
                 "signal_c1_c2",
                 (executable, "scripts/crypto_signal_tracker.py", "--strict-accuracy-refresh"),
             ),
+            PipelineStep(
+                "accuracy_recovery_r3",
+                (executable, "scripts/crypto_accuracy_recovery.py"),
+                critical=False,
+            ),
         )
     raise ValueError(f"unsupported accuracy collection market: {market}")
 

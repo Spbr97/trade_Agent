@@ -38,6 +38,7 @@ CRYPTO_ACCURACY_STATE = Path("data/m14_m18/crypto_accuracy_program/state.json")
 CRYPTO_ACCURACY_TIMING = Path("data/m14_m18/crypto_accuracy_timing/state.json")
 CRYPTO_ACCURACY_DATASET = Path("data/m14_m18/crypto_accuracy_dataset/state.json")
 CRYPTO_ACCURACY_MECHANISMS = Path("data/m14_m18/crypto_accuracy_mechanisms/state.json")
+CRYPTO_ACCURACY_RECOVERY = Path("data/m14_m18/crypto_accuracy_recovery/state.json")
 CRYPTO_UNIVERSE_STATE = Path(
     "data/m14_m18/crypto_accuracy_dataset/universe_state.json"
 )
@@ -521,6 +522,134 @@ def create_app(
                     "detail",
                     "crypto-only C2 mechanism evidence; unavailable is never a pass",
                 ),
+            }
+        )
+
+    @app.get("/api/crypto/accuracy-recovery")
+    async def api_crypto_accuracy_recovery() -> JSONResponse:
+        """Compact R3 geometry recovery evidence; always research-only."""
+
+        def unavailable(status: str, detail: str) -> JSONResponse:
+            return JSONResponse(
+                {
+                    "status": status,
+                    "version": None,
+                    "id": None,
+                    "created_at": None,
+                    "source": None,
+                    "trial_counts": None,
+                    "best_diagnostic": None,
+                    "source_integrity": {"passed": False, "errors": [detail]},
+                    "research_gate_passed": False,
+                    "baseline_improved": False,
+                    "eligible_for_live": False,
+                    "detail": detail,
+                }
+            )
+
+        if not CRYPTO_ACCURACY_RECOVERY.exists():
+            return unavailable("not_run", "crypto R3 recovery experiment has not run")
+        try:
+            from tradedesk_lab.crypto_accuracy_recovery import (
+                verify_crypto_accuracy_recovery,
+            )
+
+            payload = verify_crypto_accuracy_recovery(CRYPTO_ACCURACY_RECOVERY.parent)
+        except (ImportError, OSError, KeyError, TypeError, ValueError, json.JSONDecodeError):
+            return unavailable(
+                "blocked_invalid_integrity",
+                "crypto R3 recovery evidence failed integrity verification — not a pass",
+            )
+
+        def metrics(value: Any) -> dict[str, Any] | None:
+            if not isinstance(value, dict):
+                return None
+            return {
+                key: value.get(key)
+                for key in (
+                    "resolved_calls",
+                    "wins",
+                    "active_sessions",
+                    "observed_accuracy",
+                    "wilson95_lower",
+                    "mean_net_r",
+                    "mean_after_tax_r",
+                )
+            }
+
+        best = payload.get("best_diagnostic")
+        compact_best = None
+        if isinstance(best, dict):
+            nominee = best.get("nominee")
+            walk_forward = best.get("walk_forward")
+            compact_best = {
+                "setup": best.get("setup"),
+                "status": best.get("status"),
+                "nominee": (
+                    {
+                        key: nominee.get(key)
+                        for key in ("candidate_id", "target_r", "max_hold_sessions")
+                    }
+                    if isinstance(nominee, dict)
+                    else None
+                ),
+                "development": metrics(best.get("development")),
+                "walk_forward": {
+                    **(metrics(walk_forward) or {}),
+                    "positive_folds": (
+                        walk_forward.get("positive_folds")
+                        if isinstance(walk_forward, dict)
+                        else None
+                    ),
+                },
+                "live_validation": metrics(best.get("live_validation")),
+                "gates": best.get("gates") if isinstance(best.get("gates"), dict) else {},
+                "passed_research_gate": bool(best.get("passed_research_gate", False)),
+            }
+        source = payload.get("source")
+        trial_counts = payload.get("trial_counts")
+        source_integrity = payload.get("source_integrity")
+        return JSONResponse(
+            {
+                "status": payload.get("status", "invalid"),
+                "version": payload.get("version"),
+                "id": payload.get("id"),
+                "created_at": payload.get("created_at"),
+                "source": (
+                    {
+                        key: source.get(key)
+                        for key in ("tracker_rows", "backfill_rows", "live_rows")
+                    }
+                    if isinstance(source, dict)
+                    else None
+                ),
+                "trial_counts": (
+                    {
+                        key: trial_counts.get(key)
+                        for key in (
+                            "setups",
+                            "registered_per_setup",
+                            "registered_total",
+                            "passing_setups",
+                        )
+                    }
+                    if isinstance(trial_counts, dict)
+                    else None
+                ),
+                "best_diagnostic": compact_best,
+                "source_integrity": (
+                    {
+                        "passed": source_integrity.get("passed") is True,
+                        "errors": source_integrity.get("errors", []),
+                    }
+                    if isinstance(source_integrity, dict)
+                    else {"passed": False, "errors": ["source integrity unavailable"]}
+                ),
+                "research_gate_passed": bool(payload.get("research_gate_passed", False)),
+                # Retrospective recovery research never changes qualified authority.
+                "baseline_improved": False,
+                "eligible_for_live": False,
+                "detail": payload.get("detail", "crypto R3 recovery is research-only"),
             }
         )
 

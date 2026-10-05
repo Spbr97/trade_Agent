@@ -439,6 +439,17 @@
       <div class="card"><div class="label">Best Wilson lower</div><div class="value" id="crypto-mechanisms-wilson">-</div></div>
     </div>
     <div class="muted" id="crypto-mechanisms-detail" style="margin-top:8px;"></div>
+    <div class="cards" style="margin-top:12px;">
+      <div class="card"><div class="label">R3 accuracy recovery</div><div class="value" id="crypto-recovery-status">-</div></div>
+      <div class="card"><div class="label">Registered geometry trials</div><div class="value" id="crypto-recovery-trials">-</div></div>
+      <div class="card"><div class="label">Best diagnostic setup</div><div class="value" id="crypto-recovery-setup">-</div></div>
+      <div class="card"><div class="label">Best diagnostic geometry</div><div class="value" id="crypto-recovery-geometry">-</div></div>
+      <div class="card"><div class="label">Walk-forward accuracy</div><div class="value" id="crypto-recovery-wf-accuracy">-</div></div>
+      <div class="card"><div class="label">Live-cohort accuracy</div><div class="value" id="crypto-recovery-live-accuracy">-</div></div>
+      <div class="card"><div class="label">Live-cohort Wilson lower</div><div class="value" id="crypto-recovery-live-wilson">-</div></div>
+      <div class="card"><div class="label">Live-cohort mean net R</div><div class="value" id="crypto-recovery-live-net">-</div></div>
+    </div>
+    <div class="muted" id="crypto-recovery-detail" style="margin-top:8px;"></div>
   </section>
   <section class="perf-controls">
     <div class="group">
@@ -1520,6 +1531,45 @@ async function loadCryptoAccuracyMechanisms() {
 }
 loadCryptoAccuracyMechanisms();
 setInterval(loadCryptoAccuracyMechanisms, 60000);
+
+async function loadCryptoAccuracyRecovery() {
+  const unavailable = 'not available — not a pass';
+  const knownNumber = number => number !== null && number !== undefined && Number.isFinite(Number(number));
+  const metric = number => knownNumber(number)
+    ? `${(Number(number) * 100).toFixed(2)}%`
+    : unavailable;
+  const rMetric = number => knownNumber(number)
+    ? `${Number(number) >= 0 ? '+' : ''}${Number(number).toFixed(3)}R`
+    : unavailable;
+  try {
+    const response = await fetch('/api/crypto/accuracy-recovery');
+    if (!response.ok) throw new Error('crypto R3 recovery unavailable');
+    const value = await response.json();
+    const counts = value.trial_counts || {};
+    const best = value.best_diagnostic || {};
+    const nominee = best.nominee || {};
+    const walkForward = best.walk_forward || {};
+    const live = best.live_validation || {};
+    $('crypto-recovery-status').textContent = (value.status || 'invalid').replaceAll('_', ' ');
+    $('crypto-recovery-status').className = 'value planned';
+    $('crypto-recovery-trials').textContent = knownNumber(counts.registered_total)
+      ? `${Number(counts.registered_total).toLocaleString()} · ${Number(counts.passing_setups || 0).toLocaleString()} passing setups`
+      : unavailable;
+    $('crypto-recovery-setup').textContent = best.setup || unavailable;
+    $('crypto-recovery-geometry').textContent = nominee.candidate_id || unavailable;
+    $('crypto-recovery-wf-accuracy').textContent = metric(walkForward.observed_accuracy);
+    $('crypto-recovery-live-accuracy').textContent = metric(live.observed_accuracy);
+    $('crypto-recovery-live-wilson').textContent = metric(live.wilson95_lower);
+    $('crypto-recovery-live-net').textContent = rMetric(live.mean_net_r);
+    $('crypto-recovery-detail').textContent = `${value.detail || 'Research-only geometry recovery.'} Backfill selection and the live cohort remain separate; baseline improved: no; live eligible: no.`;
+  } catch (e) {
+    $('crypto-recovery-status').textContent = 'unavailable';
+    for (const id of ['crypto-recovery-trials', 'crypto-recovery-setup', 'crypto-recovery-geometry', 'crypto-recovery-wf-accuracy', 'crypto-recovery-live-accuracy', 'crypto-recovery-live-wilson', 'crypto-recovery-live-net']) $(id).textContent = unavailable;
+    $('crypto-recovery-detail').textContent = 'Crypto R3 recovery evidence is unavailable — not a pass.';
+  }
+}
+loadCryptoAccuracyRecovery();
+setInterval(loadCryptoAccuracyRecovery, 60000);
 
 // ---------------------------------------------------------------- Review tab
 function reviewCard(item) {
