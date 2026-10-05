@@ -62,11 +62,13 @@ def _read_call_log(log_path: Path, limit: int) -> list[dict[str, Any]]:
         if line.strip()
     ]
     from tradedesk.evidence import enrich_call_record, infer_market
+    from tradedesk.failure_attribution import attribute_failure
 
     market = infer_market(log_path)
     for index, r in enumerate(rows):
         r.setdefault("source", "backfill")
         rows[index] = enrich_call_record(r, market=market)
+        rows[index].setdefault("failure_attributions", attribute_failure(rows[index]))
     rows.sort(key=lambda r: r["logged_at"], reverse=True)
     return rows[:limit]
 
@@ -1629,6 +1631,19 @@ def create_app(
                 },
             }
         return JSONResponse(out)
+
+    @app.get("/api/failure-attribution")
+    async def api_failure_attribution(market: str = "nse") -> JSONResponse:
+        from tradedesk.analysis import BSE_LOG, CRYPTO_LOG, NSE_LOG
+        from tradedesk.failure_attribution import failure_attribution_summary
+
+        logs = {"nse": NSE_LOG, "crypto": CRYPTO_LOG, "bse": BSE_LOG}
+        if market not in logs:
+            return JSONResponse({"error": "market must be nse, bse, or crypto"}, status_code=400)
+        rows = _read_call_log(logs[market], 100_000)
+        if market != "nse":
+            rows = [r for r in rows if r.get("source") == "live"]
+        return JSONResponse(failure_attribution_summary(rows))
 
     @app.get("/api/session-report")
     async def api_session_report(

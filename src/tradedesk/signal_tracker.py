@@ -21,7 +21,7 @@ is the "self-analyse if a call fails" surface for markets that have no paper boo
 from __future__ import annotations
 
 import json
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from datetime import date, datetime
 from pathlib import Path
 
@@ -43,6 +43,7 @@ from tradedesk.evidence import (
     infer_market,
     is_trainable_outcome,
 )
+from tradedesk.failure_attribution import attribute_failure
 from tradedesk.markets import Market
 from tradedesk.outcome_resolver import resolve_versioned_call
 from tradedesk.prediction.labeling import triple_barrier
@@ -135,6 +136,7 @@ class TrackedSignal:
     first_event: str | None = None
     resolution_rule: str | None = None
     data_status: str | None = None
+    failure_attributions: list[dict[str, object]] = field(default_factory=list)
 
 
 def load_log(log_path: Path) -> dict[str, TrackedSignal]:
@@ -224,6 +226,7 @@ def resolve_outcomes(
             row.data_status = result.data_status
             row.r_multiple = result.gross_r
             row.resolved_at = result.exit_on
+            row.failure_attributions = attribute_failure(asdict(row))
             resolved.append(row)
             continue
         armed = date.fromisoformat(row.armed_on)
@@ -246,6 +249,7 @@ def resolve_outcomes(
         if lab.exit_price is not None:
             row.r_multiple = (lab.exit_price - row.entry) / (row.entry - row.stop)
         row.resolved_at = datetime.now(IST).isoformat()
+        row.failure_attributions = attribute_failure(asdict(row))
         resolved.append(row)
     return resolved
 

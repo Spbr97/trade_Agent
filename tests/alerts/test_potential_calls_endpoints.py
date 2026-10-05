@@ -111,6 +111,12 @@ async def test_potential_calls_summary_covers_all_three_markets(tmp_path: Path, 
         assert r["crypto"] == empty
         assert r["bse"] == empty
 
+        failures = (await c.get("/api/failure-attribution", params={"market": "nse"})).json()
+        assert failures["resolved_calls"] == 2
+        assert failures["failed_calls"] == 1
+        assert failures["invalid_calls_excluded"] == 0
+        assert failures["categories"][0]["code"] == "unclassified_failure"
+
 
 async def test_session_report_endpoint_reads_the_real_file(tmp_path: Path, monkeypatch) -> None:  # noqa: ANN001, E501
     monkeypatch.chdir(tmp_path)

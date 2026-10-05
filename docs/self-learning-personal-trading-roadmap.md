@@ -2,7 +2,7 @@
 
 Date created: 2026-10-06
 
-Status: in progress; Milestones 1-3 completed on 2026-10-06
+Status: in progress; Milestones 1-4 completed on 2026-10-06
 
 Primary objective: produce a small, useful set of personally tradeable calls with
 verifiable accuracy, positive after-cost expectancy, explicit risk levels and honest
@@ -114,36 +114,40 @@ Implementation record: [Milestone 3 deterministic resolver](self-learning-m3-det
 
 Assign one or more evidence-backed categories to each mature failed call:
 
-- [ ] False breakout.
-- [ ] Late or overextended entry.
-- [ ] Market-regime reversal.
-- [ ] Sector weakness.
-- [ ] Relative-strength deterioration.
-- [ ] Insufficient volume confirmation.
-- [ ] Excessive volatility.
-- [ ] Poor liquidity or excessive slippage.
-- [ ] Gap through entry or stop.
-- [ ] Stop too tight for the observed path.
-- [ ] Target too ambitious for the observed path.
-- [ ] Holding period too short or too long.
-- [ ] Model overconfidence.
-- [ ] Setup-specific weakness.
-- [ ] Data-quality failure.
+- [x] False breakout from verified path excursion.
+- [x] Late or overextended entry from actual-fill versus ATR distance.
+- [x] Market-regime reversal availability check; explicitly unavailable until an
+  outcome-time regime snapshot exists, rather than inferred from the result.
+- [x] Sector weakness as a labelled diagnostic association.
+- [x] Relative-strength deterioration availability check; explicitly unavailable until
+  an outcome-time relative-strength snapshot exists.
+- [x] Insufficient volume confirmation as a labelled diagnostic association.
+- [x] Excessive volatility as a labelled diagnostic association.
+- [x] Poor liquidity or excessive slippage.
+- [x] Gap through stop from the verified first event.
+- [x] Stop too tight for the observed path.
+- [x] Target too ambitious for the observed path.
+- [x] Holding period too short or too long.
+- [x] Model overconfidence.
+- [x] Setup-specific weakness from aggregate mature evidence.
+- [x] Data-quality failure, reported separately and excluded from performance learning.
 
 For every category calculate:
 
-- [ ] Frequency and recent trend.
-- [ ] Accuracy and Wilson interval.
-- [ ] Mean gross, net and after-tax R.
-- [ ] Breakdown by setup, market, sector and regime.
-- [ ] Breakdown by confidence band.
-- [ ] Recurrence across independent sessions.
+- [x] Frequency and recent trend.
+- [x] Accuracy and Wilson interval.
+- [x] Mean gross, net and after-tax R.
+- [x] Breakdown by setup, market, sector and regime.
+- [x] Breakdown by confidence band.
+- [x] Recurrence across independent sessions.
 
 Acceptance criteria:
 
 - Failure categories use prediction-time information plus the realized price path.
 - Explanations do not alter the original prediction.
 - The dashboard distinguishes verified causes from diagnostic associations.
+
+Implementation record: [Milestone 4 failure attribution](self-learning-m4-failure-attribution.md)
 
 ## Milestone 5 — Learning-dataset builder
 
@@ -359,7 +363,7 @@ personal-trading authority.
 1. [x] Evidence categories and frozen outcome contracts.
 2. [x] Immutable prediction ledger.
 3. [x] Deterministic outcome resolver.
-4. [ ] Failure-attribution engine.
+4. [x] Failure-attribution engine.
 5. [ ] Learning-dataset builder.
 6. [ ] Full performance and self-learning dashboard panels.
 7. [ ] Scheduled challenger-training workflow.

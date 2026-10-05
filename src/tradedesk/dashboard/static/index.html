@@ -831,6 +831,16 @@
     <span class="info-ic" title="Every candidate logged from the first prediction onward - what it predicted, side by side with what actually happened once it resolves. Nothing here changes any model; it is the raw material a human (or the model, once it has enough of these) can look for a pattern in.">ⓘ</span>
   </section>
   <section><table id="predictions-table"></table></section>
+  <section>
+    <h2>Failure attribution <span class="info-ic" title="Post-outcome diagnostics. Verified path facts are separated from associations; neither is causal proof. Invalid calls are shown as excluded and never enter performance learning.">ⓘ</span></h2>
+    <div class="cards">
+      <div class="card"><div class="label">Resolved</div><div class="value" id="failure-resolved">-</div></div>
+      <div class="card"><div class="label">Valid failures</div><div class="value" id="failure-count">-</div></div>
+      <div class="card"><div class="label">Invalid excluded</div><div class="value" id="failure-invalid">-</div></div>
+      <div class="card"><div class="label">Top recurring pattern</div><div class="value" id="failure-top">-</div></div>
+    </div>
+    <table id="failure-attribution-table" style="margin-top:10px;"></table>
+  </section>
 </div>
 
 <div id="tab-lab" class="subtab" hidden>
@@ -1930,6 +1940,7 @@ async function loadPredictions() {
   if (market !== 'nse') rows_ = rows_.filter(r_ => r_.source === 'live');
   predictionsCache = rows_;
   renderPredictionsTable();
+  loadFailureAttribution(market);
 }
 $('predictions-market-select').addEventListener('change', loadPredictions);
 $('predictions-filter-status').addEventListener('change', renderPredictionsTable);
@@ -1954,6 +1965,21 @@ function renderPredictionsTable() {
         <td>${r_.evidence_class === 'qualified_call' ? 'yes' : 'no'}</td><td class="${outcomeClass}">${outcomeText}</td>
         <td class="num">${r_.gross_r != null ? fmt(r_.gross_r, 2) : (r_.r_multiple != null ? fmt(r_.r_multiple, 2) : '-')}</td><td class="num">${r_.net_r != null ? fmt(r_.net_r, 2) : '-'}</td><td>${note}</td></tr>`;
     }));
+}
+async function loadFailureAttribution(market) {
+  try {
+    const r = await fetch(`/api/failure-attribution?market=${market}`);
+    const report = r.ok ? await r.json() : {categories: []};
+    $('failure-resolved').textContent = report.resolved_calls ?? '-';
+    $('failure-count').textContent = report.failed_calls ?? '-';
+    $('failure-invalid').textContent = report.invalid_calls_excluded ?? '-';
+    const categories = report.categories || [];
+    $('failure-top').textContent = categories.length ? `${categories[0].code} (${categories[0].failures})` : 'none classified';
+    rows($('failure-attribution-table'), ['Category','#Failures','% of failures','#Sessions','Recurring','Evidence','#Gross R','#Net R'],
+      categories.length ? categories.map(c => `<tr><td>${c.code}</td><td class="num">${c.failures}</td><td class="num">${c.share_of_failures != null ? pct(c.share_of_failures) : '-'}</td><td class="num">${c.sessions}</td><td>${c.recurring ? 'yes' : 'no'}</td><td>${Object.keys(c.evidence_levels || {}).join(', ') || '-'}</td><td class="num">${c.mean_gross_r != null ? fmt(c.mean_gross_r, 2) : '-'}</td><td class="num">${c.mean_net_r != null ? fmt(c.mean_net_r, 2) : '-'}</td></tr>`) : ['<tr><td colspan="8" class="empty-note">no valid failed calls classified yet</td></tr>']);
+  } catch (e) {
+    $('failure-top').textContent = 'n/a';
+  }
 }
 function renderResearchSummary(summary) {
   const rows_ = summary.map(s => {
