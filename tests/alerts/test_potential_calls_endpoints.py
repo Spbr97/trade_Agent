@@ -64,8 +64,37 @@ async def test_potential_calls_summary_covers_all_three_markets(tmp_path: Path, 
         assert r["nse"]["n_total"] == 3
         assert r["nse"]["n_resolved"] == 2
         assert r["nse"]["win_rate"] == 0.5
-        assert r["crypto"] == {"logged_today": 0, "n_total": 0, "n_resolved": 0, "win_rate": None}  # noqa: E501
-        assert r["bse"] == {"logged_today": 0, "n_total": 0, "n_resolved": 0, "win_rate": None}
+        assert r["nse"]["evidence_classes"] == {
+            "qualified_call": 3,
+            "shadow_call": 0,
+            "rejected_call": 0,
+        }
+        assert r["nse"]["outcome_states"] == {
+            "pending_call": 1,
+            "resolved_call": 2,
+            "invalid_call": 0,
+            "never_triggered": 0,
+        }
+        empty = {
+            "logged_today": 0,
+            "n_total": 0,
+            "n_resolved": 0,
+            "win_rate": None,
+            "evidence_classes": {
+                "qualified_call": 0,
+                "shadow_call": 0,
+                "rejected_call": 0,
+            },
+            "outcome_states": {
+                "pending_call": 0,
+                "resolved_call": 0,
+                "invalid_call": 0,
+                "never_triggered": 0,
+            },
+            "contracts": {"legacy": 0, "quick_profit": 0, "swing": 0},
+        }
+        assert r["crypto"] == empty
+        assert r["bse"] == empty
 
 
 async def test_session_report_endpoint_reads_the_real_file(tmp_path: Path, monkeypatch) -> None:  # noqa: ANN001, E501

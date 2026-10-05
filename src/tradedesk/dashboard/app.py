@@ -61,8 +61,12 @@ def _read_call_log(log_path: Path, limit: int) -> list[dict[str, Any]]:
         for line in log_path.read_text(encoding="utf-8").splitlines()
         if line.strip()
     ]
-    for r in rows:
+    from tradedesk.evidence import enrich_call_record, infer_market
+
+    market = infer_market(log_path)
+    for index, r in enumerate(rows):
         r.setdefault("source", "backfill")
+        rows[index] = enrich_call_record(r, market=market)
     rows.sort(key=lambda r: r["logged_at"], reverse=True)
     return rows[:limit]
 
@@ -1547,13 +1551,32 @@ def create_app(
             rows = all_rows if market == "nse" else [r for r in all_rows if r.get("source") == "live"]  # noqa: E501
             today = date.today().isoformat()
             today_rows = [r for r in rows if r.get("logged_at", "").startswith(today)]
-            resolved = [r for r in rows if r.get("outcome")]
+            resolved = [r for r in rows if r.get("outcome_state") == "resolved_call"]
             wins = sum(1 for r in resolved if r.get("label") == 1)
+            evidence_classes = {
+                name: sum(1 for r in rows if r.get("evidence_class") == name)
+                for name in ("qualified_call", "shadow_call", "rejected_call")
+            }
+            outcome_states = {
+                name: sum(1 for r in rows if r.get("outcome_state") == name)
+                for name in (
+                    "pending_call",
+                    "resolved_call",
+                    "invalid_call",
+                    "never_triggered",
+                )
+            }
             out[market] = {
                 "logged_today": len(today_rows),
                 "n_total": len(rows),
                 "n_resolved": len(resolved),
                 "win_rate": wins / len(resolved) if resolved else None,
+                "evidence_classes": evidence_classes,
+                "outcome_states": outcome_states,
+                "contracts": {
+                    name: sum(1 for r in rows if r.get("contract_kind") == name)
+                    for name in ("legacy", "quick_profit", "swing")
+                },
             }
         return JSONResponse(out)
 

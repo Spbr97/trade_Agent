@@ -2,7 +2,7 @@
 
 Date created: 2026-10-06
 
-Status: planned; implementation must proceed milestone by milestone
+Status: in progress; Milestone 1 completed on 2026-10-06
 
 Primary objective: produce a small, useful set of personally tradeable calls with
 verifiable accuracy, positive after-cost expectancy, explicit risk levels and honest
@@ -14,6 +14,12 @@ position management. NSE, BSE and crypto evidence must remain separate. Unavaila
 pending or invalid outcomes are never passes.
 
 ## Non-negotiable design
+
+The system maintains two independent dimensions. Recommendation authority is exactly one
+of `qualified_call`, `shadow_call` or `rejected_call`. Outcome lifecycle is exactly one
+of `pending_call`, `resolved_call`, `invalid_call` or `never_triggered`. Keeping these
+dimensions separate means, for example, that a shadow call can remain pending and later
+become resolved without ever being presented as a qualified recommendation.
 
 The system maintains three distinct streams:
 
@@ -27,22 +33,25 @@ It does not mean that the active model silently retrains or changes trading auth
 
 ## Milestone 1 — Evidence categories and outcome contracts
 
-- [ ] Define `qualified_call`: passed every accuracy, liquidity, regime and risk gate.
-- [ ] Define `shadow_call`: evaluated but not recommended for trading.
-- [ ] Define `rejected_call`: failed one or more declared gates.
-- [ ] Define `pending_call`: valid prediction whose outcome is not mature.
-- [ ] Define `invalid_call`: corrupted data, impossible geometry or unavailable instrument.
-- [ ] Define `never_triggered`: entry conditions did not occur before expiry.
-- [ ] Separate quick-profit calls from swing calls.
-- [ ] Freeze exact entry, stop, target, expiry and tie-breaking rules for each contract.
-- [ ] Keep NSE, BSE and crypto evidence physically and logically separate.
+- [x] Define `qualified_call`: passed every accuracy, liquidity, regime and risk gate.
+- [x] Define `shadow_call`: evaluated but not recommended for trading.
+- [x] Define `rejected_call`: failed one or more declared gates.
+- [x] Define `pending_call`: valid prediction whose outcome is not mature.
+- [x] Define `invalid_call`: corrupted data, impossible geometry or unavailable instrument.
+- [x] Define `never_triggered`: entry conditions did not occur before expiry.
+- [x] Separate quick-profit calls from swing calls with distinct versioned contracts.
+- [x] Freeze exact entry, stop, target, expiry and tie-breaking rules for each contract.
+- [x] Keep NSE, BSE and crypto evidence physically and logically separate.
 
 Acceptance criteria:
 
-- Every record has exactly one evidence class.
+- Every record has exactly one evidence class and one outcome lifecycle state.
 - Pending, unavailable and invalid records cannot count as successes or failures.
 - No pre-existing call or result is deleted.
-- Quick-profit and swing accuracy are never pooled.
+- Quick-profit and swing accuracy are never pooled. They remain inactive until the
+  deterministic resolver implements their frozen rules.
+
+Implementation record: [Milestone 1 evidence contracts](self-learning-m1-evidence-contracts.md)
 
 ## Milestone 2 — Immutable prediction ledger
 
@@ -339,7 +348,7 @@ personal-trading authority.
 
 ## Implementation order
 
-1. [ ] Evidence categories and frozen outcome contracts.
+1. [x] Evidence categories and frozen outcome contracts.
 2. [ ] Immutable prediction ledger.
 3. [ ] Deterministic outcome resolver.
 4. [ ] Failure-attribution engine.

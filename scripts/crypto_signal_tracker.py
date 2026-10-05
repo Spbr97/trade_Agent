@@ -173,7 +173,7 @@ def main(*, strict_accuracy_refresh: bool = False) -> None:
         )
 
         rows = load_log(LOG)
-        new_rows = log_new_signals(wl, rows)
+        new_rows = log_new_signals(wl, rows, market="crypto")
         newly_resolved = resolve_outcomes(store, rows, MAX_HOLD)
         save_log(rows, LOG)
         save_dashboard("crypto", rows, DASHBOARD)

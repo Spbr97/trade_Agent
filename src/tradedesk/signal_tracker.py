@@ -32,6 +32,16 @@ from tradedesk.broker.indstocks.models import IST, Interval
 from tradedesk.config import Settings
 from tradedesk.data.candle_store import CandleStore
 from tradedesk.engine.signals import Signal
+from tradedesk.evidence import (
+    LEGACY_TRACKER_V1,
+    ContractKind,
+    OutcomeState,
+    classify_evidence,
+    classify_outcome,
+    enrich_call_record,
+    infer_market,
+    is_trainable_outcome,
+)
 from tradedesk.markets import Market
 from tradedesk.prediction.labeling import triple_barrier
 from tradedesk.scan.evening_scan import (
@@ -79,6 +89,14 @@ class TrackedSignal:
     # call is still logged and graded (so the loop keeps learning, and can see a recovery)
     # but it is not a call the agent stands behind.
     shadow: bool = False
+    # Milestone 1 keeps recommendation authority separate from outcome lifecycle.  These
+    # defaults preserve old JSONL constructors; load_log enriches historical rows as
+    # ``legacy`` rather than pretending they were created under today's frozen contract.
+    market: str | None = None
+    evidence_class: str | None = None
+    outcome_state: str | None = None
+    contract_kind: str = ContractKind.LEGACY.value
+    contract_version: str = "legacy-t1-tracker-v1"
 
 
 def load_log(log_path: Path) -> dict[str, TrackedSignal]:
@@ -89,18 +107,28 @@ def load_log(log_path: Path) -> dict[str, TrackedSignal]:
         for line in log_path.read_text(encoding="utf-8").splitlines()
         if line.strip()
     ]
-    return {r["signal_id"]: TrackedSignal(**r) for r in rows}
+    market = infer_market(log_path)
+    enriched = [enrich_call_record(r, market=market) for r in rows]
+    return {r["signal_id"]: TrackedSignal(**r) for r in enriched}
 
 
 def save_log(rows: dict[str, TrackedSignal], log_path: Path) -> None:
     log_path.parent.mkdir(parents=True, exist_ok=True)
+    market = infer_market(log_path)
     with log_path.open("w", encoding="utf-8") as fh:
         for r in rows.values():
-            fh.write(json.dumps(asdict(r)) + "\n")
+            record = enrich_call_record(asdict(r), market=market)
+            # Keep the in-memory row synchronized with the exact record written to disk.
+            r.market = record["market"]
+            r.evidence_class = record["evidence_class"]
+            r.outcome_state = record["outcome_state"]
+            r.contract_kind = record["contract_kind"]
+            r.contract_version = record["contract_version"]
+            fh.write(json.dumps(record) + "\n")
 
 
 def setup_hit_rate(setup: str, rows: dict[str, TrackedSignal]) -> dict[str, float | int | None]:
-    done = [r for r in rows.values() if r.outcome is not None and r.setup == setup]
+    done = [r for r in rows.values() if is_trainable_outcome(r.outcome) and r.setup == setup]
     if not done:
         return {"n": 0, "hit_rate": None}
     wins = sum(1 for r in done if r.outcome == "target")
@@ -131,6 +159,7 @@ def resolve_outcomes(
         if lab.outcome == "insufficient":
             continue  # not enough history yet - try again next run
         row.outcome = lab.outcome
+        row.outcome_state = classify_outcome(row.outcome).value
         row.label = lab.label
         row.exit_price = lab.exit_price
         if lab.exit_price is not None:
@@ -151,7 +180,7 @@ def _line(label: str, done: list[TrackedSignal]) -> str:
 def scoreboard(rows: dict[str, TrackedSignal]) -> str:
     """Split by whether the signal would actually have been tradeable (net R:R/sizing),
     since a lot of signals fail that for reasons unrelated to pattern quality."""
-    done = [r for r in rows.values() if r.outcome is not None]
+    done = [r for r in rows.values() if is_trainable_outcome(r.outcome)]
     tradeable = [r for r in done if not r.rejected_for]
     untradeable = [r for r in done if r.rejected_for]
     return (
@@ -223,8 +252,14 @@ def save_session_report(day: date, text: str, sessions_dir: Path, *, append: boo
 
 def render_dashboard_html(market: str, rows: dict[str, TrackedSignal]) -> str:
     ordered = sorted(rows.values(), key=lambda r: r.armed_on, reverse=True)
-    pending = [r for r in ordered if r.outcome is None]
-    resolved = [r for r in ordered if r.outcome is not None]
+    pending = [r for r in ordered if r.outcome_state == OutcomeState.PENDING_CALL.value]
+    resolved = [r for r in ordered if r.outcome_state == OutcomeState.RESOLVED_CALL.value]
+    excluded = [
+        r
+        for r in ordered
+        if r.outcome_state
+        in {OutcomeState.INVALID_CALL.value, OutcomeState.NEVER_TRIGGERED.value}
+    ]
 
     def row_html(r: TrackedSignal, show_outcome: bool) -> str:
         tradeable = "yes" if not r.rejected_for else "no"
@@ -239,14 +274,18 @@ def render_dashboard_html(market: str, rows: dict[str, TrackedSignal]) -> str:
             f"<td>{r.setup}{' (shadow)' if r.shadow else ''}</td><td>{r.grade}</td>"
             f"<td>{fmt_price(r.entry)}</td><td>{fmt_price(r.stop)}</td>"
             f"<td>{fmt_price(r.t1)}</td><td>{fmt_price(r.t2)}</td>"
+            f"<td>{r.evidence_class or '-'}</td><td>{r.contract_kind}</td>"
             f"<td>{tradeable}</td>" + outcome_cell + "</tr>"
         )
 
     pending_rows = "\n".join(row_html(r, show_outcome=False) for r in pending) or (
-        '<tr><td colspan="9">none open</td></tr>'
+        '<tr><td colspan="11">none open</td></tr>'
     )
     resolved_rows = "\n".join(row_html(r, show_outcome=True) for r in resolved) or (
-        '<tr><td colspan="10">none resolved yet</td></tr>'
+        '<tr><td colspan="12">none resolved yet</td></tr>'
+    )
+    excluded_rows = "\n".join(row_html(r, show_outcome=True) for r in excluded) or (
+        '<tr><td colspan="12">none invalid or never triggered</td></tr>'
     )
     score_text = scoreboard(rows).replace("\n", "<br>")
 
@@ -272,14 +311,20 @@ th {{ background: #eee; }}
 
 <h2>Open calls (not yet resolved)</h2>
 <table><tr><th>Armed</th><th>Symbol</th><th>Setup</th><th>Grade</th><th>Entry</th>
-<th>Stop</th><th>T1</th><th>T2</th><th>Tradeable</th></tr>
+<th>Stop</th><th>T1</th><th>T2</th><th>Evidence</th><th>Contract</th><th>Tradeable</th></tr>
 {pending_rows}
 </table>
 
 <h2>Resolved calls</h2>
 <table><tr><th>Armed</th><th>Symbol</th><th>Setup</th><th>Grade</th><th>Entry</th>
-<th>Stop</th><th>T1</th><th>T2</th><th>Tradeable</th><th>Outcome</th></tr>
+<th>Stop</th><th>T1</th><th>T2</th><th>Evidence</th><th>Contract</th><th>Tradeable</th><th>Outcome</th></tr>
 {resolved_rows}
+</table>
+
+<h2>Invalid / never-triggered calls (visible, excluded from learning)</h2>
+<table><tr><th>Armed</th><th>Symbol</th><th>Setup</th><th>Grade</th><th>Entry</th>
+<th>Stop</th><th>T1</th><th>T2</th><th>Evidence</th><th>Contract</th><th>Tradeable</th><th>Outcome</th></tr>
+{excluded_rows}
 </table>
 </body></html>
 """
@@ -292,7 +337,11 @@ def save_dashboard(market: str, rows: dict[str, TrackedSignal], dashboard_path: 
 
 
 def log_new_signals(
-    wl: Watchlist, rows: dict[str, TrackedSignal], *, source: str = "live"
+    wl: Watchlist,
+    rows: dict[str, TrackedSignal],
+    *,
+    source: str = "live",
+    market: str | None = None,
 ) -> list[TrackedSignal]:
     """Every detected signal (`wl.entries`), not just `wl.active` - a rejected-for-sizing
     signal still answers "was the pattern right", which is a different question from "was
@@ -306,16 +355,23 @@ def log_new_signals(
         sig: Signal = e.signal
         if sig.id in rows:
             continue
+        shadow = any(
+            reason.startswith((RETIRED_REASON_PREFIX, RESEARCH_ONLY_REASON_PREFIX))
+            for reason in e.rejected_for
+        )
         row = TrackedSignal(
             signal_id=sig.id, scrip_code=sig.scrip_code, symbol=sig.symbol,
             setup=sig.setup.value, grade=e.grade.value, armed_on=sig.armed_on.isoformat(),
             entry=sig.trigger, stop=sig.stop, t1=sig.t1, t2=sig.t2,
             net_rr_t1=e.net_rr_t1, net_rr_t2=e.net_rr_t2, rejected_for=list(e.rejected_for),
             probability=e.probability, logged_at=datetime.now(IST).isoformat(), source=source,
-            shadow=any(
-                r.startswith((RETIRED_REASON_PREFIX, RESEARCH_ONLY_REASON_PREFIX))
-                for r in e.rejected_for
-            ),
+            shadow=shadow, market=market,
+            evidence_class=classify_evidence(e.rejected_for, shadow=shadow).value,
+            outcome_state=OutcomeState.PENDING_CALL.value,
+            # Milestone 1 defines the future quick/swing contracts but does not claim
+            # the legacy resolver enforces them. Activation belongs to Milestone 3.
+            contract_kind=ContractKind.LEGACY.value,
+            contract_version=LEGACY_TRACKER_V1.version,
         )  # fmt: skip
         rows[sig.id] = row
         new_rows.append(row)
@@ -343,7 +399,7 @@ def backfill_watchlists(
     new_rows: list[TrackedSignal] = []
     for day in sessions:
         wl = build_watchlist(md, cfg, settings, day, market=mkt)
-        new_rows.extend(log_new_signals(wl, rows, source="backfill"))
+        new_rows.extend(log_new_signals(wl, rows, source="backfill", market=mkt.name))
     return new_rows
 
 
@@ -373,7 +429,7 @@ def flag_setup_failures(
     existing_titles = {i.title for i in load_queue(path).values()}
     by_setup: dict[str, list[TrackedSignal]] = {}
     for r in rows.values():
-        if r.outcome is not None:
+        if is_trainable_outcome(r.outcome):
             by_setup.setdefault(r.setup, []).append(r)
     flagged: list[str] = []
     for setup, done in by_setup.items():

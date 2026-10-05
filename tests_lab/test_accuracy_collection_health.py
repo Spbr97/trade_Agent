@@ -252,7 +252,7 @@ def test_strict_nse_tracker_propagates_degraded_m9(tmp_path, monkeypatch) -> Non
 
     monkeypatch.setattr(tracker, "CandleStore", Store)
     monkeypatch.setattr(tracker, "load_log", lambda _path: {})
-    monkeypatch.setattr(tracker, "log_new_signals", lambda *_args: [])
+    monkeypatch.setattr(tracker, "log_new_signals", lambda *_args, **_kwargs: [])
     monkeypatch.setattr(tracker, "resolve_outcomes", lambda *_args: [])
     monkeypatch.setattr(tracker, "save_log", lambda *_args: None)
     monkeypatch.setattr(tracker, "save_dashboard", lambda *_args: None)

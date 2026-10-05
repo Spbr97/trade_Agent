@@ -425,6 +425,9 @@ def test_a_retired_setup_is_rejected_never_alerts_and_is_logged_as_shadow(world)
     rows: dict = {}
     logged = log_new_signals(wl, rows)
     assert logged and all(r.shadow for r in logged)  # graded, so the loop keeps learning
+    assert all(r.evidence_class == "shadow_call" for r in logged)
+    assert all(r.outcome_state == "pending_call" for r in logged)
+    assert all(r.contract_kind == "legacy" for r in logged)
 
 
 def test_a_research_only_setup_is_rejected_and_logged_as_shadow(world) -> None:  # type: ignore[no-untyped-def]
@@ -441,6 +444,7 @@ def test_a_research_only_setup_is_rejected_and_logged_as_shadow(world) -> None: 
     )
     logged = log_new_signals(wl, {})
     assert logged and all(r.shadow for r in logged)
+    assert all(r.evidence_class == "shadow_call" for r in logged)
 
 
 def test_watchlist_entries_are_priced_scored_and_serialisable(world, tmp_path: Path) -> None:  # type: ignore[no-untyped-def]

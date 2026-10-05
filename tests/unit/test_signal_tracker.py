@@ -7,6 +7,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
+from tradedesk.evidence import ContractKind, EvidenceClass, OutcomeState
 from tradedesk.review_queue import load_queue
 from tradedesk.signal_tracker import TrackedSignal, flag_setup_failures, load_log, save_log
 
@@ -27,6 +30,18 @@ def test_log_round_trips_through_jsonl(tmp_path: Path) -> None:
     reloaded = load_log(path)
     assert reloaded.keys() == rows.keys()
     assert reloaded["sig0"].setup == "nr7_breakout"
+    assert reloaded["sig0"].evidence_class == EvidenceClass.QUALIFIED_CALL.value
+    assert reloaded["sig0"].outcome_state == OutcomeState.PENDING_CALL.value
+    assert reloaded["sig0"].contract_kind == ContractKind.LEGACY.value
+
+
+def test_dedicated_market_log_enforces_market_separation(tmp_path: Path) -> None:
+    path = tmp_path / "crypto_signal_tracking.jsonl"
+    row = _row(1, "nr7_breakout", "stop")
+    row.market = "nse"
+
+    with pytest.raises(ValueError, match="cross-market"):
+        save_log({row.signal_id: row}, path)
 
 
 def test_flag_setup_failures_flags_a_setup_below_the_hit_rate_floor(tmp_path: Path) -> None:
