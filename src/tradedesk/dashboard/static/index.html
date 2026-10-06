@@ -120,6 +120,30 @@
 </div>
 
 <main id="tab-calls">
+  <section>
+    <div class="perf-controls">
+      <div class="group">
+        <label for="personal-calls-market">Qualified personal calls</label>
+        <select id="personal-calls-market">
+          <option value="nse" selected>NSE</option>
+          <option value="bse">BSE</option>
+          <option value="crypto">Crypto</option>
+        </select>
+      </div>
+      <span class="info-ic" title="Fail-closed: research, rejected, shadow, pending-evidence and unapproved models can never appear here. They remain visible in Learning > Predictions.">ⓘ</span>
+    </div>
+    <div class="banner-full" id="personal-calls-status">NO QUALIFIED PERSONAL CALL TODAY</div>
+    <div class="cards" style="margin-top:10px;">
+      <div class="card"><div class="label">Qualified calls</div><div class="value" id="personal-calls-count">0</div></div>
+      <div class="card"><div class="label">Approved contract</div><div class="value" id="personal-calls-contract">NONE</div></div>
+      <div class="card"><div class="label">Evidence stage</div><div class="value" id="personal-calls-evidence">not available</div></div>
+      <div class="card"><div class="label">Locked accuracy</div><div class="value" id="personal-calls-accuracy">not available</div></div>
+      <div class="card"><div class="label">Wilson lower bound</div><div class="value" id="personal-calls-wilson">not available</div></div>
+      <div class="card"><div class="label">Promotion authority</div><div class="value" id="personal-calls-authority">NO</div></div>
+    </div>
+    <div class="muted" id="personal-calls-blockers" style="margin-top:8px;"></div>
+    <table id="personal-calls-table" style="margin-top:10px;"></table>
+  </section>
   <section class="perf-controls">
     <div class="group">
       <label>Market</label>
@@ -928,6 +952,30 @@ function rows(table, header, body) {
   table.innerHTML = '<tr>' + header.map(h => `<th class="${h.startsWith('#')?'num':''}">${h.replace('#','')}</th>`).join('') + '</tr>' + (body.length ? body.join('') : `<tr><td colspan="${header.length}" class="empty-note">nothing to show</td></tr>`);
 }
 
+async function loadPersonalCalls() {
+  const market = $('personal-calls-market').value;
+  try {
+    const response = await fetch(`/api/personal-calls?market=${market}`);
+    const report = response.ok ? await response.json() : {};
+    const calls = report.calls || [];
+    $('personal-calls-status').textContent = report.status || 'NO QUALIFIED PERSONAL CALL TODAY';
+    $('personal-calls-count').textContent = calls.length;
+    $('personal-calls-contract').textContent = report.contract_version || 'NONE';
+    $('personal-calls-evidence').textContent = (report.evidence || {}).stage || 'not available';
+    const evidenceMetrics = report.evidence_metrics || {};
+    $('personal-calls-accuracy').textContent = evidenceMetrics.strict_accuracy != null ? `${pct(evidenceMetrics.strict_accuracy)} (n=${evidenceMetrics.locked_sample_size})` : 'not available';
+    $('personal-calls-wilson').textContent = evidenceMetrics.wilson_95_low != null ? pct(evidenceMetrics.wilson_95_low) : 'not available';
+    $('personal-calls-authority').textContent = report.promotion_authorized ? 'YES' : 'NO';
+    $('personal-calls-blockers').textContent = (report.blockers || []).join(' · ');
+    rows($('personal-calls-table'), ['Symbol','Setup','Entry','#Stop','Targets','#Risk %','#Qty','#Confidence','Why qualified'],
+      calls.map(call => `<tr><td>${call.symbol}</td><td>${call.setup}</td><td>${(call.entry_range || []).map(x => fmt(x)).join('–')}</td><td class="num">${fmt(call.stop)}</td><td>${(call.targets || []).map(x => fmt(x)).join(' / ')}</td><td class="num">${call.risk_pct != null ? pct(call.risk_pct) : '-'}</td><td class="num">${call.quantity ?? '-'}</td><td class="num">${call.confidence != null ? pct(call.confidence) : '-'}</td><td>${(call.qualification_reasons || []).join('; ')}</td></tr>`));
+  } catch (e) {
+    $('personal-calls-status').textContent = 'NO QUALIFIED PERSONAL CALL TODAY';
+    $('personal-calls-blockers').textContent = 'personal-call evidence endpoint unavailable — never treated as a pass';
+  }
+}
+$('personal-calls-market').addEventListener('change', loadPersonalCalls);
+
 // ------------------------------------------------------ Calls tabs (SSE) - NSE + BSE
 // NSE uses ids 'today-*'/'calls'/'positions' (unchanged, predates BSE parity); BSE
 // mirrors it 1:1 with a 'bsetoday' prefix - same live "plan vs what actually happened"
@@ -1137,6 +1185,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
   });
 });
 showCallsMarket('nse');  // the default active tab on page load
+loadPersonalCalls();
 
 // ---------------------------------------------------------------- status banner
 // Collapsed by default (native <details>/<summary>, no JS needed to toggle) - the summary

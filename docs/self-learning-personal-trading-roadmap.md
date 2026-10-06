@@ -326,25 +326,25 @@ Implementation record:
 
 Show only calls that cleared every gate:
 
-- [ ] Symbol and market.
-- [ ] Entry range, stop and expiry.
-- [ ] Quick-profit and swing targets where applicable.
-- [ ] Position-risk suggestion.
-- [ ] Calibrated confidence.
-- [ ] Evidence sample size, strict accuracy and Wilson bound.
-- [ ] Reasons the call qualified.
+- [x] Symbol and market.
+- [x] Entry range, stop and expiry.
+- [x] Quick-profit and swing targets where applicable.
+- [x] Position-risk suggestion.
+- [x] Calibrated confidence.
+- [x] Evidence sample size, strict accuracy and Wilson bound.
+- [x] Reasons the call qualified.
 
 ### Full agent performance
 
 Keep every evaluated call visible:
 
-- [ ] Successful calls.
-- [ ] Failed calls.
-- [ ] Rejected and shadow calls.
-- [ ] Pending calls.
-- [ ] Never-triggered and invalid calls.
-- [ ] Confidence versus actual outcome.
-- [ ] Failure-category breakdown.
+- [x] Successful calls.
+- [x] Failed calls.
+- [x] Rejected and shadow calls.
+- [x] Pending calls.
+- [x] Never-triggered and invalid calls.
+- [x] Confidence versus actual outcome.
+- [x] Failure-category breakdown.
 - [ ] Accuracy before and after filtering.
 - [ ] Net expectancy before and after filtering.
 - [ ] Model and strategy version comparison.
@@ -353,17 +353,20 @@ Keep every evaluated call visible:
 
 Show:
 
-- [ ] New mature evidence since the last training run.
-- [ ] Most frequent failure patterns.
+- [x] New mature evidence since the last training run.
+- [x] Most frequent failure patterns.
 - [ ] Current challenger and frozen baseline.
-- [ ] Experiments that failed.
-- [ ] Development-only improvements.
-- [ ] Prospective evidence progress.
-- [ ] Exact reasons promotion remains blocked.
-- [ ] The next checkpoint and minimum remaining evidence.
+- [x] Experiments that failed.
+- [x] Development-only improvements.
+- [x] Prospective evidence progress.
+- [x] Exact reasons promotion remains blocked.
+- [x] The next checkpoint and minimum remaining evidence.
 
 The dashboard must be able to state `NO QUALIFIED PERSONAL CALL TODAY` while still showing
 all failed, rejected and pending research calls.
+
+Implementation record:
+[Milestone 10 checkpoint — personal calls](self-learning-m10-personal-calls.md)
 
 ## Milestone 11 — Promotion and rollback control
 

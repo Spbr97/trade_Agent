@@ -157,6 +157,7 @@ async def test_self_learning_status_never_implies_model_change_before_refresh(
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         payload = (await client.get("/api/self-learning/status?market=nse")).json()
         challenger = (await client.get("/api/self-learning/challenger?market=nse")).json()
+        personal = (await client.get("/api/personal-calls?market=nse")).json()
     assert payload["status"] == "waiting_for_first_refresh"
     assert payload["active_model_changed"] is False
     assert payload["promotion_authorized"] is False
@@ -164,3 +165,33 @@ async def test_self_learning_status_never_implies_model_change_before_refresh(
     assert challenger["experiments"] == 0
     assert challenger["active_model_changed"] is False
     assert challenger["promotion_authorized"] is False
+    assert personal["status"] == "NO QUALIFIED PERSONAL CALL TODAY"
+    assert personal["calls"] == []
+    assert personal["promotion_authorized"] is False
+    assert "explicit user promotion approval" in " ".join(personal["blockers"])
+
+
+async def test_personal_calls_cannot_be_enabled_by_an_orphan_approval_file(
+    tmp_path: Path, monkeypatch
+) -> None:  # noqa: ANN001
+    monkeypatch.chdir(tmp_path)
+    root = tmp_path / "data" / "models" / "self_learning" / "nse"
+    root.mkdir(parents=True)
+    (root / "promotion.json").write_text(
+        json.dumps(
+            {
+                "status": "approved",
+                "approved_by_user": True,
+                "experiment_id": "does-not-exist",
+                "contract_version": "quick-profit-v1",
+            }
+        ),
+        encoding="utf-8",
+    )
+    app = create_app(DashboardState())
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        personal = (await client.get("/api/personal-calls?market=nse")).json()
+    assert personal["calls"] == []
+    assert personal["promotion_authorized"] is False
+    assert "no contract-specific challenger" in " ".join(personal["blockers"])

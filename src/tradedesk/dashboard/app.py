@@ -1633,6 +1633,133 @@ def create_app(
             }
         return JSONResponse(out)
 
+    @app.get("/api/personal-calls")
+    async def api_personal_calls(market: str = "nse") -> JSONResponse:
+        """Fail-closed personal calls; research rows remain available on their own tabs."""
+
+        from tradedesk.analysis import BSE_LOG, CRYPTO_LOG, NSE_LOG
+        from tradedesk.challenger_workflow import challenger_summary
+
+        logs = {"nse": NSE_LOG, "bse": BSE_LOG, "crypto": CRYPTO_LOG}
+        if market not in logs:
+            return JSONResponse({"error": "invalid market"}, status_code=400)
+        root = Path(f"data/models/self_learning/{market}")
+        summary = challenger_summary(root)
+        promotion_path = root / "promotion.json"
+        promotion: dict[str, Any] = {}
+        if promotion_path.exists():
+            try:
+                raw = json.loads(promotion_path.read_text(encoding="utf-8"))
+                promotion = raw if isinstance(raw, dict) else {}
+            except (OSError, ValueError, json.JSONDecodeError):
+                promotion = {}
+        contract_version = str(promotion.get("contract_version") or "")
+        challenger = (summary.get("latest_by_contract") or {}).get(contract_version) or {}
+        final_gates = challenger.get("final_evidence_gates") or {}
+        locked_score = (
+            ((challenger.get("scores") or {}).get("chronological_test") or {}).get(
+                "challenger"
+            )
+            or {}
+        )
+        evidence_metrics = {
+            "locked_sample_size": locked_score.get("n"),
+            "strict_accuracy": locked_score.get("strict_outcome_accuracy"),
+            "wilson_95_low": locked_score.get("strict_outcome_wilson_95_low"),
+            "selected_mean_net_r": locked_score.get("selected_mean_net_r"),
+        }
+        approved = bool(
+            promotion.get("status") == "approved"
+            and promotion.get("approved_by_user") is True
+            and promotion.get("experiment_id") == challenger.get("experiment_id")
+            and final_gates.get("all_passed") is True
+        )
+        blockers = []
+        if not challenger:
+            blockers.append("no contract-specific challenger has completed")
+        if final_gates.get("all_passed") is not True:
+            blockers.append("historical, random-control and prospective evidence gates have not all passed")  # noqa: E501
+        if promotion.get("approved_by_user") is not True:
+            blockers.append("explicit user promotion approval has not been recorded")
+        if not approved:
+            return JSONResponse(
+                {
+                    "market": market,
+                    "status": "NO QUALIFIED PERSONAL CALL TODAY",
+                    "calls": [],
+                    "blockers": blockers,
+                    "contract_version": contract_version or None,
+                    "evidence": challenger.get("evidence_ladder"),
+                    "evidence_metrics": evidence_metrics,
+                    "active_model_changed": False,
+                    "promotion_authorized": False,
+                }
+            )
+
+        rows = _read_call_log(logs[market], 100_000)
+        candidates = [
+            row
+            for row in rows
+            if row.get("source") == "live"
+            and row.get("evidence_class") == "qualified_call"
+            and row.get("contract_version") == contract_version
+            and not row.get("rejected_for")
+            and row.get("outcome_state") == "pending_call"
+        ]
+        latest_session = max((str(row.get("armed_on")) for row in candidates), default=None)
+        current = [row for row in candidates if str(row.get("armed_on")) == latest_session]
+        calls = []
+        selector_policy = promotion.get("selector_policy")
+        for row in current:
+            payload = row.get("prediction_payload") or {}
+            execution = payload.get("execution") or {}
+            levels = payload.get("levels") or {}
+            calls.append(
+                {
+                    "signal_id": row.get("signal_id"),
+                    "market": market,
+                    "symbol": row.get("symbol"),
+                    "setup": row.get("setup"),
+                    "armed_on": row.get("armed_on"),
+                    "entry_range": levels.get("entry_range"),
+                    "stop": levels.get("stop"),
+                    "targets": levels.get("targets"),
+                    "expiry_sessions": levels.get("entry_valid_sessions"),
+                    "risk_pct": execution.get("risk_pct"),
+                    "risk_amount": execution.get("risk_amount"),
+                    "quantity": execution.get("quantity"),
+                    "confidence": row.get("probability"),
+                    "contract_version": contract_version,
+                    "selector_policy": selector_policy,
+                    "qualification_reasons": [
+                        "sealed qualified call",
+                        "all final evidence gates passed",
+                        "explicit promotion approval matched this challenger",
+                    ],
+                }
+            )
+        return JSONResponse(
+            {
+                "market": market,
+                "status": (
+                    "QUALIFIED PERSONAL CALLS"
+                    if calls
+                    else "NO QUALIFIED PERSONAL CALL TODAY"
+                ),
+                "calls": calls,
+                "blockers": (
+                    []
+                    if calls
+                    else ["no current pending call cleared the promoted policy"]
+                ),
+                "contract_version": contract_version,
+                "evidence": challenger.get("evidence_ladder"),
+                "evidence_metrics": evidence_metrics,
+                "active_model_changed": False,
+                "promotion_authorized": True,
+            }
+        )
+
     @app.get("/api/failure-attribution")
     async def api_failure_attribution(market: str = "nse") -> JSONResponse:
         from tradedesk.analysis import BSE_LOG, CRYPTO_LOG, NSE_LOG
