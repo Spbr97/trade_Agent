@@ -1639,6 +1639,7 @@ def create_app(
 
         from tradedesk.analysis import BSE_LOG, CRYPTO_LOG, NSE_LOG
         from tradedesk.challenger_workflow import challenger_summary
+        from tradedesk.promotion_control import validate_promotion_record
 
         logs = {"nse": NSE_LOG, "bse": BSE_LOG, "crypto": CRYPTO_LOG}
         if market not in logs:
@@ -1651,6 +1652,7 @@ def create_app(
             try:
                 raw = json.loads(promotion_path.read_text(encoding="utf-8"))
                 promotion = raw if isinstance(raw, dict) else {}
+                validate_promotion_record(promotion)
             except (OSError, ValueError, json.JSONDecodeError):
                 promotion = {}
         contract_version = str(promotion.get("contract_version") or "")

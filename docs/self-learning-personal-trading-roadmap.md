@@ -370,18 +370,22 @@ Implementation record:
 
 ## Milestone 11 — Promotion and rollback control
 
-- [ ] Freeze candidate data, features, thresholds and execution contract.
-- [ ] Register its prospective cohort before any outcome becomes known.
+- [x] Freeze candidate data, features, thresholds and execution contract.
+- [x] Register its prospective cohort before any outcome becomes known.
 - [ ] Collect the required evidence without backfilling the cohort.
-- [ ] Independently reproduce the scorecard.
-- [ ] Produce a side-by-side comparison with the frozen baseline.
-- [ ] Require explicit approval before promotion.
-- [ ] Preserve the previous version for rollback.
+- [x] Independently reproduce the scorecard.
+- [x] Produce a side-by-side comparison with the frozen baseline.
+- [x] Require explicit approval before promotion.
+- [x] Preserve the previous version for rollback.
 - [ ] Continue failure and calibration monitoring after promotion.
-- [ ] Automatically pause affected scoring on stale data, drift or contract mismatch.
+- [ ] Automatically pause affected scoring on stale data, drift or contract mismatch
+  (the sealed pause transition exists; scheduled post-promotion invocation remains to be wired).
 
 The agent may generate and validate challengers automatically. It may not silently change
 personal-trading authority.
+
+Implementation record:
+[Milestone 11 checkpoint — promotion control](self-learning-m11-promotion-control.md)
 
 ## Implementation order
 
