@@ -124,3 +124,37 @@ def test_flag_setup_failures_leaves_a_healthy_setup_alone(tmp_path: Path) -> Non
 
     assert flagged == []
     assert load_queue(review_path) == {}
+
+
+def test_failure_flag_thresholds_do_not_pool_exit_contracts(tmp_path: Path) -> None:
+    review_path = tmp_path / "queue.jsonl"
+    rows = {}
+    for i in range(3):
+        quick = _row(i, "base_breakout", "stop")
+        quick.signal_id = f"quick-{i}"
+        quick.contract_version = "quick-profit-v1"
+        swing = _row(i + 10, "base_breakout", "stop")
+        swing.signal_id = f"swing-{i}"
+        swing.contract_version = "swing-v1"
+        rows[quick.signal_id] = quick
+        rows[swing.signal_id] = swing
+    assert flag_setup_failures(
+        "nse", rows, min_resolved=5, review_path=review_path
+    ) == []
+
+
+def test_failure_flag_names_the_underperforming_exit_contract(tmp_path: Path) -> None:
+    review_path = tmp_path / "queue.jsonl"
+    rows = {}
+    for i in range(5):
+        quick = _row(i, "base_breakout", "stop")
+        quick.signal_id = f"quick-{i}"
+        quick.contract_version = "quick-profit-v1"
+        swing = _row(i + 10, "base_breakout", "target")
+        swing.signal_id = f"swing-{i}"
+        swing.contract_version = "swing-v1"
+        rows[quick.signal_id] = quick
+        rows[swing.signal_id] = swing
+    assert flag_setup_failures(
+        "nse", rows, min_resolved=5, review_path=review_path
+    ) == ["base_breakout [quick-profit-v1] underperforming on nse"]

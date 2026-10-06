@@ -825,6 +825,12 @@
       <div class="card"><div class="label">Locked policies tested</div><div class="value" id="learning-selector-policies">-</div></div>
       <div class="card"><div class="label">Selected live policy</div><div class="value" id="learning-selector-authority">NONE</div></div>
     </div>
+    <div class="cards" style="margin-bottom:10px;">
+      <div class="card"><div class="label">Paired exit entries</div><div class="value" id="learning-exit-pairs">-</div></div>
+      <div class="card"><div class="label">Quick-profit accuracy</div><div class="value" id="learning-exit-quick">-</div></div>
+      <div class="card"><div class="label">Swing accuracy</div><div class="value" id="learning-exit-swing">-</div></div>
+      <div class="card"><div class="label">Quick-profit verdict</div><div class="value" id="learning-exit-verdict">-</div></div>
+    </div>
     <table id="learning-table"></table>
   </section>
 </div>
@@ -1938,6 +1944,13 @@ async function loadLearning() {
   $('learning-strict-accuracy').textContent = qualified.strict_accuracy != null ? `${pct(qualified.strict_accuracy)} (n=${qualified.n})` : 'not available';
   $('learning-brier').textContent = qualified.brier != null ? fmt(qualified.brier, 4) : 'not available';
   $('learning-drift').textContent = (status.drift || {}).status || 'not available';
+  const exitRace = status.exit_contract_race || {};
+  const quickExit = exitRace.quick_profit || {};
+  const swingExit = exitRace.swing || {};
+  $('learning-exit-pairs').textContent = exitRace.paired_mature_entries ?? 0;
+  $('learning-exit-quick').textContent = quickExit.strict_accuracy != null ? `${pct(quickExit.strict_accuracy)} (n=${quickExit.n})` : 'not available';
+  $('learning-exit-swing').textContent = swingExit.strict_accuracy != null ? `${pct(swingExit.strict_accuracy)} (n=${swingExit.n})` : 'not available';
+  $('learning-exit-verdict').textContent = exitRace.quick_profit_candidate_for_further_evaluation ? 'research candidate' : 'not proven';
   const challenger = challengerResponse.ok ? await challengerResponse.json() : {};
   const latest = challenger.latest || {};
   $('learning-challenger').textContent = latest.status || 'none trained';

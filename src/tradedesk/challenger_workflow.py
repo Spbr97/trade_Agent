@@ -120,12 +120,20 @@ def performance_snapshot(dataset: LearningDataset) -> dict[str, Any]:
         str(contract): _score_rows([r for r in qualified if r["contract_kind"] == contract])
         for contract in sorted({str(r["contract_kind"]) for r in qualified})
     }
+    if len(contracts) <= 1:
+        qualified_score = _score_rows(qualified)
+    else:
+        qualified_score = {
+            **_score_rows([]),
+            "n": len(qualified),
+            "reason": "multiple exit contracts; use contract scorecards",
+        }
     return {
         "version": "sealed-performance-v1",
         "status": "available" if qualified else "not_available",
         "market": dataset.market,
         "dataset_id": dataset.dataset_id,
-        "qualified": _score_rows(qualified),
+        "qualified": qualified_score,
         "counterfactual": _score_rows(counterfactual),
         "contracts": contracts,
         "contracts_pooled": False,
@@ -134,10 +142,36 @@ def performance_snapshot(dataset: LearningDataset) -> dict[str, Any]:
 
 
 def drift_snapshot(dataset: LearningDataset, *, window: int = DRIFT_WINDOW) -> dict[str, Any]:
-    """Compare adjacent chronological qualified-call windows without declaring causality."""
+    """Compare windows within each exit contract; contracts are never pooled."""
 
+    qualified = [row for row in dataset.rows if row["evidence_role"] == "recommended"]
+    contracts = sorted({str(row["contract_version"]) for row in qualified})
+    if len(contracts) <= 1:
+        return _drift_rows_snapshot(qualified, window=window)
+    reports = {
+        contract: _drift_rows_snapshot(
+            [row for row in qualified if row["contract_version"] == contract],
+            window=window,
+        )
+        for contract in contracts
+    }
+    return {
+        "version": "sealed-drift-v1",
+        "status": (
+            "drift_detected"
+            if any(report["status"] == "drift_detected" for report in reports.values())
+            else "contract_specific"
+        ),
+        "contracts": reports,
+        "contracts_pooled": False,
+    }
+
+
+def _drift_rows_snapshot(
+    source_rows: list[Mapping[str, Any]], *, window: int
+) -> dict[str, Any]:
     rows = sorted(
-        (row for row in dataset.rows if row["evidence_role"] == "recommended"),
+        source_rows,
         key=lambda row: (str(row.get("armed_on")), str(row.get("signal_id"))),
     )
     required = window * 2
@@ -609,16 +643,33 @@ def record_failed_experiment(
 
 
 def challenger_summary(output_root: Path) -> dict[str, Any]:
-    registry = output_root / "experiments.jsonl"
+    roots = [output_root]
+    contracts_root = output_root / "contracts"
+    if contracts_root.exists():
+        roots.extend(path for path in contracts_root.iterdir() if path.is_dir())
     experiments = []
-    if registry.exists():
-        experiments = [
-            json.loads(line) for line in registry.read_text(encoding="utf-8").splitlines() if line
-        ]
-    latest_path = output_root / "latest.json"
-    latest = json.loads(latest_path.read_text(encoding="utf-8")) if latest_path.exists() else None
+    latest_by_contract: dict[str, Any] = {}
+    latest_candidates = []
+    for root in roots:
+        registry = root / "experiments.jsonl"
+        if registry.exists():
+            experiments.extend(
+                json.loads(line)
+                for line in registry.read_text(encoding="utf-8").splitlines()
+                if line
+            )
+        latest_path = root / "latest.json"
+        if latest_path.exists():
+            latest = json.loads(latest_path.read_text(encoding="utf-8"))
+            latest_candidates.append(latest)
+            if root.parent == contracts_root:
+                latest_by_contract[root.name] = latest
+    latest = max(
+        latest_candidates, key=lambda item: str(item.get("created_at") or ""), default=None
+    )
     return {
         "latest": latest,
+        "latest_by_contract": latest_by_contract,
         "experiments": len(experiments),
         "negative": sum(e.get("conclusion") == "negative" for e in experiments),
         "inconclusive": sum(e.get("conclusion") == "inconclusive" for e in experiments),

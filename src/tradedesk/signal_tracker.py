@@ -181,8 +181,19 @@ def save_log(rows: dict[str, TrackedSignal], log_path: Path) -> None:
     temporary.replace(log_path)
 
 
-def setup_hit_rate(setup: str, rows: dict[str, TrackedSignal]) -> dict[str, float | int | None]:
-    done = [r for r in rows.values() if is_trainable_outcome(r.outcome) and r.setup == setup]
+def setup_hit_rate(
+    setup: str,
+    rows: dict[str, TrackedSignal],
+    *,
+    contract_version: str | None = None,
+) -> dict[str, float | int | None]:
+    done = [
+        r
+        for r in rows.values()
+        if is_trainable_outcome(r.outcome)
+        and r.setup == setup
+        and (contract_version is None or r.contract_version == contract_version)
+    ]
     if not done:
         return {"n": 0, "hit_rate": None}
     wins = sum(1 for r in done if r.outcome == "target")
@@ -266,14 +277,19 @@ def scoreboard(rows: dict[str, TrackedSignal]) -> str:
     """Split by whether the signal would actually have been tradeable (net R:R/sizing),
     since a lot of signals fail that for reasons unrelated to pattern quality."""
     done = [r for r in rows.values() if is_trainable_outcome(r.outcome)]
-    tradeable = [r for r in done if not r.rejected_for]
-    untradeable = [r for r in done if r.rejected_for]
-    return (
-        f"{len(rows)} logged, {len(done)} resolved:\n"
-        + _line("would have been tradeable", tradeable)
-        + "\n"
-        + _line("rejected (sizing/net R:R/etc)", untradeable)
-    )
+    contracts = sorted({r.contract_version for r in done})
+    blocks = []
+    for contract in contracts or [LEGACY_TRACKER_V1.version]:
+        contract_rows = [r for r in done if r.contract_version == contract]
+        tradeable = [r for r in contract_rows if not r.rejected_for]
+        untradeable = [r for r in contract_rows if r.rejected_for]
+        blocks.append(
+            f"  [{contract}]\n"
+            + _line("would have been tradeable", tradeable)
+            + "\n"
+            + _line("rejected (sizing/net R:R/etc)", untradeable)
+        )
+    return f"{len(rows)} logged, {len(done)} resolved:\n" + "\n".join(blocks)
 
 
 def fmt_price(x: float) -> str:
@@ -506,6 +522,33 @@ def log_new_signals(
     return new_rows
 
 
+def log_exit_contract_signals(
+    wl: Watchlist,
+    rows: dict[str, TrackedSignal],
+    *,
+    source: str = "live",
+    market: str | None = None,
+) -> list[TrackedSignal]:
+    """Log identical entries under independent quick-profit and swing contracts.
+
+    Existing legacy rows remain untouched. The contract suffix gives each outcome its own
+    immutable prediction and prevents either result from overwriting the other.
+    """
+
+    new_rows: list[TrackedSignal] = []
+    for version in ("quick-profit-v1", "swing-v1"):
+        new_rows.extend(
+            log_new_signals(
+                wl,
+                rows,
+                source=source,
+                market=market,
+                contract_version=version,
+            )
+        )
+    return new_rows
+
+
 def backfill_watchlists(
     md: MarketData,
     cfg: BacktestConfig,
@@ -555,26 +598,29 @@ def flag_setup_failures(
 
     path = review_path or QUEUE
     existing_titles = {i.title for i in load_queue(path).values()}
-    by_setup: dict[str, list[TrackedSignal]] = {}
+    by_setup: dict[tuple[str, str], list[TrackedSignal]] = {}
     for r in rows.values():
         if is_trainable_outcome(r.outcome):
-            by_setup.setdefault(r.setup, []).append(r)
+            by_setup.setdefault((r.setup, r.contract_version), []).append(r)
     flagged: list[str] = []
-    for setup, done in by_setup.items():
+    for (setup, contract_version), done in by_setup.items():
         if len(done) < min_resolved:
             continue
         wins = sum(1 for r in done if r.outcome == "target")
         rate = wins / len(done)
         if rate >= hit_rate_floor:
             continue
-        title = f"{setup} underperforming on {market}"
+        contract_label = (
+            "" if contract_version == LEGACY_TRACKER_V1.version else f" [{contract_version}]"
+        )
+        title = f"{setup}{contract_label} underperforming on {market}"
         if title in existing_titles:
             continue
         add_item(
             market=market,
             title=title,
             detail=(
-                f"{wins}/{len(done)} resolved calls hit target ({rate:.0%}), below the "
+                f"{wins}/{len(done)} {contract_version} calls hit target ({rate:.0%}), below the "
                 f"{hit_rate_floor:.0%} floor checked over the last {len(done)} resolved calls."
             ),
             proposal=f"Consider disabling or re-tuning {setup} for {market} until it recovers.",

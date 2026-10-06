@@ -6,9 +6,9 @@ from tradedesk.self_learning_workflow import refresh_learning_status, run_schedu
 from tradedesk.signal_tracker import resolve_outcomes
 
 
-def _resolved(i: int):  # type: ignore[no-untyped-def]
-    row = _row()
-    signal_id = f"sealed-{i}"
+def _resolved(i: int, version: str = "quick-profit-v1"):  # type: ignore[no-untyped-def]
+    row = _row(version=version)
+    signal_id = f"sealed-{version}-{i}"
     payload = dict(row.prediction_payload or {})
     payload["signal_id"] = signal_id
     row.signal_id = signal_id
@@ -17,7 +17,8 @@ def _resolved(i: int):  # type: ignore[no-untyped-def]
 
     class Store:
         def load(self, *_args, **_kwargs):  # type: ignore[no-untyped-def]
-            return _bars([(99, 104, 98, 103)])
+            high = 111 if version == "swing-v1" else 104
+            return _bars([(99, high, 98, 103)])
 
     resolve_outcomes(Store(), {signal_id: row}, 99)  # type: ignore[arg-type]
     return row
@@ -52,8 +53,22 @@ def test_scheduled_challenger_refuses_one_session_and_does_not_consume_rows(tmp_
     report = run_scheduled_challenger(
         "nse", rows, path, output_root=tmp_path / "models"
     )
-    assert report["status"] == "challenger_blocked"
+    assert report["status"] == "challenger_failed_or_blocked"
     assert report["challenger_consumed_signal_ids"] == []
     assert "independent sessions" in " ".join(report["blockers"])
     assert report["active_model_changed"] is False
     assert report["promotion_authorized"] is False
+
+
+def test_quick_and_swing_counts_cannot_combine_to_trigger_training(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    rows = {
+        row.signal_id: row
+        for version in ("quick-profit-v1", "swing-v1")
+        for i in range(10)
+        if (row := _resolved(i, version))
+    }
+    report = refresh_learning_status("nse", rows, tmp_path / "status.json")
+    assert report["status"] == "waiting_for_sealed_evidence"
+    assert report["eligible_mature"] == 20
+    assert report["contract_status"]["quick-profit-v1"]["new_mature"] == 10
+    assert report["contract_status"]["swing-v1"]["new_mature"] == 10

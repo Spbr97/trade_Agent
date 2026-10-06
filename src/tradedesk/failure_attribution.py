@@ -282,6 +282,9 @@ def failure_attribution_summary(records: Iterable[Mapping[str, Any]]) -> dict[st
                 ),
                 "evidence_levels": dict(evidence[code]),
                 "by_setup": dict(Counter(str(r.get("setup") or "unknown") for r in members)),
+                "by_contract": dict(
+                    Counter(str(r.get("contract_version") or "unknown") for r in members)
+                ),
                 "by_market": dict(Counter(str(r.get("market") or "unknown") for r in members)),
                 "by_sector": dict(
                     Counter(
@@ -326,12 +329,34 @@ def failure_attribution_summary(records: Iterable[Mapping[str, Any]]) -> dict[st
                 "setup_specific_weakness": len(members) >= 5 and successes / len(members) < 0.5,
             }
         )
+    contract_performance = []
+    for contract in sorted({str(r.get("contract_version") or "unknown") for r in mature}):
+        members = [
+            r for r in mature if str(r.get("contract_version") or "unknown") == contract
+        ]
+        successes = sum(r.get("label") == 1 for r in members)
+        lower, upper = _wilson(successes, len(members))
+        contract_performance.append(
+            {
+                "contract_version": contract,
+                "resolved": len(members),
+                "successes": successes,
+                "strict_accuracy": successes / len(members),
+                "accuracy_wilson_95": {"lower": lower, "upper": upper},
+                "mean_gross_r": _mean(
+                    r.get("gross_r", r.get("r_multiple")) for r in members
+                ),
+                "mean_net_r": _mean(r.get("net_r") for r in members),
+            }
+        )
     return {
         "resolved_calls": len(mature),
         "failed_calls": len(failures),
         "invalid_calls_excluded": len(invalid),
         "categories": categories,
         "setup_performance": setup_performance,
+        "contract_performance": contract_performance,
+        "contract_accuracy_pooled": False,
         "unavailable_diagnostics": [
             "market_regime_reversal requires an outcome-time regime snapshot",
             "relative_strength_deterioration requires an outcome-time relative-strength snapshot",

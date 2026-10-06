@@ -47,7 +47,7 @@ from tradedesk.self_learning_workflow import run_scheduled_challenger  # noqa: E
 from tradedesk.signal_tracker import (  # noqa: E402
     flag_setup_failures,
     load_log,
-    log_new_signals,
+    log_exit_contract_signals,
     render_session_report,
     resolve_outcomes,
     save_dashboard,
@@ -55,6 +55,11 @@ from tradedesk.signal_tracker import (  # noqa: E402
     save_session_report,
     scoreboard,
 )
+
+# Preserve the script's long-standing integration-test patch seam; this alias now logs
+# both versioned exit contracts.
+log_new_signals = log_exit_contract_signals
+refresh_learning_status = run_scheduled_challenger
 
 DB = Path("data/tradedesk.duckdb")
 LOG = Path("data/reports/nse_signal_tracking.jsonl")
@@ -82,7 +87,7 @@ def main(*, strict_accuracy_refresh: bool = False) -> None:
         new_rows = log_new_signals(wl, rows, market="nse")
         newly_resolved = resolve_outcomes(store, rows, MAX_HOLD)
         save_log(rows, LOG)
-        run_scheduled_challenger(
+        refresh_learning_status(
             "nse", rows, Path("data/reports/nse_self_learning_status.json")
         )
         save_dashboard("nse", rows, DASHBOARD)
@@ -91,7 +96,7 @@ def main(*, strict_accuracy_refresh: bool = False) -> None:
         flagged = flag_setup_failures("nse", rows)
         print(
             f"{day}: {len(wl.entries)} candidates evaluated "
-            f"({len(wl.active)} would be tradeable, {len(new_rows)} new today from "
+            f"({len(wl.active)} would be tradeable, {len(new_rows)} new contract rows from "
             f"{watchlist_path.name}), {len(newly_resolved)} newly resolved"
         )
         print(scoreboard(rows))

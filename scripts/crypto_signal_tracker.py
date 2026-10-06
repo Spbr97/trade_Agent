@@ -49,7 +49,7 @@ from tradedesk.self_learning_workflow import run_scheduled_challenger
 from tradedesk.signal_tracker import (
     flag_setup_failures,
     load_log,
-    log_new_signals,
+    log_exit_contract_signals,
     render_session_report,
     resolve_outcomes,
     save_dashboard,
@@ -58,6 +58,9 @@ from tradedesk.signal_tracker import (
     scoreboard,
     setup_hit_rate,  # noqa: F401  (re-exported for anything importing it from here still)
 )
+
+log_new_signals = log_exit_contract_signals
+refresh_learning_status = run_scheduled_challenger
 
 DB = Path("data/crypto.duckdb")
 LOG = Path("data/reports/crypto_signal_tracking.jsonl")
@@ -177,7 +180,7 @@ def main(*, strict_accuracy_refresh: bool = False) -> None:
         new_rows = log_new_signals(wl, rows, market="crypto")
         newly_resolved = resolve_outcomes(store, rows, MAX_HOLD)
         save_log(rows, LOG)
-        run_scheduled_challenger(
+        refresh_learning_status(
             "crypto", rows, Path("data/reports/crypto_self_learning_status.json")
         )
         save_dashboard("crypto", rows, DASHBOARD)
@@ -190,7 +193,7 @@ def main(*, strict_accuracy_refresh: bool = False) -> None:
             f"({closed_on_day} with the closed session, {refreshed_pairs} needed refresh, "
             f"{fetch_errors} fetch errors); "
             f"{len(wl.entries)} signals detected "
-            f"({len(wl.active)} would be tradeable, {len(new_rows)} new this run), "
+            f"({len(wl.active)} would be tradeable, {len(new_rows)} new contract rows), "
             f"{len(newly_resolved)} newly resolved"
         )
         print(scoreboard(rows))

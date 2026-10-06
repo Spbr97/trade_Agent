@@ -258,27 +258,33 @@ Implementation record:
 Test exit contracts on identical frozen entry cohorts:
 
 - [ ] 0.5R quick target.
-- [ ] 0.75R quick target.
+- [x] 0.75R quick target.
 - [ ] 1R quick target.
 - [ ] Partial profit followed by a breakeven stop.
-- [ ] 1.5R–2R swing target.
+- [x] 2R swing target.
 - [ ] Trend-trailing exit.
-- [ ] One-, three-, five- and ten-session expiry.
+- [ ] One-session expiry.
+- [x] Three-session quick-profit expiry.
+- [ ] Five-session expiry.
+- [x] Ten-session swing expiry.
 
 Measure:
 
-- [ ] Strict accuracy and Wilson lower bound.
-- [ ] Gross, net and reporting-only after-tax expectancy.
-- [ ] Resolution speed.
-- [ ] Maximum losing streak.
+- [x] Strict accuracy and Wilson lower bound.
+- [x] Gross, net and reporting-only after-tax expectancy.
+- [x] Resolution speed.
+- [x] Maximum losing streak.
 - [ ] Calls per session and no-call frequency.
-- [ ] Performance by market, setup and regime.
+- [x] Performance by market, setup and regime.
 
 Acceptance criteria:
 
-- Exit alternatives share the same frozen entries.
-- A smaller target is not accepted merely because it increases hit rate.
-- Net expectancy must remain positive after realistic costs.
+- [x] Exit alternatives share the same frozen entries.
+- [x] A smaller target is not accepted merely because it increases hit rate.
+- [x] Net expectancy must remain positive after realistic costs.
+
+Implementation record:
+[Milestone 8 checkpoint — paired exit contracts](self-learning-m8-exit-contract-race.md)
 
 ## Milestone 9 — Challenger validation
 
