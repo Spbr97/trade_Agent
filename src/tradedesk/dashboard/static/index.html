@@ -820,6 +820,11 @@
       <div class="card"><div class="label">Failed / inconclusive</div><div class="value" id="learning-failed-experiments">-</div></div>
     </div>
     <div class="muted" id="learning-workflow-blockers" style="margin-bottom:10px;"></div>
+    <div class="cards" style="margin-bottom:10px;">
+      <div class="card"><div class="label">Precision selector</div><div class="value" id="learning-selector-status">-</div></div>
+      <div class="card"><div class="label">Locked policies tested</div><div class="value" id="learning-selector-policies">-</div></div>
+      <div class="card"><div class="label">Selected live policy</div><div class="value" id="learning-selector-authority">NONE</div></div>
+    </div>
     <table id="learning-table"></table>
   </section>
 </div>
@@ -1937,6 +1942,10 @@ async function loadLearning() {
   const latest = challenger.latest || {};
   $('learning-challenger').textContent = latest.status || 'none trained';
   $('learning-failed-experiments').textContent = `${(challenger.failed || 0) + (challenger.negative || 0)} / ${challenger.inconclusive || 0}`;
+  const selector = latest.precision_selector || null;
+  $('learning-selector-status').textContent = selector ? 'locked research only' : 'not evaluated';
+  $('learning-selector-policies').textContent = selector ? Object.keys(selector.operating_points || {}).length : 0;
+  $('learning-selector-authority').textContent = selector && selector.selected_live_policy ? selector.selected_live_policy : 'NONE';
   $('learning-workflow-blockers').textContent = (status.blockers || []).join(' · ') || 'challenger dataset threshold reached; active model remains frozen';
 }
 $('learning-market-select').addEventListener('change', loadLearning);

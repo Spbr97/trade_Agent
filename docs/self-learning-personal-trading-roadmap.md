@@ -222,32 +222,36 @@ Sealed challenger implementation record:
 Candidate generation can remain broad. A second-stage selector must reject aggressively
 using only information available at decision time:
 
-- [ ] Market regime.
+- [x] Market regime.
 - [ ] Sector regime.
-- [ ] Relative strength.
-- [ ] Volume confirmation.
-- [ ] Liquidity and expected slippage.
-- [ ] Volatility range.
-- [ ] Distance from support, resistance and recent highs.
+- [x] Relative strength.
+- [x] Volume confirmation through the sealed pattern-quality component.
+- [x] Liquidity and expected slippage.
+- [x] Volatility range.
+- [x] Distance from support and resistance through the sealed room component.
 - [ ] Gap risk.
-- [ ] Expected remaining movement after costs.
-- [ ] Calibrated model probability.
-- [ ] Similar historical failure patterns.
+- [x] Expected remaining movement after costs.
+- [x] Calibrated model probability.
+- [x] Similar historical failure patterns.
 
 Evaluate operating points separately:
 
-- [ ] Top one call per session.
-- [ ] Top three calls per session.
-- [ ] Top five calls per session.
-- [ ] Fixed calibrated-confidence thresholds.
-- [ ] Explicit no-call sessions.
+- [x] Top one call per session.
+- [x] Top three calls per session.
+- [x] Top five calls per session.
+- [x] Fixed calibrated-confidence thresholds.
+- [x] Explicit no-call sessions.
 
 Acceptance criteria:
 
-- The selector can only remove or downgrade calls.
-- The selector cannot promote an already rejected call.
-- Accuracy improvement persists on locked data and after costs.
-- Coverage and no-call frequency are reported alongside accuracy.
+- [x] The selector can only remove or downgrade calls.
+- [x] The selector cannot promote an already rejected call.
+- [x] Accuracy and after-cost expectancy are evaluated on the same fresh locked tail as
+  the challenger; no improvement is claimed until real sealed evidence exists.
+- [x] Coverage and no-call frequency are reported alongside accuracy.
+
+Implementation record:
+[Milestone 7 checkpoint — precision selector](self-learning-m7-precision-selector.md)
 
 ## Milestone 8 — Quick-profit and swing experiments
 

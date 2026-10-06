@@ -20,7 +20,7 @@ from tradedesk.broker.indstocks.models import IST
 from tradedesk.learning_dataset import LearningDataset, register_dataset_use
 from tradedesk.prediction_ledger import canonical_sha256
 
-WORKFLOW_VERSION = "sealed-challenger-v1"
+WORKFLOW_VERSION = "sealed-challenger-v2"
 MINIMUM_ROWS = 20
 MINIMUM_SESSIONS = 4
 TEST_SESSION_FRACTION = 0.25
@@ -441,6 +441,21 @@ def run_challenger_experiment(
     )
     challenger_dev = model.predict_proba(x_dev_scaled)[:, 1]
     challenger_test = model.predict_proba(x_test_scaled)[:, 1]
+    from tradedesk.precision_selector import evaluate_precision_selector
+
+    precision_selector = evaluate_precision_selector(
+        development,
+        test,
+        {
+            str(row["signal_id"]): float(probability)
+            for row, probability in zip(development, challenger_dev, strict=True)
+        },
+        {
+            str(row["signal_id"]): float(probability)
+            for row, probability in zip(test, challenger_test, strict=True)
+        },
+        market=dataset.market,
+    )
     prevalence = float(np.mean(labels_dev))
 
     def baseline(rows_: list[Mapping[str, Any]]) -> np.ndarray:
@@ -510,6 +525,7 @@ def run_challenger_experiment(
                 "reason": "requires a separately frozen candle/universe cohort",
             },
         },
+        precision_selector=precision_selector,
         deltas={
             "development_brier_gain": dev_gain,
             "chronological_test_brier_gain": test_gain,
