@@ -831,6 +831,12 @@
       <div class="card"><div class="label">Swing accuracy</div><div class="value" id="learning-exit-swing">-</div></div>
       <div class="card"><div class="label">Quick-profit verdict</div><div class="value" id="learning-exit-verdict">-</div></div>
     </div>
+    <div class="cards" style="margin-bottom:10px;">
+      <div class="card"><div class="label">Evidence stage</div><div class="value" id="learning-evidence-stage">-</div></div>
+      <div class="card"><div class="label">Locked OOS calls</div><div class="value" id="learning-locked-oos">-</div></div>
+      <div class="card"><div class="label">Overlap rows purged</div><div class="value" id="learning-purged">-</div></div>
+      <div class="card"><div class="label">All final gates</div><div class="value" id="learning-final-gates">NO</div></div>
+    </div>
     <table id="learning-table"></table>
   </section>
 </div>
@@ -1959,6 +1965,11 @@ async function loadLearning() {
   $('learning-selector-status').textContent = selector ? 'locked research only' : 'not evaluated';
   $('learning-selector-policies').textContent = selector ? Object.keys(selector.operating_points || {}).length : 0;
   $('learning-selector-authority').textContent = selector && selector.selected_live_policy ? selector.selected_live_policy : 'NONE';
+  const ladder = latest.evidence_ladder || {};
+  $('learning-evidence-stage').textContent = ladder.stage || 'not evaluated';
+  $('learning-locked-oos').textContent = ladder.locked_oos_calls ?? 0;
+  $('learning-purged').textContent = (latest.purge || {}).overlap_rows ?? 0;
+  $('learning-final-gates').textContent = (latest.final_evidence_gates || {}).all_passed ? 'YES' : 'NO';
   $('learning-workflow-blockers').textContent = (status.blockers || []).join(' · ') || 'challenger dataset threshold reached; active model remains frozen';
 }
 $('learning-market-select').addEventListener('change', loadLearning);

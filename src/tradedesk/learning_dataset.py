@@ -149,6 +149,9 @@ def build_learning_dataset(
                 "net_r": record.get("net_r"),
                 "after_tax_r": record.get("after_tax_r"),
                 "holding_sessions": record.get("holding_sessions"),
+                "entry_on": record.get("entry_on"),
+                "exit_on": record.get("exit_on"),
+                "time_to_resolution_sessions": record.get("time_to_resolution_sessions"),
                 "failure_attributions": (
                     record.get("failure_attributions") or attribute_failure(record)
                 ),

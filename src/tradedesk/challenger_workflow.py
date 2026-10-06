@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import math
 from collections.abc import Iterable, Mapping
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -20,7 +20,7 @@ from tradedesk.broker.indstocks.models import IST
 from tradedesk.learning_dataset import LearningDataset, register_dataset_use
 from tradedesk.prediction_ledger import canonical_sha256
 
-WORKFLOW_VERSION = "sealed-challenger-v2"
+WORKFLOW_VERSION = "sealed-challenger-v3"
 MINIMUM_ROWS = 20
 MINIMUM_SESSIONS = 4
 TEST_SESSION_FRACTION = 0.25
@@ -263,10 +263,28 @@ def _model_score(probabilities: np.ndarray, rows: list[Mapping[str, Any]]) -> di
     selected_net = [
         _finite(row.get("net_r")) for row, selected in zip(rows, predicted, strict=True) if selected
     ]
+    wins = int(np.sum(labels))
+    calibration = []
+    for lo, hi in ((0.0, 0.5), (0.5, 0.6), (0.6, 0.7), (0.7, 0.8), (0.8, 1.000001)):
+        selected = (probabilities >= lo) & (probabilities < hi)
+        if np.any(selected):
+            calibration.append(
+                {
+                    "lo": lo,
+                    "hi": min(1.0, hi),
+                    "n": int(np.sum(selected)),
+                    "mean_probability": float(np.mean(probabilities[selected])),
+                    "realised_accuracy": float(np.mean(labels[selected])),
+                }
+            )
     return {
         "n": len(rows),
+        "wins": wins,
         "accuracy": float(np.mean(predicted == labels)),
+        "strict_outcome_accuracy": wins / len(rows),
+        "strict_outcome_wilson_95_low": _wilson(wins, len(rows))[0],
         "brier": float(np.mean((probabilities - labels) ** 2)),
+        "calibration": calibration,
         "selected": int(np.sum(predicted)),
         "selected_mean_net_r": _mean(selected_net),
     }
@@ -313,15 +331,61 @@ def _subset_dataset(
 
 def _group_scores(rows: list[Mapping[str, Any]], probabilities: np.ndarray) -> dict[str, Any]:
     out: dict[str, Any] = {}
-    for field in ("regime", "sector", "armed_on"):
+    for field in ("regime", "sector", "armed_on", "month", "liquidity"):
         grouped: dict[str, list[int]] = {}
         for index, row in enumerate(rows):
-            grouped.setdefault(str(row.get(field) or "unavailable"), []).append(index)
+            if field == "month":
+                name = str(row.get("armed_on") or "unavailable")[:7]
+            elif field == "liquidity":
+                turnover = _finite(
+                    (row.get("features") or {}).get("context.average_turnover")
+                )
+                name = (
+                    "unavailable"
+                    if turnover is None
+                    else "lt_1cr"
+                    if turnover < 10_000_000
+                    else "1cr_to_10cr"
+                    if turnover < 100_000_000
+                    else "10cr_plus"
+                )
+            else:
+                name = str(row.get(field) or "unavailable")
+            grouped.setdefault(name, []).append(index)
         out[field] = {
             name: _model_score(probabilities[indexes], [rows[index] for index in indexes])
             for name, indexes in sorted(grouped.items())
         }
     return out
+
+
+def _evidence_ladder(
+    rows: list[Mapping[str, Any]], test_score: Mapping[str, Any]
+) -> dict[str, Any]:
+    sessions = len({str(row.get("armed_on")) for row in rows})
+    n, oos = len(rows), int(test_score["n"])
+    if n < 50:
+        stage = "collecting_below_diagnostic_floor"
+    elif n < 100 or sessions < 30:
+        stage = "diagnostic_only"
+    elif n < 250:
+        stage = "first_review"
+    elif n < 500 or oos < 100:
+        stage = "stability_review"
+    else:
+        stage = "production_sample_threshold_reached"
+    return {
+        "stage": stage,
+        "resolved_calls": n,
+        "independent_sessions": sessions,
+        "locked_oos_calls": oos,
+        "thresholds": {
+            "diagnostic": {"calls": 50},
+            "first_review": {"calls": 100, "sessions": 30},
+            "stability_review": {"calls": 250},
+            "production_evidence": {"calls": 500, "locked_oos_calls": 100},
+        },
+    }
 
 
 def _random_selection_control(
@@ -440,6 +504,38 @@ def run_challenger_experiment(
     split_sessions = set(sessions[-test_sessions:])
     development = [row for row in rows if str(row.get("armed_on")) not in split_sessions]
     test = [row for row in rows if str(row.get("armed_on")) in split_sessions]
+    first_test_day = date.fromisoformat(min(split_sessions))
+    unpurged_development = development
+    development = []
+    purged_overlap = 0
+    purged_unverifiable = 0
+    for row in unpurged_development:
+        exit_on = row.get("exit_on")
+        if not exit_on:
+            purged_unverifiable += 1
+            continue
+        try:
+            exit_day = date.fromisoformat(str(exit_on)[:10])
+        except ValueError:
+            purged_unverifiable += 1
+            continue
+        if exit_day >= first_test_day:
+            purged_overlap += 1
+            continue
+        development.append(row)
+    if len(development) < 5:
+        report.update(
+            status="blocked_purged_development_too_small",
+            conclusion="not_run",
+            blockers=[
+                "fewer than five development rows remain after outcome-overlap purging"
+            ],
+            purge={
+                "overlap_rows": purged_overlap,
+                "unverifiable_exit_rows": purged_unverifiable,
+            },
+        )
+        return report
     if len({int(row["label"]) for row in development}) < 2:
         report.update(
             status="blocked_single_class_development",
@@ -525,6 +621,9 @@ def run_challenger_experiment(
     }
     consistency = _group_scores(test, challenger_test)
     random_control = _random_selection_control(test, challenger_test)
+    evidence_ladder = _evidence_ladder(
+        rows, scores["chronological_test"]["challenger"]
+    )
     dev_gain = (
         scores["development"]["frozen_baseline"]["brier"]
         - scores["development"]["challenger"]["brier"]
@@ -550,7 +649,13 @@ def run_challenger_experiment(
         conclusion=conclusion,
         features=features,
         split={"development_rows": len(development), "test_rows": len(test)},
+        purge={
+            "overlap_rows": purged_overlap,
+            "unverifiable_exit_rows": purged_unverifiable,
+            "first_locked_test_session": first_test_day.isoformat(),
+        },
         scores=scores,
+        evidence_ladder=evidence_ladder,
         consistency=consistency,
         controls={
             "random_selection": random_control,
@@ -560,6 +665,18 @@ def run_challenger_experiment(
             },
         },
         precision_selector=precision_selector,
+        final_evidence_gates={
+            "sample_threshold_reached": (
+                evidence_ladder["stage"] == "production_sample_threshold_reached"
+            ),
+            "any_preregistered_selector_policy_clears_accuracy_and_net_gate": any(
+                item["passes_final_accuracy_gate"]
+                for item in precision_selector["operating_points"].values()
+            ),
+            "matched_random_timing_margin_passed": False,
+            "prospective_cohort_passed": False,
+            "all_passed": False,
+        },
         deltas={
             "development_brier_gain": dev_gain,
             "chronological_test_brier_gain": test_gain,

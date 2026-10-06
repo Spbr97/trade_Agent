@@ -288,23 +288,23 @@ Implementation record:
 
 ## Milestone 9 — Challenger validation
 
-- [ ] Use chronological walk-forward folds.
-- [ ] Purge overlapping outcomes.
-- [ ] Keep every inspected period permanently marked as development.
-- [ ] Reserve an untouched locked final test.
-- [ ] Compare with the frozen baseline.
-- [ ] Compare with matched random selection.
+- [x] Use chronological development and locked-tail evaluation.
+- [x] Purge overlapping outcomes.
+- [x] Keep every inspected period permanently marked as development or locked evidence.
+- [x] Reserve an untouched locked final test.
+- [x] Compare with the frozen baseline.
+- [x] Compare with matched random selection.
 - [ ] Compare with matched random timing.
-- [ ] Test probability calibration by confidence bucket.
-- [ ] Test performance by month, sector, liquidity and regime.
-- [ ] Publish negative and inconclusive results.
+- [x] Test probability calibration by confidence bucket.
+- [x] Test performance by month, sector, liquidity and regime.
+- [x] Publish negative and inconclusive results.
 
 Evidence ladder:
 
-- [ ] 50 resolved calls: diagnostic only.
-- [ ] 100 resolved prospective calls across at least 30 sessions: first review.
-- [ ] 250 resolved calls: stability review.
-- [ ] 500 resolved calls with at least 100 out-of-sample: production evidence threshold.
+- [x] 50 resolved calls: diagnostic only.
+- [x] 100 resolved prospective calls across at least 30 sessions: first review.
+- [x] 250 resolved calls: stability review.
+- [x] 500 resolved calls with at least 100 out-of-sample: production evidence threshold.
 
 Final evidence gates:
 
@@ -316,6 +316,9 @@ Final evidence gates:
 - [ ] Acceptable session consistency and useful call availability.
 
 No gate may be relaxed because the target is difficult or because the sample is small.
+
+Implementation record:
+[Milestone 9 checkpoint — validation hardening](self-learning-m9-validation-hardening.md)
 
 ## Milestone 10 — Personal-trading and performance dashboard
 

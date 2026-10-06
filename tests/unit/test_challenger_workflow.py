@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import date, timedelta
 
 from tradedesk.challenger_workflow import (
     drift_snapshot,
@@ -14,6 +15,7 @@ def _dataset(n: int = 24, *, qualified: bool = True) -> LearningDataset:
     rows = []
     for i in range(n):
         label = i % 2
+        armed_on = date(2026, 9, 1) + timedelta(days=i // 3)
         rows.append(
             {
                 "signal_id": f"signal-{i:03d}",
@@ -32,7 +34,10 @@ def _dataset(n: int = 24, *, qualified: bool = True) -> LearningDataset:
                 "evidence_class": "qualified_call" if qualified else "rejected_call",
                 "evidence_role": "recommended" if qualified else "counterfactual",
                 "cohort": "prospective",
-                "armed_on": f"2026-09-{1 + i // 3:02d}",
+                "armed_on": armed_on.isoformat(),
+                "entry_on": (armed_on + timedelta(days=1)).isoformat(),
+                "exit_on": (armed_on + timedelta(days=1)).isoformat(),
+                "time_to_resolution_sessions": 1,
                 "features": {
                     "decision.rule_score": 90.0 if label else 10.0,
                     "decision.probability": 0.5,
@@ -104,7 +109,20 @@ def test_versioned_challenger_is_chronological_idempotent_and_cannot_promote(tmp
     dataset = _dataset()
     report = run_challenger_experiment(dataset, tmp_path)
     assert report["status"].startswith("completed_")
-    assert report["split"]["development_rows"] + report["split"]["test_rows"] == 24
+    assert (
+        report["split"]["development_rows"]
+        + report["split"]["test_rows"]
+        + report["purge"]["overlap_rows"]
+        + report["purge"]["unverifiable_exit_rows"]
+        == 24
+    )
+    assert report["purge"]["overlap_rows"] == 3
+    assert report["purge"]["unverifiable_exit_rows"] == 0
+    assert report["evidence_ladder"]["stage"] == "collecting_below_diagnostic_floor"
+    assert "month" in report["consistency"]
+    assert "liquidity" in report["consistency"]
+    assert report["scores"]["chronological_test"]["challenger"]["calibration"]
+    assert report["final_evidence_gates"]["all_passed"] is False
     assert report["active_model_changed"] is False
     assert report["promotion_authorized"] is False
     assert (tmp_path / "datasets" / f"{dataset.dataset_id}.json").exists()
