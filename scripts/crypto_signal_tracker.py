@@ -45,7 +45,7 @@ from tradedesk.markets.crypto_universe import (
     stored_crypto_codes,
 )
 from tradedesk.scan import build_watchlist, scan_config
-from tradedesk.self_learning_workflow import refresh_learning_status
+from tradedesk.self_learning_workflow import run_scheduled_challenger
 from tradedesk.signal_tracker import (
     flag_setup_failures,
     load_log,
@@ -177,7 +177,7 @@ def main(*, strict_accuracy_refresh: bool = False) -> None:
         new_rows = log_new_signals(wl, rows, market="crypto")
         newly_resolved = resolve_outcomes(store, rows, MAX_HOLD)
         save_log(rows, LOG)
-        refresh_learning_status(
+        run_scheduled_challenger(
             "crypto", rows, Path("data/reports/crypto_self_learning_status.json")
         )
         save_dashboard("crypto", rows, DASHBOARD)

@@ -2,8 +2,8 @@
 
 Date created: 2026-10-06
 
-Status: in progress; Milestones 1-5 complete and Milestone 6 session refresh implemented
-on 2026-10-06
+Status: in progress; Milestones 1-5 complete and Milestone 6 sealed challenger workflow
+implemented through locked chronological evaluation on 2026-10-06
 
 Primary objective: produce a small, useful set of personally tradeable calls with
 verifiable accuracy, positive after-cost expectancy, explicit risk levels and honest
@@ -184,24 +184,24 @@ Implementation record: [Milestone 5 learning dataset](self-learning-m5-learning-
 After every completed session:
 
 - [x] Resolve mature calls.
-- [ ] Refresh strict accuracy, calibration and expectancy.
+- [x] Refresh strict accuracy, calibration and expectancy.
 - [x] Update failure attribution.
-- [ ] Detect performance, confidence and data drift.
+- [x] Detect performance, confidence and data drift.
 - [x] Leave the active model unchanged.
 
 Weekly, when enough new mature outcomes exist:
 
-- [ ] Freeze a new challenger dataset snapshot.
-- [ ] Retrain the transparent baseline.
-- [ ] Train only preregistered challenger models.
-- [ ] Compare challengers with the frozen active baseline.
-- [ ] Record negative and inconclusive experiments.
-- [ ] Reject improvements confined to training data.
+- [x] Freeze a new challenger dataset snapshot.
+- [x] Retrain the transparent baseline.
+- [x] Train only preregistered challenger models.
+- [x] Compare challengers with the frozen active baseline.
+- [x] Record negative and inconclusive experiments.
+- [x] Reject improvements confined to training data.
 
 Monthly, or after a meaningful evidence increment:
 
-- [ ] Run locked chronological evaluation.
-- [ ] Test regime, sector and session consistency.
+- [x] Run locked chronological evaluation.
+- [x] Test regime, sector and session consistency.
 - [ ] Run random-selection and random-timing controls.
 - [ ] Decide whether one challenger deserves a prospective cohort.
 
@@ -213,6 +213,9 @@ Acceptance criteria:
 
 Session-refresh implementation record:
 [Milestone 6 checkpoint — session refresh](self-learning-m6-session-refresh.md)
+
+Sealed challenger implementation record:
+[Milestone 6 checkpoint — challenger workflow](self-learning-m6-challenger-workflow.md)
 
 ## Milestone 7 — Precision selector
 

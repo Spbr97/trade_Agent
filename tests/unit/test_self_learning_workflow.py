@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from tests.unit.test_outcome_resolver import _bars, _row
 from tradedesk.prediction_ledger import seal_prediction
-from tradedesk.self_learning_workflow import refresh_learning_status
+from tradedesk.self_learning_workflow import refresh_learning_status, run_scheduled_challenger
 from tradedesk.signal_tracker import resolve_outcomes
 
 
@@ -44,3 +44,16 @@ def test_enough_new_mature_evidence_becomes_ready_but_does_not_train(tmp_path) -
     assert second["new_mature_since_last_refresh"] == 20
     assert not second["active_model_changed"]
     assert second["last_challenger_dataset_id"] is None
+
+
+def test_scheduled_challenger_refuses_one_session_and_does_not_consume_rows(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    rows = {f"sealed-{i}": _resolved(i) for i in range(20)}
+    path = tmp_path / "status.json"
+    report = run_scheduled_challenger(
+        "nse", rows, path, output_root=tmp_path / "models"
+    )
+    assert report["status"] == "challenger_blocked"
+    assert report["challenger_consumed_signal_ids"] == []
+    assert "independent sessions" in " ".join(report["blockers"])
+    assert report["active_model_changed"] is False
+    assert report["promotion_authorized"] is False

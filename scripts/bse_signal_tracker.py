@@ -38,7 +38,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from tradedesk.data.candle_store import CandleStore
 from tradedesk.scan import load_watchlist
-from tradedesk.self_learning_workflow import refresh_learning_status
+from tradedesk.self_learning_workflow import run_scheduled_challenger
 from tradedesk.signal_tracker import (
     flag_setup_failures,
     load_log,
@@ -79,7 +79,9 @@ def main(*, strict_accuracy_refresh: bool = False) -> None:
         new_rows = log_new_signals(wl, rows, market="bse")
         newly_resolved = resolve_outcomes(store, rows, MAX_HOLD)
         save_log(rows, LOG)
-        refresh_learning_status("bse", rows, Path("data/reports/bse_self_learning_status.json"))
+        run_scheduled_challenger(
+            "bse", rows, Path("data/reports/bse_self_learning_status.json")
+        )
         save_dashboard("bse", rows, DASHBOARD)
         report = render_session_report("BSE", day, new_rows, newly_resolved, rows)
         report_path = save_session_report(day, report, SESSIONS_DIR)

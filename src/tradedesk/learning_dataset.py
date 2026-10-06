@@ -13,7 +13,7 @@ from typing import Any, Literal
 from tradedesk.failure_attribution import attribute_failure
 from tradedesk.prediction_ledger import canonical_sha256, validate_prediction_record
 
-DATASET_VERSION = "self-learning-dataset-v1"
+DATASET_VERSION = "self-learning-dataset-v2"
 DatasetPurpose = Literal["development", "locked_test", "prospective"]
 
 
@@ -132,6 +132,10 @@ def build_learning_dataset(
                 "regime": (payload.get("context") or {}).get("market_regime"),
                 "contract_kind": record.get("contract_kind"),
                 "contract_version": record.get("contract_version"),
+                "strategy_version": (payload.get("versions") or {}).get("strategy"),
+                "feature_version": (payload.get("versions") or {}).get("feature_contract"),
+                "model_version": (payload.get("versions") or {}).get("model"),
+                "model_kind": (payload.get("versions") or {}).get("model_kind"),
                 "evidence_class": evidence_class,
                 "evidence_role": (
                     "recommended" if evidence_class == "qualified_call" else "counterfactual"

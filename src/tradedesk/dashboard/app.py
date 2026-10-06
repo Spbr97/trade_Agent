@@ -1693,6 +1693,16 @@ def create_app(
             )
         return JSONResponse(json.loads(path.read_text(encoding="utf-8")))
 
+    @app.get("/api/self-learning/challenger")
+    async def api_self_learning_challenger(market: str = "nse") -> JSONResponse:
+        from tradedesk.challenger_workflow import challenger_summary
+
+        if market not in {"nse", "bse", "crypto"}:
+            return JSONResponse({"error": "invalid market"}, status_code=400)
+        return JSONResponse(
+            challenger_summary(Path(f"data/models/self_learning/{market}"))
+        )
+
     @app.get("/api/session-report")
     async def api_session_report(
         market: Literal["nse", "crypto", "bse"] = "nse", on: str | None = None

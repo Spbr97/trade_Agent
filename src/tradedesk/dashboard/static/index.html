@@ -812,6 +812,13 @@
       <div class="card"><div class="label">New for challenger</div><div class="value" id="learning-workflow-new">-</div></div>
       <div class="card"><div class="label">Active model changed</div><div class="value" id="learning-workflow-active">-</div></div>
     </div>
+    <div class="cards" style="margin-bottom:10px;">
+      <div class="card"><div class="label">Strict accuracy</div><div class="value" id="learning-strict-accuracy">-</div></div>
+      <div class="card"><div class="label">Calibration Brier</div><div class="value" id="learning-brier">-</div></div>
+      <div class="card"><div class="label">Drift monitor</div><div class="value" id="learning-drift">-</div></div>
+      <div class="card"><div class="label">Challenger</div><div class="value" id="learning-challenger">-</div></div>
+      <div class="card"><div class="label">Failed / inconclusive</div><div class="value" id="learning-failed-experiments">-</div></div>
+    </div>
     <div class="muted" id="learning-workflow-blockers" style="margin-bottom:10px;"></div>
     <table id="learning-table"></table>
   </section>
@@ -1911,9 +1918,10 @@ $('research-market-select').addEventListener('change', loadResearch);
 // digging into another tab first) - reads the same /api/eod-learning endpoint.
 async function loadLearning() {
   const market = $('learning-market-select').value;
-  const [r, statusResponse] = await Promise.all([
+  const [r, statusResponse, challengerResponse] = await Promise.all([
     fetch(`/api/eod-learning?market=${market}`),
     fetch(`/api/self-learning/status?market=${market}`),
+    fetch(`/api/self-learning/challenger?market=${market}`),
   ]);
   renderLearningTable(r.ok ? await r.json() : []);
   const status = statusResponse.ok ? await statusResponse.json() : {};
@@ -1921,6 +1929,14 @@ async function loadLearning() {
   $('learning-workflow-eligible').textContent = status.eligible_mature ?? '-';
   $('learning-workflow-new').textContent = status.new_mature_since_last_refresh ?? '-';
   $('learning-workflow-active').textContent = status.active_model_changed ? 'YES' : 'no';
+  const qualified = ((status.performance || {}).qualified || {});
+  $('learning-strict-accuracy').textContent = qualified.strict_accuracy != null ? `${pct(qualified.strict_accuracy)} (n=${qualified.n})` : 'not available';
+  $('learning-brier').textContent = qualified.brier != null ? fmt(qualified.brier, 4) : 'not available';
+  $('learning-drift').textContent = (status.drift || {}).status || 'not available';
+  const challenger = challengerResponse.ok ? await challengerResponse.json() : {};
+  const latest = challenger.latest || {};
+  $('learning-challenger').textContent = latest.status || 'none trained';
+  $('learning-failed-experiments').textContent = `${(challenger.failed || 0) + (challenger.negative || 0)} / ${challenger.inconclusive || 0}`;
   $('learning-workflow-blockers').textContent = (status.blockers || []).join(' · ') || 'challenger dataset threshold reached; active model remains frozen';
 }
 $('learning-market-select').addEventListener('change', loadLearning);
