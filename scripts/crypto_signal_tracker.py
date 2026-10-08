@@ -181,7 +181,10 @@ def main(*, strict_accuracy_refresh: bool = False) -> None:
         newly_resolved = resolve_outcomes(store, rows, MAX_HOLD)
         save_log(rows, LOG)
         refresh_learning_status(
-            "crypto", rows, Path("data/reports/crypto_self_learning_status.json")
+            "crypto",
+            rows,
+            Path("data/reports/crypto_self_learning_status.json"),
+            candle_store=store,
         )
         save_dashboard("crypto", rows, DASHBOARD)
         run_at = datetime.now(IST).strftime("%H:%M IST")

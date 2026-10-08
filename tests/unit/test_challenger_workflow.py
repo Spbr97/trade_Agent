@@ -9,6 +9,7 @@ from tradedesk.challenger_workflow import (
     run_challenger_experiment,
 )
 from tradedesk.learning_dataset import LearningDataset
+from tradedesk.random_timing_control import CONTROL_VERSION
 
 
 def _dataset(n: int = 24, *, qualified: bool = True) -> LearningDataset:
@@ -27,6 +28,7 @@ def _dataset(n: int = 24, *, qualified: bool = True) -> LearningDataset:
                 "regime": "risk_on",
                 "contract_kind": "quick_profit",
                 "contract_version": "quick-profit-v1",
+                "contract_sha256": "a" * 64,
                 "strategy_version": "strategy-v1",
                 "feature_version": "features-v1",
                 "model_version": "active-v1",
@@ -154,3 +156,107 @@ def test_future_challenger_cannot_reuse_a_prior_locked_outcome(tmp_path) -> None
     locked = [set(use["signal_ids"]) for use in uses if use["purpose"] == "locked_test"]
     assert len(locked) == 2
     assert locked[0].isdisjoint(locked[1])
+
+
+def test_timing_control_registers_then_selects_from_future_ex_ante_population(
+    tmp_path, monkeypatch
+) -> None:  # type: ignore[no-untyped-def]
+    first_dataset = _dataset()
+    registration_population = [dict(row) for row in first_dataset.rows]
+    observed: dict[str, list[object]] = {
+        "candidate_ids": [],
+        "selected_ids": [],
+        "historical_ids": [],
+        "selection_contexts": [],
+        "selection_manifests": [],
+    }
+
+    def select(rows, probabilities, policy):  # type: ignore[no-untyped-def]
+        candidate_ids = {str(row["signal_id"]) for row in rows}
+        observed["candidate_ids"].append(candidate_ids)
+        assert set(probabilities) == candidate_ids
+        if not candidate_ids:
+            return []
+        assert candidate_ids == {"future-invalid", "future-pending"}
+        return ["future-pending"]
+
+    def replay(rows, **kwargs):  # type: ignore[no-untyped-def]
+        observed["selected_ids"].append([str(row["signal_id"]) for row in rows])
+        observed["historical_ids"].append(
+            {str(row["signal_id"]) for row in kwargs["historical_opportunities"]}
+        )
+        observed["selection_contexts"].append(dict(kwargs["selection_context"]))
+        observed["selection_manifests"].append(dict(kwargs["selection_manifest"]))
+        return {
+            "version": CONTROL_VERSION,
+            "status": "collecting_insufficient_evidence",
+            "market": kwargs["market"],
+            "contract_version": kwargs["contract_version"],
+            "selector_policy": "top_1_per_session",
+            "selection_context_sha256": kwargs["selection_context"]["record_sha256"],
+            "records": [],
+            "random_timing_gate_passed": False,
+        }
+
+    monkeypatch.setattr("tradedesk.challenger_workflow.select_primary_signal_ids", select)
+    monkeypatch.setattr("tradedesk.challenger_workflow.evaluate_matched_random_timing", replay)
+    first = run_challenger_experiment(
+        first_dataset,
+        tmp_path,
+        timing_opportunities=registration_population,
+    )
+    contract_path = tmp_path / "timing_selection_contract.json"
+    contract_text = contract_path.read_text(encoding="utf-8")
+    contract = json.loads(contract_text)
+
+    assert first["status"].startswith("completed_")
+    assert first["timing_selection"]["candidate_rows"] == 0
+    assert first["timing_selection"]["selected_rows"] == 0
+    assert contract["selection_authority"] == "future_sessions_only"
+    assert contract["registered_from_dataset_id"] == first_dataset.dataset_id
+    assert contract["starts_after"] == max(
+        str(row["armed_on"]) for row in registration_population
+    )
+
+    future_pending = dict(registration_population[-1])
+    future_pending.update(
+        signal_id="future-pending",
+        prediction_sha256="future-pending-seal",
+        armed_on="2026-10-01",
+        outcome_state="pending_call",
+        outcome=None,
+        label=None,
+        net_r=None,
+        entry_on=None,
+        exit_on=None,
+    )
+    future_invalid = dict(future_pending)
+    future_invalid.update(
+        signal_id="future-invalid",
+        prediction_sha256="future-invalid-seal",
+        outcome_state="invalid_call",
+        outcome="unavailable",
+    )
+    later_population = registration_population + [future_pending, future_invalid]
+    second = run_challenger_experiment(
+        _dataset(30),
+        tmp_path,
+        timing_opportunities=later_population,
+    )
+
+    assert second["status"].startswith("completed_")
+    assert second["timing_selection"]["candidate_rows"] == 2
+    assert second["timing_selection"]["selected_rows"] == 1
+    assert second["timing_selection"]["pending_rows_included_before_ranking"] is True
+    assert contract_path.read_text(encoding="utf-8") == contract_text
+    assert observed["candidate_ids"] == [set(), {"future-invalid", "future-pending"}]
+    assert observed["selected_ids"] == [[], ["future-pending"]]
+    assert observed["historical_ids"][-1] == {
+        *(str(row["signal_id"]) for row in registration_population),
+        "future-invalid",
+        "future-pending",
+    }
+    assert observed["selection_contexts"][-1] == contract
+    manifest = observed["selection_manifests"][-1]
+    assert manifest["selection_context_sha256"] == contract["record_sha256"]
+    assert manifest["selected_signal_ids"] == ["future-pending"]

@@ -9,16 +9,21 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from tradedesk.broker.indstocks.models import IST
+from tradedesk.broker.indstocks.models import IST, Interval
 from tradedesk.challenger_workflow import (
     drift_snapshot,
     performance_snapshot,
     record_failed_experiment,
     run_challenger_experiment,
 )
+from tradedesk.data.candle_store import CandleStore
 from tradedesk.exit_contract_race import evaluate_exit_contract_race
 from tradedesk.failure_attribution import failure_attribution_summary
-from tradedesk.learning_dataset import LearningDataset, build_learning_dataset
+from tradedesk.learning_dataset import (
+    LearningDataset,
+    build_learning_dataset,
+    build_timing_opportunities,
+)
 from tradedesk.prediction_ledger import canonical_sha256
 from tradedesk.signal_tracker import TrackedSignal
 
@@ -154,6 +159,7 @@ def run_scheduled_challenger(
     *,
     output_root: Path | None = None,
     now: datetime | None = None,
+    candle_store: CandleStore | None = None,
 ) -> dict[str, Any]:
     """Run once when ready, then no more than weekly; never alter the active model."""
 
@@ -161,6 +167,9 @@ def run_scheduled_challenger(
     state = refresh_learning_status(market, rows, state_path)
     records = [asdict(row) for row in rows.values()]
     dataset = build_learning_dataset(records, market=market, purpose="prospective")
+    timing_opportunities = build_timing_opportunities(
+        records, market=market, purpose="prospective"
+    )
     root = output_root or Path(f"data/models/self_learning/{market}")
     completed_at_by_contract = dict(
         state.get("last_challenger_completed_at_by_contract") or {}
@@ -188,7 +197,16 @@ def run_scheduled_challenger(
         contract_dataset = _contract_dataset(dataset, version)
         contract_root = root / "contracts" / version
         try:
-            experiment = run_challenger_experiment(contract_dataset, contract_root)
+            experiment = run_challenger_experiment(
+                contract_dataset,
+                contract_root,
+                bars_loader=(
+                    (lambda code: candle_store.load(code, Interval.D1, adjusted=False))
+                    if candle_store is not None
+                    else None
+                ),
+                timing_opportunities=timing_opportunities,
+            )
         except Exception as exc:
             experiment = record_failed_experiment(contract_root, contract_dataset, exc)
             blockers.append(f"{version}: {type(exc).__name__}: {exc}")

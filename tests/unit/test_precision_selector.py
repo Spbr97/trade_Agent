@@ -4,6 +4,7 @@ from tradedesk.precision_selector import (
     SelectorPolicy,
     evaluate_precision_selector,
     fit_selector_policy,
+    select_primary_signal_ids,
     selector_decision,
 )
 
@@ -96,3 +97,15 @@ def test_all_preregistered_operating_points_report_coverage_and_no_call_sessions
     assert report["selected_live_policy"] is None
     assert report["can_only_remove_or_downgrade"] is True
     assert report["promotion_authorized"] is False
+
+
+def test_primary_timing_selection_ranks_nofills_before_outcome_is_known() -> None:
+    filled = _row("filled", session="2026-09-01")
+    nofill = _row("nofill", session="2026-09-01")
+    nofill.update(label=None, net_r=None, outcome_state="never_triggered")
+    selected = select_primary_signal_ids(
+        [filled, nofill],
+        {"filled": 0.70, "nofill": 0.90},
+        SelectorPolicy("nse", ()),
+    )
+    assert selected == ["nofill"]

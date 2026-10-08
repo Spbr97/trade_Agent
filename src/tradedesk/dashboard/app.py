@@ -7,7 +7,7 @@ import asyncio
 import hashlib
 import json
 from collections import Counter
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
 from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any, Literal
@@ -47,6 +47,126 @@ BSE_ACCURACY_QUICK_PROFIT = Path("data/m14_m18/bse_accuracy_quick_profit/state.j
 ACCURACY_COLLECTION_HEALTH = Path("data/m14_m18/accuracy_collection_health")
 COLLECTOR_MAX_AGE_HOURS = {"nse": 120.0, "bse": 120.0, "crypto": 2.0}
 COLLECTOR_RUNNING_MAX_AGE_HOURS = 6.0
+
+
+def _self_learning_random_timing_report(market: str) -> dict[str, Any]:
+    """Build the fail-closed timing view without requiring an HTTP client."""
+
+    from tradedesk.challenger_workflow import challenger_summary
+    from tradedesk.prediction_ledger import canonical_sha256
+    from tradedesk.random_timing_control import (
+        CONTROL_VERSION as RANDOM_TIMING_CONTROL_VERSION,
+    )
+    from tradedesk.random_timing_control import validate_random_timing_report
+
+    if market not in {"nse", "bse", "crypto"}:
+        raise ValueError("invalid market")
+    try:
+        latest = challenger_summary(
+            Path(f"data/models/self_learning/{market}")
+        ).get("latest") or {}
+        if not isinstance(latest, Mapping):
+            raise ValueError("latest challenger must be an object")
+        controls = latest.get("controls") or {}
+        if not isinstance(controls, Mapping):
+            raise ValueError("challenger controls must be an object")
+        gate = controls.get("random_timing") or {}
+        if not isinstance(gate, Mapping):
+            raise ValueError("challenger timing gate must be an object")
+        if gate:
+            gate_status = gate.get("status")
+            gate_passed = gate.get("random_timing_gate_passed")
+            if not isinstance(gate_status, str) or not isinstance(gate_passed, bool):
+                raise ValueError("challenger timing status and pass flag have invalid types")
+            if gate_passed != (gate_status == "random_timing_pass"):
+                raise ValueError("challenger timing status contradicts its pass flag")
+            if gate_passed:
+                evidence_digest = gate.get("replay_sha256")
+                digest_is_sha256 = (
+                    isinstance(evidence_digest, str)
+                    and len(evidence_digest) == 64
+                    and all(char in "0123456789abcdef" for char in evidence_digest.lower())
+                )
+                if (
+                    not isinstance(gate.get("contract_version"), str)
+                    or not isinstance(gate.get("selector_policy"), str)
+                    or gate.get("selector_policy") != "top_1_per_session"
+                    or gate.get("market") != market
+                    or gate.get("markets_pooled") is not False
+                    or gate.get("contracts_pooled") is not False
+                    or gate.get("version") != RANDOM_TIMING_CONTROL_VERSION
+                    or not digest_is_sha256
+                ):
+                    raise ValueError("passing challenger timing binding is incomplete")
+                replay_payload = {
+                    key: value for key, value in gate.items() if key != "replay_sha256"
+                }
+                if evidence_digest != canonical_sha256(replay_payload):
+                    raise ValueError("passing challenger timing replay hash is invalid")
+                validate_random_timing_report(gate)
+                if (
+                    gate.get("evidence_mode")
+                    != "append_only_single_frozen_selector_terminal_cohort"
+                    or not isinstance(gate.get("evidence_ledger_sha256"), str)
+                ):
+                    raise ValueError("passing challenger timing ledger binding is incomplete")
+    except (AttributeError, OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        gate = {
+            "status": "invalid_or_unreadable",
+            "random_timing_gate_passed": False,
+            "reason": f"challenger timing state is invalid — not a pass: {exc}",
+        }
+    collector_path = {
+        "nse": ACCURACY_PROSPECTIVE_TIMING,
+        "crypto": CRYPTO_ACCURACY_TIMING,
+    }.get(market)
+    collector: dict[str, Any] = {
+        "status": "not_registered",
+        "detail": f"{market.upper()} random-timing collector is not registered",
+    }
+    if collector_path is not None and collector_path.exists():
+        try:
+            state = json.loads(collector_path.read_text(encoding="utf-8"))
+            if not isinstance(state, Mapping):
+                raise ValueError("collector state must be an object")
+            summary = state.get("summary") or {}
+            if not isinstance(summary, Mapping):
+                raise ValueError("collector summary must be an object")
+            collector = {
+                "status": summary.get("status", "invalid"),
+                "version": state.get("version"),
+                "summary": dict(summary),
+                "source_integrity": state.get("source_integrity"),
+                "detail": (
+                    "research collector progress only; it cannot satisfy a challenger "
+                    "unless market, contract and exact locked signal IDs bind"
+                ),
+            }
+        except (
+            AttributeError,
+            OSError,
+            TypeError,
+            ValueError,
+            json.JSONDecodeError,
+        ):
+            collector = {
+                "status": "invalid",
+                "detail": "random-timing collector state is unreadable — not a pass",
+            }
+    return {
+        "market": market,
+        "challenger_gate": dict(gate)
+        if gate
+        else {
+            "status": "not_registered",
+            "random_timing_gate_passed": False,
+            "reason": "no contract-specific challenger timing evidence",
+        },
+        "research_collector": collector,
+        "evidence_pooled_across_markets": False,
+        "eligible_for_live": False,
+        "active_model_changed": False,
+    }
 
 
 def _read_call_log(log_path: Path, limit: int) -> list[dict[str, Any]]:
@@ -1831,6 +1951,14 @@ def create_app(
         return JSONResponse(
             challenger_summary(Path(f"data/models/self_learning/{market}"))
         )
+
+    @app.get("/api/self-learning/random-timing")
+    async def api_self_learning_random_timing(market: str = "nse") -> JSONResponse:
+        """Separate research collection progress from a challenger-bound timing gate."""
+
+        if market not in {"nse", "bse", "crypto"}:
+            return JSONResponse({"error": "invalid market"}, status_code=400)
+        return JSONResponse(_self_learning_random_timing_report(market))
 
     @app.get("/api/session-report")
     async def api_session_report(

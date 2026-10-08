@@ -295,6 +295,28 @@ Implementation record:
 - [x] Compare with the frozen baseline.
 - [x] Compare with matched random selection.
 - [ ] Compare with matched random timing.
+  - [x] Prospectively seal the model, features, contract and `top_1_per_session` policy;
+    evaluate only sessions strictly after the frozen `starts_after` boundary.
+  - [x] Rank the complete sealed opportunity population before outcomes, including
+    pending and invalid candidates; never replace a frozen pending/invalid winner with a
+    lower-ranked call.
+  - [x] Match each winner to twenty earlier qualified calls with the same symbol, setup,
+    regime, contract version/digest, strategy, feature and source-model version.
+  - [x] Enumerate the same twenty matched-prior ranks across all calls to preserve shared
+    dependence; report `(1 + exceedances) / 21` as an empirical tail stress, not an
+    inferential p-value.
+  - [x] Replay and reconcile both sides with the production resolver and score valid
+    no-fills symmetrically as 0R.
+  - [x] Hash the full candle history through exit, including every candle that can affect
+    ATR warm-up, before experiment-cache reuse.
+  - [x] Append disjoint pairs only within one frozen market, contract and selection
+    context, then lock one terminal look at the first 100 unique selected sessions.
+  - [x] Expose research collection separately from the challenger gate in the dashboard.
+  - [ ] Observe and evaluate the fixed first 100 primary-policy sessions per
+    market/contract/selection context.
+  - [ ] Claim improvement only if the fixed cohort clears +0.10R and empirical tail
+    `<= 0.05`, alongside every independent accuracy/expectancy gate; current implementation
+    and collection status are not evidence of higher baseline accuracy.
 - [x] Test probability calibration by confidence bucket.
 - [x] Test performance by month, sector, liquidity and regime.
 - [x] Publish negative and inconclusive results.
@@ -319,6 +341,9 @@ No gate may be relaxed because the target is difficult or because the sample is 
 
 Implementation record:
 [Milestone 9 checkpoint — validation hardening](self-learning-m9-validation-hardening.md)
+
+Random-timing evidence contract:
+[Milestone 12 checkpoint — matched random timing](self-learning-m12-random-timing-evidence.md)
 
 ## Milestone 10 — Personal-trading and performance dashboard
 

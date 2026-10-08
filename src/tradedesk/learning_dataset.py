@@ -13,7 +13,7 @@ from typing import Any, Literal
 from tradedesk.failure_attribution import attribute_failure
 from tradedesk.prediction_ledger import canonical_sha256, validate_prediction_record
 
-DATASET_VERSION = "self-learning-dataset-v2"
+DATASET_VERSION = "self-learning-dataset-v4"
 DatasetPurpose = Literal["development", "locked_test", "prospective"]
 
 
@@ -42,6 +42,94 @@ def _numeric_features(value: Any, *, prefix: str = "") -> dict[str, float]:
     elif isinstance(value, int | float) and math.isfinite(float(value)):
         out[prefix] = float(value)
     return out
+
+
+def _prediction_row(
+    record: Mapping[str, Any], *, market: str, purpose: DatasetPurpose
+) -> dict[str, Any]:
+    """Project one validated ledger record without changing its outcome semantics."""
+
+    payload = record["prediction_payload"]
+    if not isinstance(payload, dict):
+        raise ValueError("validated prediction payload is unavailable")
+    features = _numeric_features(
+        {
+            "context": payload.get("context") or {},
+            "decision": {
+                "rule_score": (payload.get("decision") or {}).get("rule_score"),
+                "probability": (payload.get("decision") or {}).get("probability"),
+            },
+            "execution": {
+                key: (payload.get("execution") or {}).get(key)
+                for key in (
+                    "quantity",
+                    "risk_amount",
+                    "risk_pct",
+                    "position_value",
+                    "estimated_round_trip_cost",
+                    "net_rr_t1",
+                    "net_rr_t2",
+                )
+            },
+            "source_snapshot": payload.get("source_snapshot") or {},
+        }
+    )
+    evidence_class = str(record.get("evidence_class"))
+    label = record.get("label")
+    return {
+        "signal_id": str(record["signal_id"]),
+        "prediction_sha256": record.get("prediction_sha256"),
+        "market": market,
+        "symbol": record.get("symbol"),
+        "scrip_code": record.get("scrip_code"),
+        "setup": record.get("setup"),
+        "sector": (payload.get("instrument") or {}).get("sector"),
+        "regime": (payload.get("context") or {}).get("market_regime"),
+        "contract_kind": record.get("contract_kind"),
+        "contract_version": record.get("contract_version"),
+        "contract_sha256": record.get("contract_sha256"),
+        "strategy_version": (payload.get("versions") or {}).get("strategy"),
+        "feature_version": (payload.get("versions") or {}).get("feature_contract"),
+        "model_version": (payload.get("versions") or {}).get("model"),
+        "model_kind": (payload.get("versions") or {}).get("model_kind"),
+        "evidence_class": evidence_class,
+        "evidence_role": (
+            "recommended" if evidence_class == "qualified_call" else "counterfactual"
+        ),
+        "cohort": purpose,
+        "armed_on": record.get("armed_on"),
+        "features": features,
+        "outcome_state": record.get("outcome_state"),
+        "label": int(label) if label in {0, 1} else None,
+        "outcome": record.get("outcome"),
+        "gross_r": record.get("gross_r", record.get("r_multiple")),
+        "execution_r": record.get("execution_r"),
+        "net_r": record.get("net_r"),
+        "after_tax_r": record.get("after_tax_r"),
+        "holding_sessions": record.get("holding_sessions"),
+        "entry_on": record.get("entry_on"),
+        "actual_entry_price": record.get("actual_entry_price"),
+        "exit_on": record.get("exit_on"),
+        "exit_price": record.get("exit_price"),
+        "time_to_entry_sessions": record.get("time_to_entry_sessions"),
+        "time_to_resolution_sessions": record.get("time_to_resolution_sessions"),
+        "first_event": record.get("first_event"),
+        "resolution_rule": record.get("resolution_rule"),
+        "data_status": record.get("data_status"),
+        "failure_attributions": record.get("failure_attributions")
+        or attribute_failure(record),
+        # Exact sealed inputs needed by the independently candle-replayed timing
+        # control. Keeping the original prediction payload avoids reconstructing
+        # geometry, costs or holding assumptions after the outcome is known.
+        "timing_spec": {
+            "scrip_code": record.get("scrip_code"),
+            "entry": record.get("entry"),
+            "stop": record.get("stop"),
+            "t1": record.get("t1"),
+            "t2": record.get("t2"),
+            "prediction_payload": payload,
+        },
+    }
 
 
 def build_learning_dataset(
@@ -96,67 +184,7 @@ def build_learning_dataset(
         if purpose == "prospective" and record.get("source") != "live":
             exclusions["backfill_not_prospective"] += 1
             continue
-        payload = record["prediction_payload"]
-        assert isinstance(payload, dict)
-        features = _numeric_features(
-            {
-                "context": payload.get("context") or {},
-                "decision": {
-                    "rule_score": (payload.get("decision") or {}).get("rule_score"),
-                    "probability": (payload.get("decision") or {}).get("probability"),
-                },
-                "execution": {
-                    key: (payload.get("execution") or {}).get(key)
-                    for key in (
-                        "quantity",
-                        "risk_amount",
-                        "risk_pct",
-                        "position_value",
-                        "estimated_round_trip_cost",
-                        "net_rr_t1",
-                        "net_rr_t2",
-                    )
-                },
-                "source_snapshot": payload.get("source_snapshot") or {},
-            }
-        )
-        evidence_class = str(record.get("evidence_class"))
-        rows.append(
-            {
-                "signal_id": signal_id,
-                "prediction_sha256": record.get("prediction_sha256"),
-                "market": market,
-                "symbol": record.get("symbol"),
-                "setup": record.get("setup"),
-                "sector": (payload.get("instrument") or {}).get("sector"),
-                "regime": (payload.get("context") or {}).get("market_regime"),
-                "contract_kind": record.get("contract_kind"),
-                "contract_version": record.get("contract_version"),
-                "strategy_version": (payload.get("versions") or {}).get("strategy"),
-                "feature_version": (payload.get("versions") or {}).get("feature_contract"),
-                "model_version": (payload.get("versions") or {}).get("model"),
-                "model_kind": (payload.get("versions") or {}).get("model_kind"),
-                "evidence_class": evidence_class,
-                "evidence_role": (
-                    "recommended" if evidence_class == "qualified_call" else "counterfactual"
-                ),
-                "cohort": purpose,
-                "armed_on": record.get("armed_on"),
-                "features": features,
-                "label": int(record["label"]),
-                "outcome": record.get("outcome"),
-                "gross_r": record.get("gross_r", record.get("r_multiple")),
-                "net_r": record.get("net_r"),
-                "after_tax_r": record.get("after_tax_r"),
-                "holding_sessions": record.get("holding_sessions"),
-                "entry_on": record.get("entry_on"),
-                "exit_on": record.get("exit_on"),
-                "time_to_resolution_sessions": record.get("time_to_resolution_sessions"),
-                "failure_attributions": (
-                    record.get("failure_attributions") or attribute_failure(record)
-                ),
-            }
-        )
+        rows.append(_prediction_row(record, market=market, purpose=purpose))
     identity = {
         "version": DATASET_VERSION,
         "market": market,
@@ -181,6 +209,57 @@ def build_learning_dataset(
         exclusions=dict(sorted(exclusions.items())),
         source_records=len(source),
     )
+
+
+def build_timing_opportunities(
+    records: Iterable[Mapping[str, Any]],
+    *,
+    market: str,
+    purpose: DatasetPurpose = "prospective",
+) -> tuple[dict[str, Any], ...]:
+    """Return the full sealed ex-ante opportunity set for the timing control.
+
+    Unlike the outcome-learning dataset, this population retains pending, invalid and
+    ``never_triggered`` calls. The selector must freeze a winner before any terminal state
+    is known; pending/invalid winners block or fail closed instead of revealing a lower
+    ranked substitute.
+    """
+
+    if market not in {"nse", "bse", "crypto"}:
+        raise ValueError(f"unsupported learning market: {market}")
+    seen: set[str] = set()
+    rows: list[dict[str, Any]] = []
+    for source_record in sorted(
+        (dict(record) for record in records),
+        key=lambda record: (
+            str(record.get("armed_on") or ""),
+            str(record.get("signal_id") or ""),
+        ),
+    ):
+        signal_id = str(source_record.get("signal_id") or "")
+        if not signal_id or signal_id in seen or source_record.get("market") != market:
+            continue
+        seen.add(signal_id)
+        if source_record.get("ledger_schema_version") != "prediction-ledger-v1":
+            continue
+        try:
+            validate_prediction_record(source_record)
+        except (TypeError, ValueError):
+            continue
+        state = source_record.get("outcome_state")
+        if state == "resolved_call" and source_record.get("label") not in {0, 1}:
+            continue
+        if state not in {
+            "pending_call",
+            "resolved_call",
+            "invalid_call",
+            "never_triggered",
+        }:
+            continue
+        if purpose == "prospective" and source_record.get("source") != "live":
+            continue
+        rows.append(_prediction_row(source_record, market=market, purpose=purpose))
+    return tuple(rows)
 
 
 def register_dataset_use(dataset: LearningDataset, registry_path: Path) -> dict[str, Any]:

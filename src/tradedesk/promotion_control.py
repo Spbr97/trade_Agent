@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import json
 from datetime import datetime
 from pathlib import Path
@@ -9,9 +10,31 @@ from typing import Any
 
 from tradedesk.broker.indstocks.models import IST
 from tradedesk.engine.scoring import wilson_lower_bound
+from tradedesk.precision_selector import PRIMARY_SELECTOR_POLICY, SELECTOR_VERSION
 from tradedesk.prediction_ledger import canonical_sha256
+from tradedesk.random_timing_control import (
+    CONTROL_VERSION as RANDOM_TIMING_CONTROL_VERSION,
+)
+from tradedesk.random_timing_control import (
+    control_configuration as random_timing_configuration,
+)
+from tradedesk.random_timing_control import validate_random_timing_report
 
-CONTROL_VERSION = "promotion-control-v1"
+CONTROL_VERSION = "promotion-control-v2"
+
+_REQUIRED_HISTORICAL_GATES = (
+    "sample_threshold_reached",
+    "primary_selector_policy_clears_accuracy_and_net_gate",
+    "matched_random_timing_margin_passed",
+)
+
+
+def _is_sha256(value: Any) -> bool:
+    return (
+        isinstance(value, str)
+        and len(value) == 64
+        and all(character in "0123456789abcdef" for character in value.lower())
+    )
 
 
 def _write_json(path: Path, payload: dict[str, Any]) -> None:
@@ -37,6 +60,8 @@ def _validate(record: dict[str, Any], *, kind: str) -> None:
 
 
 def challenger_reproduction_sha256(challenger: dict[str, Any]) -> str:
+    controls = challenger.get("controls") or {}
+    random_timing = controls.get("random_timing") if isinstance(controls, dict) else None
     return canonical_sha256(
         {
             "experiment_id": challenger.get("experiment_id"),
@@ -47,8 +72,96 @@ def challenger_reproduction_sha256(challenger: dict[str, Any]) -> str:
             "model": challenger.get("model"),
             "scores": challenger.get("scores"),
             "precision_selector": challenger.get("precision_selector"),
+            # Bind the exact replay, including its source hashes, assignments,
+            # aggregates and replay/aggregate identity.  A reproduction that changes
+            # only this control is therefore a different reproduction.
+            "random_timing": random_timing,
+            "final_evidence_gates": challenger.get("final_evidence_gates"),
         }
     )
+
+
+def _validated_random_timing_evidence(challenger: dict[str, Any]) -> dict[str, Any]:
+    controls = challenger.get("controls")
+    if not isinstance(controls, dict):
+        raise ValueError("prospective cohort requires challenger controls")
+    timing = controls.get("random_timing")
+    if not isinstance(timing, dict):
+        raise ValueError("prospective cohort requires exact random-timing evidence")
+    if (
+        timing.get("status") != "random_timing_pass"
+        or timing.get("random_timing_gate_passed") is not True
+    ):
+        raise ValueError("prospective cohort requires passing random-timing evidence")
+    if timing.get("version") != RANDOM_TIMING_CONTROL_VERSION:
+        raise ValueError("random-timing evidence control version mismatch")
+    if timing.get("selector_version") != SELECTOR_VERSION:
+        raise ValueError("random-timing evidence selector version mismatch")
+    if timing.get("selector_policy") != PRIMARY_SELECTOR_POLICY:
+        raise ValueError("random-timing evidence selector-policy mismatch")
+    if timing.get("control_configuration") != random_timing_configuration():
+        raise ValueError("random-timing evidence frozen configuration mismatch")
+    replay_digest = timing.get("replay_sha256")
+    if not _is_sha256(replay_digest):
+        raise ValueError("random-timing evidence lacks a replay digest")
+    replay_payload = {
+        key: value for key, value in timing.items() if key != "replay_sha256"
+    }
+    if replay_digest != canonical_sha256(replay_payload):
+        raise ValueError("random-timing replay digest mismatch")
+    validate_random_timing_report(timing)
+    if (
+        timing.get("evidence_mode")
+        != "append_only_single_frozen_selector_terminal_cohort"
+        or not _is_sha256(timing.get("evidence_ledger_sha256"))
+        or not _is_sha256(timing.get("selection_context_sha256"))
+    ):
+        raise ValueError("random-timing evidence lacks a frozen terminal ledger binding")
+    if timing.get("market") != challenger.get("market"):
+        raise ValueError("random-timing evidence market mismatch")
+    if timing.get("markets_pooled") is not False:
+        raise ValueError("random-timing evidence must not pool markets")
+    if timing.get("contracts_pooled") is not False:
+        raise ValueError("random-timing evidence must not pool contracts")
+    timing_selection = challenger.get("timing_selection")
+    if (
+        not isinstance(timing_selection, dict)
+        or timing_selection.get("context_sha256")
+        != timing.get("selection_context_sha256")
+    ):
+        raise ValueError("random-timing evidence selection-context mismatch")
+    return timing
+
+
+def _validated_primary_selector(challenger: dict[str, Any]) -> tuple[dict[str, Any], str]:
+    selector = challenger.get("precision_selector")
+    if not isinstance(selector, dict):
+        raise ValueError("prospective cohort requires one preregistered selector policy")
+    policy = selector.get("policy")
+    primary = selector.get("primary_policy")
+    operating_points = selector.get("operating_points")
+    if (
+        selector.get("version") != SELECTOR_VERSION
+        or selector.get("market") != challenger.get("market")
+        or not isinstance(policy, dict)
+        or policy.get("version") != SELECTOR_VERSION
+        or policy.get("market") != challenger.get("market")
+        or primary != PRIMARY_SELECTOR_POLICY
+        or selector.get("selected_live_policy") is not None
+        or not isinstance(operating_points, dict)
+    ):
+        raise ValueError("prospective cohort selector identity/policy mismatch")
+    score = operating_points.get(PRIMARY_SELECTOR_POLICY)
+    if (
+        not isinstance(score, dict)
+        or score.get("passes_final_accuracy_gate") is not True
+        or int(score.get("selected") or 0) <= 0
+        or float(score.get("strict_accuracy") or 0.0) < 0.80
+        or float(score.get("wilson_95_low") or 0.0) < 0.70
+        or float(score.get("mean_net_r") or 0.0) <= 0.0
+    ):
+        raise ValueError("prospective cohort primary selector evidence is incomplete")
+    return selector, primary
 
 
 def register_prospective_cohort(
@@ -57,21 +170,21 @@ def register_prospective_cohort(
     """Freeze a forward cohort before outcomes; historical weakness cannot be waived."""
 
     gates = challenger.get("final_evidence_gates") or {}
-    required = (
-        "sample_threshold_reached",
-        "any_preregistered_selector_policy_clears_accuracy_and_net_gate",
-        "matched_random_timing_margin_passed",
-    )
-    missing = [name for name in required if gates.get(name) is not True]
+    missing = [
+        name for name in _REQUIRED_HISTORICAL_GATES if gates.get(name) is not True
+    ]
     if missing:
         raise ValueError("challenger cannot enter prospective cohort: " + ", ".join(missing))
     contract_versions = (challenger.get("cohorts") or {}).get("contract_versions") or []
     if len(contract_versions) != 1:
         raise ValueError("prospective cohort requires one frozen outcome contract")
-    precision_selector = challenger.get("precision_selector") or {}
-    selected_policy = precision_selector.get("selected_live_policy")
-    if not selected_policy:
-        raise ValueError("prospective cohort requires one preregistered selector policy")
+    precision_selector, primary_policy = _validated_primary_selector(challenger)
+    timing = _validated_random_timing_evidence(challenger)
+    if timing.get("contract_version") != contract_versions[0]:
+        raise ValueError("random-timing evidence contract mismatch")
+    if timing.get("selector_policy") != primary_policy:
+        raise ValueError("random-timing evidence selector-policy mismatch")
+    reproduction_sha256 = challenger_reproduction_sha256(challenger)
     payload = _seal(
         {
             "version": CONTROL_VERSION,
@@ -81,6 +194,7 @@ def register_prospective_cohort(
                     "experiment_id": challenger.get("experiment_id"),
                     "starts_after": starts_after,
                     "contract_version": contract_versions[0],
+                    "reproduction_sha256": reproduction_sha256,
                 }
             ),
             "registered_at": datetime.now(IST).isoformat(),
@@ -89,12 +203,17 @@ def register_prospective_cohort(
             "experiment_id": challenger.get("experiment_id"),
             "dataset_id": challenger.get("dataset_id"),
             "contract_version": contract_versions[0],
-            "reproduction_sha256": challenger_reproduction_sha256(challenger),
+            "reproduction_sha256": reproduction_sha256,
+            "random_timing_evidence_sha256": canonical_sha256(timing),
+            "frozen_random_timing_evidence": copy.deepcopy(timing),
+            "frozen_final_evidence_gates": copy.deepcopy(
+                challenger.get("final_evidence_gates")
+            ),
             "frozen_configuration": challenger.get("configuration"),
             "frozen_features": challenger.get("features"),
             "frozen_model": challenger.get("model"),
             "frozen_selector_policy": precision_selector.get("policy"),
-            "frozen_selector_operating_point": selected_policy,
+            "frozen_selector_operating_point": primary_policy,
             "execution_contract": challenger.get("cohorts"),
             "source": "forward_only_live",
             "backfill_allowed": False,
@@ -106,7 +225,7 @@ def register_prospective_cohort(
         existing = json.loads(path.read_text(encoding="utf-8"))
         _validate(existing, kind="prospective_cohort")
         if existing.get("cohort_id") == payload["cohort_id"]:
-            return existing
+            return dict(existing)
         raise ValueError("a different prospective cohort is already registered")
     _write_json(path, payload)
     return payload
@@ -191,7 +310,7 @@ def build_promotion_review(
             "side_by_side": challenger.get("scores"),
             "prospective_metrics": prospective_result.get("metrics"),
             "selector_policy": (
-                (challenger.get("precision_selector") or {}).get("selected_live_policy")
+                (challenger.get("precision_selector") or {}).get("primary_policy")
             ),
             "status": "blocked" if blockers else "awaiting_explicit_user_approval",
             "blockers": blockers,

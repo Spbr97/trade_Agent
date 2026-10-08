@@ -12,7 +12,8 @@ import numpy as np
 
 from tradedesk.engine.scoring import wilson_lower_bound
 
-SELECTOR_VERSION = "precision-selector-v1"
+SELECTOR_VERSION = "precision-selector-v2"
+PRIMARY_SELECTOR_POLICY = "top_1_per_session"
 CONFIDENCE_THRESHOLDS = (0.60, 0.70, 0.80)
 TOP_K_LIMITS = (1, 3, 5)
 MIN_PATTERN_ROWS = 5
@@ -156,6 +157,42 @@ def selector_decision(
     }
 
 
+def select_primary_signal_ids(
+    rows: Sequence[Mapping[str, Any]],
+    probabilities: Mapping[str, float],
+    policy: SelectorPolicy,
+) -> list[str]:
+    """Select the frozen top-one policy from the full ex-ante opportunity population."""
+
+    qualified = [row for row in rows if row.get("evidence_role") == "recommended"]
+    decisions = {
+        str(row["signal_id"]): selector_decision(
+            row, probabilities.get(str(row["signal_id"])), policy
+        )
+        for row in qualified
+    }
+    rankable = [
+        row
+        for row in qualified
+        if decisions[str(row["signal_id"])]["eligible_for_ranking"]
+    ]
+    rankable.sort(
+        key=lambda row: (
+            str(row.get("armed_on")),
+            -float(decisions[str(row["signal_id"])]["precision_score"]),
+            str(row["signal_id"]),
+        )
+    )
+    selected: list[str] = []
+    for session in sorted({str(row.get("armed_on")) for row in qualified}):
+        session_rows = [
+            row for row in rankable if str(row.get("armed_on")) == session
+        ]
+        if session_rows:
+            selected.append(str(session_rows[0]["signal_id"]))
+    return selected
+
+
 def _operating_point_score(
     selected: list[Mapping[str, Any]], qualified: list[Mapping[str, Any]], sessions: list[str]
 ) -> dict[str, Any]:
@@ -172,6 +209,7 @@ def _operating_point_score(
         maximum_losing_streak = max(maximum_losing_streak, streak)
     return {
         "selected": len(selected),
+        "selected_signal_ids": [str(row["signal_id"]) for row in selected],
         "wins": wins,
         "strict_accuracy": wins / len(selected) if selected else None,
         "wilson_95_low": wilson_lower_bound(wins, len(selected)) if selected else None,
@@ -202,10 +240,15 @@ def evaluate_precision_selector(
     test_probabilities: Mapping[str, float],
     *,
     market: str,
+    frozen_policy: SelectorPolicy | None = None,
 ) -> dict[str, Any]:
     """Fit on development and evaluate all preregistered operating points once."""
 
-    policy = fit_selector_policy(development_rows, development_probabilities, market=market)
+    policy = frozen_policy or fit_selector_policy(
+        development_rows, development_probabilities, market=market
+    )
+    if policy.market != market or policy.version != SELECTOR_VERSION:
+        raise ValueError("frozen precision-selector policy scope/version mismatch")
     qualified = [row for row in test_rows if row.get("evidence_role") == "recommended"]
     sessions = sorted({str(row.get("armed_on")) for row in qualified})
     decisions = {
@@ -257,6 +300,8 @@ def evaluate_precision_selector(
         "rankable_test_rows": len(rankable),
         "rejection_reasons": dict(sorted(rejections.items())),
         "operating_points": operating_points,
+        "primary_policy": PRIMARY_SELECTOR_POLICY,
+        "other_operating_points_are_diagnostic_only": True,
         "decisions": decisions,
         "can_only_remove_or_downgrade": True,
         "rejected_calls_promoted": False,

@@ -9,18 +9,36 @@ from __future__ import annotations
 
 import json
 import math
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
 import numpy as np
+import pandas as pd
 
 from tradedesk.broker.indstocks.models import IST
 from tradedesk.learning_dataset import LearningDataset, register_dataset_use
+from tradedesk.precision_selector import (
+    PRIMARY_SELECTOR_POLICY,
+    SELECTOR_VERSION,
+    SelectorPolicy,
+    evaluate_precision_selector,
+    select_primary_signal_ids,
+)
 from tradedesk.prediction_ledger import canonical_sha256
+from tradedesk.random_timing_control import (
+    SELECTION_CONTRACT_VERSION,
+    SELECTION_MANIFEST_VERSION,
+    accumulate_random_timing_evidence,
+    candle_source_identity,
+    evaluate_matched_random_timing,
+)
+from tradedesk.random_timing_control import (
+    control_configuration as random_timing_configuration,
+)
 
-WORKFLOW_VERSION = "sealed-challenger-v3"
+WORKFLOW_VERSION = "sealed-challenger-v6"
 MINIMUM_ROWS = 20
 MINIMUM_SESSIONS = 4
 TEST_SESSION_FRACTION = 0.25
@@ -425,17 +443,95 @@ def _random_selection_control(
     }
 
 
+def _seal_control(payload: Mapping[str, Any]) -> dict[str, Any]:
+    record = dict(payload)
+    record["record_sha256"] = canonical_sha256(record)
+    return record
+
+
+def _load_timing_selection_contract(
+    path: Path, *, market: str, contract_version: str | None
+) -> dict[str, Any] | None:
+    if not path.exists():
+        return None
+    record = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(record, dict):
+        raise ValueError("timing selection contract is malformed")
+    digest = record.get("record_sha256")
+    payload = {key: value for key, value in record.items() if key != "record_sha256"}
+    source_cohort = record.get("source_cohort")
+    if (
+        record.get("version") != SELECTION_CONTRACT_VERSION
+        or not digest
+        or digest != canonical_sha256(payload)
+        or record.get("market") != market
+        or (contract_version is not None and record.get("contract_version") != contract_version)
+        or record.get("selector_policy") != PRIMARY_SELECTOR_POLICY
+        or record.get("selector_version") != SELECTOR_VERSION
+        or record.get("control_configuration_sha256")
+        != canonical_sha256(random_timing_configuration())
+        or not isinstance(source_cohort, dict)
+        or source_cohort.get("contract_version") != record.get("contract_version")
+        or not isinstance(source_cohort.get("contract_sha256"), str)
+        or len(source_cohort["contract_sha256"]) != 64
+        or not all(
+            character in "0123456789abcdef"
+            for character in source_cohort["contract_sha256"].lower()
+        )
+        or not source_cohort.get("strategy_version")
+        or not source_cohort.get("feature_version")
+    ):
+        raise ValueError("timing selection contract integrity/scope mismatch")
+    return record
+
+
+def _frozen_probabilities(
+    rows: Sequence[Mapping[str, Any]],
+    *,
+    features: Sequence[str],
+    model: Mapping[str, Any],
+) -> np.ndarray:
+    medians = np.asarray([float(model["imputation_medians"][name]) for name in features])
+    means = np.asarray([float(model["scaler_means"][name]) for name in features])
+    scales = np.asarray([float(model["scaler_scales"][name]) for name in features])
+    coefficients = np.asarray([float(model["coefficients"][name]) for name in features])
+    if np.any(scales <= 0):
+        raise ValueError("frozen timing selector has invalid scaler values")
+    matrix, _ = _matrix(list(rows), list(features), medians)
+    logits = float(model["intercept"]) + ((matrix - means) / scales) @ coefficients
+    logits = np.clip(logits, -700.0, 700.0)
+    return 1.0 / (1.0 + np.exp(-logits))
+
+
 def run_challenger_experiment(
     dataset: LearningDataset,
     output_root: Path,
     *,
     minimum_rows: int = MINIMUM_ROWS,
     minimum_sessions: int = MINIMUM_SESSIONS,
+    bars_loader: Callable[[str], pd.DataFrame] | None = None,
+    timing_opportunities: Sequence[Mapping[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Fit one deterministic transparent challenger and persist every result."""
 
     if dataset.market not in {"nse", "bse", "crypto"}:
         raise ValueError("challenger market must be nse, bse, or crypto")
+    timing_population = sorted(
+        (dict(row) for row in (timing_opportunities or ())),
+        key=lambda row: (str(row.get("armed_on")), str(row.get("signal_id"))),
+    )
+    timing_population_sha256 = canonical_sha256(timing_population)
+    dataset_contracts = sorted(
+        {str(row.get("contract_version")) for row in dataset.rows}
+    )
+    contract_hint = dataset_contracts[0] if len(dataset_contracts) == 1 else None
+    selection_contract_path = output_root / "timing_selection_contract.json"
+    selection_contract = _load_timing_selection_contract(
+        selection_contract_path,
+        market=dataset.market,
+        contract_version=contract_hint,
+    )
+    candle_identity = candle_source_identity(timing_population, bars_loader)
     configuration = {
         "workflow_version": WORKFLOW_VERSION,
         "features": PREREGISTERED_FEATURES,
@@ -444,12 +540,22 @@ def run_challenger_experiment(
         "test_session_fraction": TEST_SESSION_FRACTION,
         "minimum_brier_gain": MINIMUM_BRIER_GAIN,
         "learner": "standardised-logistic-l2-c1",
+        "random_timing_control": random_timing_configuration(),
+        "timing_population_sha256": timing_population_sha256,
+        "timing_candle_source_identity": candle_identity,
+        "timing_selection_context_sha256": (
+            selection_contract.get("record_sha256")
+            if selection_contract is not None
+            else f"register_from_dataset:{dataset.dataset_id}"
+        ),
     }
     experiment_id = canonical_sha256(
         {"dataset_id": dataset.dataset_id, "market": dataset.market, **configuration}
     )
     registry = output_root / "experiments.jsonl"
-    if previous := _existing_experiment(registry, experiment_id):
+    if selection_contract is not None and (
+        previous := _existing_experiment(registry, experiment_id)
+    ):
         return {**previous, "idempotent_replay": True}
 
     usage_registry = output_root / "dataset_uses.jsonl"
@@ -476,6 +582,7 @@ def run_challenger_experiment(
         "strategy_versions": sorted({str(row.get("strategy_version")) for row in rows}),
         "feature_versions": sorted({str(row.get("feature_version")) for row in rows}),
         "contract_versions": sorted({str(row.get("contract_version")) for row in rows}),
+        "contract_sha256s": sorted({str(row.get("contract_sha256")) for row in rows}),
     }
     if any(len(versions) != 1 for versions in cohorts.values()):
         blockers.append("mixed frozen model, strategy, feature, or outcome contracts")
@@ -544,48 +651,120 @@ def run_challenger_experiment(
         )
         return report
 
-    features = []
-    for name in PREREGISTERED_FEATURES:
-        values = [_finite((row.get("features") or {}).get(name)) for row in development]
-        observed = np.asarray([value for value in values if value is not None], dtype=float)
-        if len(observed) >= max(5, len(development) // 2) and float(np.std(observed)) > 1e-12:
-            features.append(name)
-    if not features:
-        report.update(
-            status="blocked_no_variable_preregistered_features",
-            conclusion="not_run",
-            blockers=["no preregistered prediction-time feature has usable variation"],
-        )
-        return report
-
-    from sklearn.linear_model import LogisticRegression
-    from sklearn.preprocessing import StandardScaler
-
-    x_dev, medians = _matrix(development, features)
-    x_test, _ = _matrix(test, features, medians)
-    scaler = StandardScaler().fit(x_dev)
-    x_dev_scaled, x_test_scaled = scaler.transform(x_dev), scaler.transform(x_test)
     labels_dev = np.asarray([int(row["label"]) for row in development], dtype=int)
-    model = LogisticRegression(C=1.0, max_iter=2000, random_state=17).fit(
-        x_dev_scaled, labels_dev
-    )
-    challenger_dev = model.predict_proba(x_dev_scaled)[:, 1]
-    challenger_test = model.predict_proba(x_test_scaled)[:, 1]
-    from tradedesk.precision_selector import evaluate_precision_selector
+    contract_version = str(test[0]["contract_version"])
+    if selection_contract is not None:
+        features = [str(name) for name in selection_contract.get("features") or []]
+        model_report = dict(selection_contract.get("model") or {})
+        selector_policy = SelectorPolicy(**dict(selection_contract["selector_policy_state"]))
+        if not features or model_report.get("kind") != "standardised_logistic_regression":
+            raise ValueError("frozen timing selection model is incomplete")
+        challenger_dev = _frozen_probabilities(
+            development, features=features, model=model_report
+        )
+        challenger_test = _frozen_probabilities(
+            test, features=features, model=model_report
+        )
+    else:
+        features = []
+        for name in PREREGISTERED_FEATURES:
+            values = [_finite((row.get("features") or {}).get(name)) for row in development]
+            observed = np.asarray(
+                [value for value in values if value is not None], dtype=float
+            )
+            if (
+                len(observed) >= max(5, len(development) // 2)
+                and float(np.std(observed)) > 1e-12
+            ):
+                features.append(name)
+        if not features:
+            report.update(
+                status="blocked_no_variable_preregistered_features",
+                conclusion="not_run",
+                blockers=["no preregistered prediction-time feature has usable variation"],
+            )
+            return report
 
+        from sklearn.linear_model import LogisticRegression
+        from sklearn.preprocessing import StandardScaler
+
+        x_dev, medians = _matrix(development, features)
+        x_test, _ = _matrix(test, features, medians)
+        scaler = StandardScaler().fit(x_dev)
+        x_dev_scaled, x_test_scaled = scaler.transform(x_dev), scaler.transform(x_test)
+        model = LogisticRegression(C=1.0, max_iter=2000, random_state=17).fit(
+            x_dev_scaled, labels_dev
+        )
+        challenger_dev = model.predict_proba(x_dev_scaled)[:, 1]
+        challenger_test = model.predict_proba(x_test_scaled)[:, 1]
+        model_report = {
+            "kind": "standardised_logistic_regression",
+            "intercept": float(model.intercept_[0]),
+            "coefficients": dict(zip(features, model.coef_[0].tolist(), strict=True)),
+            "imputation_medians": dict(zip(features, medians.tolist(), strict=True)),
+            "scaler_means": dict(zip(features, scaler.mean_.tolist(), strict=True)),
+            "scaler_scales": dict(zip(features, scaler.scale_.tolist(), strict=True)),
+        }
+        selector_policy = SelectorPolicy(market=dataset.market, failed_patterns=())
+
+    development_probabilities = {
+        str(row["signal_id"]): float(probability)
+        for row, probability in zip(development, challenger_dev, strict=True)
+    }
+    test_probabilities = {
+        str(row["signal_id"]): float(probability)
+        for row, probability in zip(test, challenger_test, strict=True)
+    }
     precision_selector = evaluate_precision_selector(
         development,
         test,
-        {
-            str(row["signal_id"]): float(probability)
-            for row, probability in zip(development, challenger_dev, strict=True)
-        },
-        {
-            str(row["signal_id"]): float(probability)
-            for row, probability in zip(test, challenger_test, strict=True)
-        },
+        development_probabilities,
+        test_probabilities,
         market=dataset.market,
+        frozen_policy=selector_policy if selection_contract is not None else None,
     )
+    selector_policy = SelectorPolicy(**precision_selector["policy"])
+
+    if selection_contract is None:
+        starts_after = max(
+            [str(row.get("armed_on") or "") for row in timing_population]
+            or [str(row.get("armed_on") or "") for row in source_rows]
+        )
+        selection_contract = _seal_control(
+            {
+                "version": SELECTION_CONTRACT_VERSION,
+                "market": dataset.market,
+                "contract_version": contract_version,
+                "selector_policy": PRIMARY_SELECTOR_POLICY,
+                "selector_version": SELECTOR_VERSION,
+                "control_configuration_sha256": canonical_sha256(
+                    random_timing_configuration()
+                ),
+                "registered_from_dataset_id": dataset.dataset_id,
+                "starts_after": starts_after,
+                "features": features,
+                "model": model_report,
+                "selector_policy_state": precision_selector["policy"],
+                "source_cohort": {
+                    "contract_version": contract_version,
+                    "contract_sha256": test[0].get("contract_sha256"),
+                    "strategy_version": test[0].get("strategy_version"),
+                    "feature_version": test[0].get("feature_version"),
+                    "model_version": test[0].get("model_version"),
+                },
+                "selection_authority": "future_sessions_only",
+            }
+        )
+        configuration["timing_selection_context_sha256"] = selection_contract[
+            "record_sha256"
+        ]
+        experiment_id = canonical_sha256(
+            {"dataset_id": dataset.dataset_id, "market": dataset.market, **configuration}
+        )
+        report.update(experiment_id=experiment_id, configuration=configuration)
+        if previous := _existing_experiment(registry, experiment_id):
+            return {**previous, "idempotent_replay": True}
+        _write_json(selection_contract_path, selection_contract)
     prevalence = float(np.mean(labels_dev))
 
     def baseline(rows_: list[Mapping[str, Any]]) -> np.ndarray:
@@ -621,6 +800,58 @@ def run_challenger_experiment(
     }
     consistency = _group_scores(test, challenger_test)
     random_control = _random_selection_control(test, challenger_test)
+    primary_score = precision_selector["operating_points"][PRIMARY_SELECTOR_POLICY]
+    assert selection_contract is not None
+    starts_after = str(selection_contract["starts_after"])
+    source_cohort = dict(selection_contract["source_cohort"])
+    timing_test = [
+        row
+        for row in timing_population
+        if str(row.get("armed_on") or "") > starts_after
+        and row.get("contract_version") == contract_version
+        and all(row.get(name) == expected for name, expected in source_cohort.items())
+    ]
+    timing_probabilities: dict[str, float] = {}
+    if timing_test:
+        timing_values = _frozen_probabilities(
+            timing_test, features=features, model=model_report
+        )
+        timing_probabilities = {
+            str(row["signal_id"]): float(probability)
+            for row, probability in zip(timing_test, timing_values, strict=True)
+        }
+    timing_primary_ids = set(
+        select_primary_signal_ids(timing_test, timing_probabilities, selector_policy)
+    )
+    timing_primary_rows = [
+        row for row in timing_test if str(row["signal_id"]) in timing_primary_ids
+    ]
+    selection_manifest = _seal_control(
+        {
+            "version": SELECTION_MANIFEST_VERSION,
+            "market": dataset.market,
+            "contract_version": contract_version,
+            "selection_context_sha256": selection_contract["record_sha256"],
+            "candidate_population_sha256": canonical_sha256(timing_test),
+            "probabilities_sha256": canonical_sha256(timing_probabilities),
+            "selected_signal_ids": sorted(timing_primary_ids),
+            "selected_sessions": sorted(
+                str(row.get("armed_on")) for row in timing_primary_rows
+            ),
+        }
+    )
+    random_timing_batch = evaluate_matched_random_timing(
+        timing_primary_rows,
+        historical_opportunities=timing_population,
+        market=dataset.market,
+        contract_version=contract_version,
+        selection_context=selection_contract,
+        selection_manifest=selection_manifest,
+        bars_loader=bars_loader,
+    )
+    random_timing = accumulate_random_timing_evidence(
+        random_timing_batch, output_root / "random_timing_evidence.json"
+    )
     evidence_ladder = _evidence_ladder(
         rows, scores["chronological_test"]["challenger"]
     )
@@ -644,6 +875,12 @@ def run_challenger_experiment(
         status, conclusion = "completed_negative", "negative"
     else:
         status, conclusion = "completed_inconclusive", "inconclusive"
+    timing_replay_invalid = random_timing.get("status") in {
+        "invalid_source",
+        "not_available",
+    }
+    if timing_replay_invalid:
+        status, conclusion = "blocked_random_timing_replay", "not_run"
     report.update(
         status=status,
         conclusion=conclusion,
@@ -659,21 +896,33 @@ def run_challenger_experiment(
         consistency=consistency,
         controls={
             "random_selection": random_control,
-            "random_timing": {
-                "status": "not_available",
-                "reason": "requires a separately frozen candle/universe cohort",
-            },
+            "random_timing_batch": random_timing_batch,
+            "random_timing": random_timing,
         },
         precision_selector=precision_selector,
+        timing_selection={
+            "context_sha256": selection_contract["record_sha256"],
+            "starts_after": selection_contract["starts_after"],
+            "manifest_sha256": selection_manifest["record_sha256"],
+            "candidate_rows": len(timing_test),
+            "selected_rows": len(timing_primary_rows),
+            "pending_rows_included_before_ranking": True,
+        },
         final_evidence_gates={
             "sample_threshold_reached": (
                 evidence_ladder["stage"] == "production_sample_threshold_reached"
             ),
-            "any_preregistered_selector_policy_clears_accuracy_and_net_gate": any(
-                item["passes_final_accuracy_gate"]
-                for item in precision_selector["operating_points"].values()
+            "primary_selector_policy_clears_accuracy_and_net_gate": bool(
+                primary_score["passes_final_accuracy_gate"]
             ),
-            "matched_random_timing_margin_passed": False,
+            # Compatibility alias for already-written promotion-control records. It now
+            # means the single frozen primary policy, never post-hoc choice among six.
+            "any_preregistered_selector_policy_clears_accuracy_and_net_gate": bool(
+                primary_score["passes_final_accuracy_gate"]
+            ),
+            "matched_random_timing_margin_passed": bool(
+                random_timing.get("random_timing_gate_passed")
+            ),
             "prospective_cohort_passed": False,
             "all_passed": False,
         },
@@ -682,16 +931,21 @@ def run_challenger_experiment(
             "chronological_test_brier_gain": test_gain,
             "chronological_test_accuracy_gain": test_accuracy_gain,
         },
-        model={
-            "kind": "standardised_logistic_regression",
-            "intercept": float(model.intercept_[0]),
-            "coefficients": dict(zip(features, model.coef_[0].tolist(), strict=True)),
-            "imputation_medians": dict(zip(features, medians.tolist(), strict=True)),
-            "scaler_means": dict(zip(features, scaler.mean_.tolist(), strict=True)),
-            "scaler_scales": dict(zip(features, scaler.scale_.tolist(), strict=True)),
-        },
-        blockers=[
-            "random-timing control not completed",
+        model=model_report,
+        blockers=(
+            []
+            if primary_score["passes_final_accuracy_gate"]
+            else ["frozen primary selector accuracy/net gate not passed"]
+        )
+        + (
+            []
+            if random_timing.get("random_timing_gate_passed")
+            else [
+                "random-timing control not completed: "
+                + str(random_timing.get("reason") or random_timing.get("status"))
+            ]
+        )
+        + [
             "prospective challenger cohort not registered",
             "explicit human promotion approval not granted",
         ],
@@ -706,6 +960,14 @@ def run_challenger_experiment(
     frozen = output_root / "datasets" / f"{dataset.dataset_id}.json"
     _write_json(frozen, dataset.to_dict())
     _write_json(
+        output_root / "datasets" / f"timing-opportunities-{timing_population_sha256}.json",
+        {
+            "market": dataset.market,
+            "sha256": timing_population_sha256,
+            "rows": timing_population,
+        },
+    )
+    _write_json(
         output_root / "datasets" / f"{development_dataset.dataset_id}.json",
         development_dataset.to_dict(),
     )
@@ -716,8 +978,9 @@ def run_challenger_experiment(
     artifact = output_root / "challengers" / f"{experiment_id}.json"
     _write_json(artifact, report)
     _write_json(output_root / "latest.json", report)
-    register_dataset_use(development_dataset, usage_registry)
-    register_dataset_use(locked_dataset, usage_registry)
+    if not timing_replay_invalid:
+        register_dataset_use(development_dataset, usage_registry)
+        register_dataset_use(locked_dataset, usage_registry)
     registry.parent.mkdir(parents=True, exist_ok=True)
     with registry.open("a", encoding="utf-8") as fh:
         fh.write(json.dumps(report, sort_keys=True, default=str) + "\n")

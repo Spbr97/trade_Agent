@@ -861,6 +861,15 @@
       <div class="card"><div class="label">Overlap rows purged</div><div class="value" id="learning-purged">-</div></div>
       <div class="card"><div class="label">All final gates</div><div class="value" id="learning-final-gates">NO</div></div>
     </div>
+    <div class="cards" style="margin-bottom:10px;">
+      <div class="card"><div class="label">Random timing collector</div><div class="value" id="learning-timing-collector">-</div></div>
+      <div class="card"><div class="label">Research timing pairs</div><div class="value" id="learning-timing-research-pairs">0</div></div>
+      <div class="card"><div class="label">Contract-bound timing gate</div><div class="value" id="learning-timing-gate">NO</div></div>
+      <div class="card"><div class="label">Bound contract / policy</div><div class="value" id="learning-timing-binding">not available</div></div>
+      <div class="card"><div class="label">Contract-bound pairs</div><div class="value" id="learning-timing-pairs">0</div></div>
+      <div class="card"><div class="label">Timing advantage / empirical tail</div><div class="value" id="learning-timing-stats">not available</div></div>
+    </div>
+    <div class="muted" id="learning-timing-detail" style="margin-bottom:10px;"></div>
     <table id="learning-table"></table>
   </section>
 </div>
@@ -1984,10 +1993,11 @@ $('research-market-select').addEventListener('change', loadResearch);
 // digging into another tab first) - reads the same /api/eod-learning endpoint.
 async function loadLearning() {
   const market = $('learning-market-select').value;
-  const [r, statusResponse, challengerResponse] = await Promise.all([
+  const [r, statusResponse, challengerResponse, timingResponse] = await Promise.all([
     fetch(`/api/eod-learning?market=${market}`),
     fetch(`/api/self-learning/status?market=${market}`),
     fetch(`/api/self-learning/challenger?market=${market}`),
+    fetch(`/api/self-learning/random-timing?market=${market}`).catch(() => null),
   ]);
   renderLearningTable(r.ok ? await r.json() : []);
   const status = statusResponse.ok ? await statusResponse.json() : {};
@@ -2019,6 +2029,42 @@ async function loadLearning() {
   $('learning-locked-oos').textContent = ladder.locked_oos_calls ?? 0;
   $('learning-purged').textContent = (latest.purge || {}).overlap_rows ?? 0;
   $('learning-final-gates').textContent = (latest.final_evidence_gates || {}).all_passed ? 'YES' : 'NO';
+  const timing = timingResponse && timingResponse.ok
+    ? await timingResponse.json()
+    : {api_error: true};
+  const timingCollector = timing.research_collector || {};
+  const timingGate = timing.challenger_gate || {};
+  const timingSummary = timingCollector.summary || {};
+  const gateStatus = timing.api_error
+    ? 'unavailable'
+    : String(timingGate.status || 'not_registered');
+  const gateFailed = gateStatus.includes('fail') || gateStatus.includes('invalid');
+  const gatePassed = gateStatus === 'random_timing_pass'
+    && timingGate.random_timing_gate_passed === true;
+  $('learning-timing-collector').textContent = timing.api_error
+    ? 'unavailable — not a pass'
+    : (timingCollector.status || 'not registered');
+  const setupPairs = Array.isArray(timingSummary.by_setup)
+    ? timingSummary.by_setup
+      .filter(row => row && typeof row === 'object')
+      .map(row => `${row.setup || 'unknown'}:${row.paired_calls ?? 0}`).join(' · ')
+    : null;
+  $('learning-timing-research-pairs').textContent = setupPairs
+    || timingSummary.paired_resolved_calls
+    || timingSummary.paired_calls
+    || 0;
+  $('learning-timing-gate').textContent = gatePassed ? 'PASS' : gateStatus.replaceAll('_', ' ');
+  $('learning-timing-gate').className = 'value ' + (gatePassed ? 'pos' : (gateFailed || timing.api_error ? 'neg' : 'planned'));
+  $('learning-timing-binding').textContent = timingGate.contract_version
+    ? `${timingGate.contract_version} / ${timingGate.selector_policy || 'policy unavailable'}`
+    : 'not available';
+  $('learning-timing-pairs').textContent = timingGate.paired_calls ?? 0;
+  $('learning-timing-stats').textContent = timingGate.timing_advantage_r != null
+    ? `${fmt(timingGate.timing_advantage_r, 3)}R / tail=${fmt(timingGate.empirical_rank_tail_probability, 3)}`
+    : 'not available';
+  $('learning-timing-detail').textContent = timing.api_error
+    ? 'Random-timing status could not be loaded — unavailable is never a pass.'
+    : (timingGate.reason || timingCollector.detail || '');
   $('learning-workflow-blockers').textContent = (status.blockers || []).join(' · ') || 'challenger dataset threshold reached; active model remains frozen';
 }
 $('learning-market-select').addEventListener('change', loadLearning);

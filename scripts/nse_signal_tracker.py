@@ -88,7 +88,10 @@ def main(*, strict_accuracy_refresh: bool = False) -> None:
         newly_resolved = resolve_outcomes(store, rows, MAX_HOLD)
         save_log(rows, LOG)
         refresh_learning_status(
-            "nse", rows, Path("data/reports/nse_self_learning_status.json")
+            "nse",
+            rows,
+            Path("data/reports/nse_self_learning_status.json"),
+            candle_store=store,
         )
         save_dashboard("nse", rows, DASHBOARD)
         report = render_session_report("NSE", day, new_rows, newly_resolved, rows)

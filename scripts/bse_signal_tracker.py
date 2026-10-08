@@ -83,7 +83,10 @@ def main(*, strict_accuracy_refresh: bool = False) -> None:
         newly_resolved = resolve_outcomes(store, rows, MAX_HOLD)
         save_log(rows, LOG)
         refresh_learning_status(
-            "bse", rows, Path("data/reports/bse_self_learning_status.json")
+            "bse",
+            rows,
+            Path("data/reports/bse_self_learning_status.json"),
+            candle_store=store,
         )
         save_dashboard("bse", rows, DASHBOARD)
         report = render_session_report("BSE", day, new_rows, newly_resolved, rows)

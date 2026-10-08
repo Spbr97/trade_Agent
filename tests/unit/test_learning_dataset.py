@@ -5,7 +5,11 @@ from dataclasses import asdict, replace
 import pytest
 
 from tests.unit.test_outcome_resolver import _bars, _row
-from tradedesk.learning_dataset import build_learning_dataset, register_dataset_use
+from tradedesk.learning_dataset import (
+    build_learning_dataset,
+    build_timing_opportunities,
+    register_dataset_use,
+)
 from tradedesk.prediction_ledger import seal_prediction
 from tradedesk.signal_tracker import resolve_outcomes
 
@@ -46,6 +50,10 @@ def test_dataset_is_deterministic_and_uses_prediction_time_features_only() -> No
     features = a.rows[0]["features"]
     assert features
     assert not any(name.startswith(("outcome", "exit", "label")) for name in features)
+    assert a.version == "self-learning-dataset-v4"
+    timing = a.rows[0]["timing_spec"]
+    assert timing["scrip_code"] == a.rows[0]["scrip_code"]
+    assert seal_prediction(timing["prediction_payload"]) == a.rows[0]["prediction_sha256"]
 
 
 def test_rejected_and_shadow_mature_calls_are_counterfactual_evidence() -> None:
@@ -89,6 +97,53 @@ def test_exclusions_are_explicit_and_invalid_never_enters_learning() -> None:
         "legacy_unsealed": 1,
         "never_triggered": 1,
         "pending": 1,
+    }
+
+
+def test_timing_population_retains_all_sealed_ex_ante_outcome_states() -> None:
+    resolved = _resolved_record(signal_id="resolved")
+    never = _resolved_record(signal_id="never")
+    never.update(
+        outcome="never_triggered",
+        outcome_state="never_triggered",
+        label=None,
+        entry_on=None,
+        actual_entry_price=None,
+        net_r=None,
+    )
+    pending = _resolved_record(signal_id="pending")
+    pending.update(
+        outcome=None,
+        outcome_state="pending_call",
+        label=None,
+        entry_on=None,
+        actual_entry_price=None,
+        exit_on=None,
+        exit_price=None,
+        net_r=None,
+    )
+    invalid = _resolved_record(signal_id="invalid")
+    invalid.update(
+        outcome="unavailable",
+        outcome_state="invalid_call",
+        label=None,
+        net_r=None,
+    )
+    opportunities = build_timing_opportunities(
+        [resolved, never, pending, invalid], market="nse", purpose="prospective"
+    )
+    assert [row["signal_id"] for row in opportunities] == [
+        "invalid",
+        "never",
+        "pending",
+        "resolved",
+    ]
+    states = {row["signal_id"]: row["outcome_state"] for row in opportunities}
+    assert states == {
+        "invalid": "invalid_call",
+        "never": "never_triggered",
+        "pending": "pending_call",
+        "resolved": "resolved_call",
     }
 
 
