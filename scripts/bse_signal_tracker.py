@@ -126,6 +126,26 @@ def main(*, strict_accuracy_refresh: bool = False) -> None:
         if strict_accuracy_refresh:
             raise RuntimeError(detail) from exc
 
+    try:
+        from tradedesk.execution_aligned_selector import (
+            collect_execution_aligned_prospective,
+        )
+
+        m16 = collect_execution_aligned_prospective(market="bse", db_path=DB)
+        print(
+            "M16 execution-aligned observer: "
+            f"status={m16['status']}, "
+            f"selected={m16.get('selected_calls', 0)}, "
+            f"resolved={m16.get('resolved_calls', 0)} (research only)"
+        )
+        if m16["status"] == "invalid_or_unreadable" and strict_accuracy_refresh:
+            raise RuntimeError("M16 evidence invalid or unreadable")
+    except Exception as exc:
+        detail = f"M16 observer unavailable — not a pass: {type(exc).__name__}: {exc}"
+        print(detail)
+        if strict_accuracy_refresh:
+            raise RuntimeError(detail) from exc
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

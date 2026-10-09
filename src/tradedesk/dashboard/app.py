@@ -2014,6 +2014,19 @@ def create_app(
         report = await asyncio.to_thread(load_latest_separability, market)
         return JSONResponse(report)
 
+    @app.get("/api/self-learning/execution-aligned")
+    async def api_self_learning_execution_aligned(
+        market: str = "nse",
+    ) -> JSONResponse:
+        """Read compact M16 development/forward evidence; never mutate in HTTP."""
+
+        from tradedesk.execution_aligned_selector import load_execution_aligned_status
+
+        if market not in {"nse", "bse", "crypto"}:
+            return JSONResponse({"error": "invalid market"}, status_code=400)
+        report = await asyncio.to_thread(load_execution_aligned_status, market)
+        return JSONResponse(report)
+
     @app.get("/api/session-report")
     async def api_session_report(
         market: Literal["nse", "crypto", "bse"] = "nse", on: str | None = None

@@ -240,6 +240,68 @@ SELECT * FROM rolled ORDER BY session_date, scrip_code
 """
 
 
+def _prepare_causal_frame(
+    frame: pd.DataFrame,
+    spec: LeaderAuditSpec,
+    *,
+    require_mature_outcomes: bool,
+) -> pd.DataFrame:
+    """Apply the shared liquid-universe filters and decision-close feature contract."""
+
+    frame = frame.copy()
+    frame["session_date"] = pd.to_datetime(frame["session_date"]).dt.date
+    frame = frame[~frame["scrip_code"].isin(spec.excluded_codes)].copy()
+    eligible = (
+        (frame["history_sessions"] >= spec.minimum_history_sessions)
+        & (frame["close"] >= spec.minimum_price)
+        & (frame["avg_turnover_20"] >= spec.minimum_average_turnover)
+        & (frame["close"] > 0)
+    )
+    if require_mature_outcomes:
+        eligible &= (
+            frame["high_forward_3"].notna()
+            & frame["low_forward_3"].notna()
+            & frame["close_lead_3"].notna()
+        )
+    frame = frame[eligible].copy()
+    if frame.empty:
+        state = "mature liquid" if require_mature_outcomes else "liquid decision"
+        raise ValueError(f"no {state} rows available for {spec.market}")
+
+    # Every value here is available at the session close. Outcome columns are computed
+    # separately by extract_causal_universe and never enter this feature helper.
+    frame["return_1"] = _safe_ratio(frame["close"], frame["close_lag_1"]) - 1.0
+    frame["return_3"] = _safe_ratio(frame["close"], frame["close_lag_3"]) - 1.0
+    frame["return_5"] = _safe_ratio(frame["close"], frame["close_lag_5"]) - 1.0
+    frame["return_20"] = _safe_ratio(frame["close"], frame["close_lag_20"]) - 1.0
+    frame["gap_return"] = _safe_ratio(frame["open"], frame["close_lag_1"]) - 1.0
+    frame["range_pct"] = _safe_ratio(frame["high"] - frame["low"], frame["close"])
+    frame["close_location"] = _safe_ratio(
+        frame["close"] - frame["low"], frame["high"] - frame["low"]
+    ).fillna(0.5)
+    frame["volume_ratio_20"] = _safe_ratio(frame["volume"], frame["avg_volume_20"])
+    frame["turnover_ratio_20"] = _safe_ratio(
+        frame["close"] * frame["volume"], frame["avg_turnover_20"]
+    )
+    frame["distance_sma_20"] = _safe_ratio(frame["close"], frame["sma_20"]) - 1.0
+    frame["distance_sma_50"] = _safe_ratio(frame["close"], frame["sma_50"]) - 1.0
+    frame["distance_prior_high_20"] = (
+        _safe_ratio(frame["close"], frame["prior_high_20"]) - 1.0
+    )
+    frame["atr_14_pct"] = _safe_ratio(frame["atr_14"], frame["close"])
+
+    for column in (
+        "return_5",
+        "return_20",
+        "volume_ratio_20",
+        "distance_prior_high_20",
+    ):
+        frame[f"{column}_rank"] = frame.groupby("session_date")[column].rank(
+            method="average", pct=True
+        )
+    return frame
+
+
 def extract_causal_universe(
     db_path: Path,
     market: str,
@@ -268,52 +330,7 @@ def extract_causal_universe(
     if frame.empty:
         raise ValueError(f"no daily rows extracted for {market}")
 
-    frame["session_date"] = pd.to_datetime(frame["session_date"]).dt.date
-    frame = frame[~frame["scrip_code"].isin(spec.excluded_codes)].copy()
-    frame = frame[
-        (frame["history_sessions"] >= spec.minimum_history_sessions)
-        & (frame["close"] >= spec.minimum_price)
-        & (frame["avg_turnover_20"] >= spec.minimum_average_turnover)
-        & (frame["close"] > 0)
-        & frame["high_forward_3"].notna()
-        & frame["low_forward_3"].notna()
-        & frame["close_lead_3"].notna()
-    ].copy()
-    if frame.empty:
-        raise ValueError(f"no mature liquid rows available for {market}")
-
-    # Every feature below is a same-close or lag/rolling value.  Lead values are projected
-    # only into outcome columns after all feature calculations are complete.
-    frame["return_1"] = _safe_ratio(frame["close"], frame["close_lag_1"]) - 1.0
-    frame["return_3"] = _safe_ratio(frame["close"], frame["close_lag_3"]) - 1.0
-    frame["return_5"] = _safe_ratio(frame["close"], frame["close_lag_5"]) - 1.0
-    frame["return_20"] = _safe_ratio(frame["close"], frame["close_lag_20"]) - 1.0
-    frame["gap_return"] = _safe_ratio(frame["open"], frame["close_lag_1"]) - 1.0
-    frame["range_pct"] = _safe_ratio(frame["high"] - frame["low"], frame["close"])
-    frame["close_location"] = _safe_ratio(
-        frame["close"] - frame["low"], frame["high"] - frame["low"]
-    ).fillna(0.5)
-    frame["volume_ratio_20"] = _safe_ratio(frame["volume"], frame["avg_volume_20"])
-    frame["turnover_ratio_20"] = _safe_ratio(
-        frame["close"] * frame["volume"], frame["avg_turnover_20"]
-    )
-    frame["distance_sma_20"] = _safe_ratio(frame["close"], frame["sma_20"]) - 1.0
-    frame["distance_sma_50"] = _safe_ratio(frame["close"], frame["sma_50"]) - 1.0
-    frame["distance_prior_high_20"] = (
-        _safe_ratio(frame["close"], frame["prior_high_20"]) - 1.0
-    )
-    frame["atr_14_pct"] = _safe_ratio(frame["atr_14"], frame["close"])
-
-    rank_inputs = (
-        "return_5",
-        "return_20",
-        "volume_ratio_20",
-        "distance_prior_high_20",
-    )
-    for column in rank_inputs:
-        frame[f"{column}_rank"] = frame.groupby("session_date")[column].rank(
-            method="average", pct=True
-        )
+    frame = _prepare_causal_frame(frame, spec, require_mature_outcomes=True)
 
     frame["forward_close_return_1"] = (
         _safe_ratio(frame["close_lead_1"], frame["close"]) - 1.0
@@ -349,6 +366,54 @@ def extract_causal_universe(
         "mature_session_end": sessions[-1].isoformat(),
         "mature_sessions": len(sessions),
         "raw_rows_considered": int(len(frame)),
+    }
+    return frame, source
+
+
+def extract_decision_universe(
+    db_path: Path,
+    market: str,
+    *,
+    now: datetime | None = None,
+) -> tuple[pd.DataFrame, dict[str, Any]]:
+    """Extract the newest closed session without requiring any future outcome bar.
+
+    This is the forward-only counterpart to :func:`extract_causal_universe`. It uses the
+    exact same liquidity rules and causal feature helper, then returns only the newest
+    eligible closed session. Callers must persist a decision before a later bar exists.
+    """
+
+    spec = spec_for(market)
+    observed_at = now or datetime.now(IST)
+    connection = duckdb.connect(str(db_path), read_only=True)
+    try:
+        latest_ts = _latest_source_timestamp(connection, spec, observed_at)
+        history_start = latest_ts - int(timedelta(days=520).total_seconds())
+        frame = connection.execute(
+            _EXTRACTION_SQL,
+            [f"{spec.code_prefix}%", spec.exchange, history_start, latest_ts],
+        ).df()
+    finally:
+        connection.close()
+    if frame.empty:
+        raise ValueError(f"no closed daily rows extracted for {market}")
+
+    frame = _prepare_causal_frame(frame, spec, require_mature_outcomes=False)
+    decision_session = max(frame["session_date"])
+    frame = frame[frame["session_date"] == decision_session].copy()
+    frame.sort_values("scrip_code", inplace=True)
+    if frame.empty:
+        raise ValueError(f"no liquid decision rows available for {market}")
+    source = {
+        "db_path": str(db_path),
+        "latest_closed_session": datetime.fromtimestamp(
+            latest_ts, tz=IST
+        ).date().isoformat(),
+        "decision_session": decision_session.isoformat(),
+        "query_history_start": datetime.fromtimestamp(
+            history_start, tz=IST
+        ).date().isoformat(),
+        "universe_rows": int(len(frame)),
     }
     return frame, source
 
