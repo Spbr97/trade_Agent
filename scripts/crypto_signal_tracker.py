@@ -214,6 +214,24 @@ def main(*, strict_accuracy_refresh: bool = False) -> None:
                 f"closed-session coverage: {closed_on_day}/{len(universe)}"
             )
 
+    try:
+        from tradedesk.leader_discovery import run_missed_leader_audit
+
+        leader_audit = run_missed_leader_audit(
+            market="crypto", db_path=DB, tracker_path=LOG
+        )
+        leader_latest = leader_audit["latest_mature_audit"]
+        print(
+            "M14 missed-leader audit: "
+            f"session={leader_latest['session']}, "
+            f"leaders={leader_latest['leader_count']}, "
+            f"candidate_recall={leader_latest['candidate_recall']}, "
+            f"status={leader_audit['status']} (diagnostic only)"
+        )
+    except Exception as exc:
+        print(f"M14 missed-leader audit unavailable — not a pass: {type(exc).__name__}: {exc}")
+        accuracy_failures.append(f"M14: {type(exc).__name__}: {exc}")
+
     # Independent forward-only accuracy control.  It reads the saved crypto log and
     # candles after the established tracker closes them; failures cannot stop tracking.
     try:
