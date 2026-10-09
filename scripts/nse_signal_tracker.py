@@ -129,6 +129,26 @@ def main(*, strict_accuracy_refresh: bool = False) -> None:
         print(f"M14 missed-leader audit unavailable — not a pass: {type(exc).__name__}: {exc}")
         accuracy_failures.append(f"M14: {type(exc).__name__}: {exc}")
 
+    # M16 is an isolated forward observer. It may append a sealed research decision or
+    # resolve one after three bars; it never enters the watchlist or active call path.
+    try:
+        from tradedesk.execution_aligned_selector import (
+            collect_execution_aligned_prospective,
+        )
+
+        m16 = collect_execution_aligned_prospective(market="nse", db_path=DB)
+        print(
+            "M16 execution-aligned observer: "
+            f"status={m16['status']}, "
+            f"selected={m16.get('selected_calls', 0)}, "
+            f"resolved={m16.get('resolved_calls', 0)} (research only)"
+        )
+        if m16["status"] == "invalid_or_unreadable":
+            accuracy_failures.append("M16 evidence invalid or unreadable")
+    except Exception as exc:
+        print(f"M16 observer unavailable — not a pass: {type(exc).__name__}: {exc}")
+        accuracy_failures.append(f"M16: {type(exc).__name__}: {exc}")
+
     # M8 is an additive research observer.  It reads the saved watchlist and candles only;
     # any collector failure is reported but cannot take down the established NSE tracker.
     try:
