@@ -2281,7 +2281,7 @@ function renderExecutionAligned(report) {
   $('execution-selector-authority').className = 'value neg';
   const devNote = devPassed
     ? 'Historical sanity gates passed; this only registered forward observation.'
-    : 'Historical sanity gates did not all pass, so no forward selector was activated.';
+    : `Historical sanity gates did not all pass; the best threshold produced ${development.maximum_threshold_selections || 0}/${development.minimum_threshold_selections || 12} required validation selections, so no forward selector was activated.`;
   const forwardNote = forwardPassed
     ? 'Prospective gates passed for human review only; no automatic promotion.'
     : 'Prospective improvement is not proven.';

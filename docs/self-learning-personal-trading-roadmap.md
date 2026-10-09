@@ -453,12 +453,31 @@ Implementation record:
 
 Next checkpoint:
 
-- [ ] M16 preregistered execution-aligned, market-specific two-stage selector.
-- [ ] Train the tradeability stage on target-before-stop and after-cost net R, not a
+- [x] M16 preregistered execution-aligned, market-specific two-stage selector.
+- [x] Train the tradeability stage on target-before-stop and after-cost net R, not a
   future-high opportunity label.
-- [ ] Learn an explicit no-call threshold subject to a disclosed minimum call count.
-- [ ] Treat M15's locked block as consumed and require fresh prospective evidence before
+- [x] Learn an explicit no-call threshold subject to a disclosed minimum call count.
+- [x] Treat M15's locked block as consumed and require fresh prospective evidence before
   claiming any baseline improvement.
+
+M16 result: all three market-specific development runs were rejected before prospective
+activation. The classifier alone was frequently above 50%, but the after-cost model found
+zero positive-expected-R candidates in the NSE/BSE validation candidate pools and only two
+in crypto; no threshold reached the frozen 12-selection minimum. Each market passed 1/10
+development gates. No call, cohort, active-model change or baseline-improvement claim was
+created.
+
+Implementation record:
+[Milestone 16 checkpoint — execution-aligned selector](self-learning-m16-execution-aligned.md)
+
+Next checkpoint:
+
+- [ ] M17 full-universe intraday path and execution-contract feasibility checkpoint.
+- [ ] Add time-ordered M1/M5/M15 paths so entry timing and stop/target order are observed,
+  not inferred from daily highs and lows.
+- [ ] Preregister a finite market-specific entry/exit contract race before opening its
+  results.
+- [ ] Freeze only a positive-after-cost contract and require new prospective evidence.
 
 ## Implementation order
 
@@ -477,7 +496,8 @@ Next checkpoint:
 13. [x] Exact-cohort before/after performance comparison.
 14. [x] Full-market missed-leader coverage audit.
 15. [x] Preregistered pre-move separability and executable leader-selection test.
-16. [ ] Execution-aligned two-stage selector with a fresh prospective qualification cohort.
+16. [x] Execution-aligned two-stage selector; development rejected, so no cohort activated.
+17. [ ] Intraday path acquisition and preregistered execution-contract feasibility race.
 
 An implementation checkbox means the machinery exists and is tested. It does not mean its
 empirical gate passed; the unchecked final evidence gates above remain authoritative.

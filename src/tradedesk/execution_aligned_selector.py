@@ -1464,6 +1464,15 @@ def load_execution_aligned_status(
     """Return compact, fail-closed M16 development and prospective dashboard evidence."""
 
     development = load_development_report(market, output_root=output_root)
+    threshold_cards = development.get("threshold_cards") or {}
+    maximum_threshold_selections = max(
+        (
+            int(card.get("selected", 0))
+            for card in threshold_cards.values()
+            if isinstance(card, Mapping)
+        ),
+        default=0,
+    )
     compact_development = {
         "status": development.get("status"),
         "experiment_id": development.get("experiment_id"),
@@ -1476,6 +1485,8 @@ def load_execution_aligned_status(
         "all_gates_passed": development.get(
             "all_development_registration_gates_passed", False
         ),
+        "maximum_threshold_selections": maximum_threshold_selections,
+        "minimum_threshold_selections": MIN_POLICY_SELECTIONS,
         "detail": development.get("detail"),
     }
     base = {
