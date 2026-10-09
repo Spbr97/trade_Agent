@@ -870,6 +870,23 @@
       <div class="card"><div class="label">Timing advantage / empirical tail</div><div class="value" id="learning-timing-stats">not available</div></div>
     </div>
     <div class="muted" id="learning-timing-detail" style="margin-bottom:10px;"></div>
+    <h2>Exact-cohort performance comparison <span class="info-ic" title="Before means every sealed mature prospective row; after means only rows qualified at prediction time. Markets, contracts and model/strategy versions are never pooled. Descriptive gains cannot promote a model.">ⓘ</span></h2>
+    <div class="cards" style="margin-bottom:10px;">
+      <div class="card"><div class="label">Comparison status</div><div class="value" id="learning-comparison-status">-</div></div>
+      <div class="card"><div class="label">Before-filter accuracy</div><div class="value" id="learning-before-accuracy">not available</div></div>
+      <div class="card"><div class="label">After-filter accuracy</div><div class="value" id="learning-after-accuracy">not available</div></div>
+      <div class="card"><div class="label">Accuracy delta</div><div class="value" id="learning-filter-accuracy-delta">not available</div></div>
+      <div class="card"><div class="label">Before / after expectancy</div><div class="value" id="learning-filter-expectancy">not available</div></div>
+      <div class="card"><div class="label">Calls retained</div><div class="value" id="learning-filter-retained">not available</div></div>
+    </div>
+    <div class="cards" style="margin-bottom:10px;">
+      <div class="card"><div class="label">Frozen baseline classifier / Brier</div><div class="value" id="learning-frozen-baseline">not available</div></div>
+      <div class="card"><div class="label">Current frozen challenger / Brier</div><div class="value" id="learning-frozen-challenger">not available</div></div>
+      <div class="card"><div class="label">Primary selector accuracy / net R</div><div class="value" id="learning-primary-selector">not available</div></div>
+      <div class="card"><div class="label">Improvement proven</div><div class="value neg" id="learning-improvement-proven">NO</div></div>
+    </div>
+    <div class="muted" id="learning-comparison-detail" style="margin-bottom:10px;"></div>
+    <table id="learning-version-table"></table>
     <table id="learning-table"></table>
   </section>
 </div>
@@ -1993,11 +2010,12 @@ $('research-market-select').addEventListener('change', loadResearch);
 // digging into another tab first) - reads the same /api/eod-learning endpoint.
 async function loadLearning() {
   const market = $('learning-market-select').value;
-  const [r, statusResponse, challengerResponse, timingResponse] = await Promise.all([
+  const [r, statusResponse, challengerResponse, timingResponse, comparisonResponse] = await Promise.all([
     fetch(`/api/eod-learning?market=${market}`),
     fetch(`/api/self-learning/status?market=${market}`),
     fetch(`/api/self-learning/challenger?market=${market}`),
     fetch(`/api/self-learning/random-timing?market=${market}`).catch(() => null),
+    fetch(`/api/self-learning/performance-comparison?market=${market}`).catch(() => null),
   ]);
   renderLearningTable(r.ok ? await r.json() : []);
   const status = statusResponse.ok ? await statusResponse.json() : {};
@@ -2065,9 +2083,86 @@ async function loadLearning() {
   $('learning-timing-detail').textContent = timing.api_error
     ? 'Random-timing status could not be loaded — unavailable is never a pass.'
     : (timingGate.reason || timingCollector.detail || '');
+  const comparison = comparisonResponse && comparisonResponse.ok
+    ? await comparisonResponse.json()
+    : {api_error: true};
+  renderPerformanceComparison(comparison);
   $('learning-workflow-blockers').textContent = (status.blockers || []).join(' · ') || 'challenger dataset threshold reached; active model remains frozen';
 }
 $('learning-market-select').addEventListener('change', loadLearning);
+function renderPerformanceComparison(report) {
+  const comparisons = Array.isArray(report.filter_comparisons) ? report.filter_comparisons : [];
+  const available = comparisons.filter(item => item && item.status === 'available');
+  $('learning-comparison-status').textContent = report.api_error
+    ? 'unavailable — not a pass'
+    : String(report.status || 'not available').replaceAll('_', ' ');
+  let headline = null;
+  if (comparisons.length === 1) headline = comparisons[0];
+  const before = headline && headline.before_filter || {};
+  const after = headline && headline.after_filter || {};
+  const delta = headline && headline.deltas_after_minus_before || {};
+  if (comparisons.length > 1) {
+    $('learning-before-accuracy').textContent = 'by frozen version below';
+    $('learning-after-accuracy').textContent = 'by frozen version below';
+    $('learning-filter-accuracy-delta').textContent = 'not pooled';
+    $('learning-filter-expectancy').textContent = 'not pooled';
+    $('learning-filter-retained').textContent = 'not pooled';
+  } else {
+    $('learning-before-accuracy').textContent = before.strict_accuracy != null
+      ? `${pct(before.strict_accuracy)} (n=${before.n})`
+      : 'not available';
+    $('learning-after-accuracy').textContent = after.strict_accuracy != null
+      ? `${pct(after.strict_accuracy)} (n=${after.n})`
+      : 'not available';
+    $('learning-filter-accuracy-delta').textContent = delta.strict_accuracy != null
+      ? `${delta.strict_accuracy >= 0 ? '+' : ''}${pct(delta.strict_accuracy)}`
+      : 'not available';
+    $('learning-filter-expectancy').textContent = before.mean_net_r != null && after.mean_net_r != null
+      ? `${fmt(before.mean_net_r, 3)}R / ${fmt(after.mean_net_r, 3)}R`
+      : 'not available';
+    $('learning-filter-retained').textContent = headline && headline.retained_fraction != null
+      ? pct(headline.retained_fraction)
+      : 'not available';
+  }
+  const frozen = report.latest_frozen_challenger || {};
+  const baseline = frozen.frozen_baseline || {};
+  const challenger = frozen.challenger || {};
+  const primary = frozen.primary_selector || {};
+  $('learning-frozen-baseline').textContent = baseline.accuracy != null && baseline.brier != null
+    ? `${pct(baseline.accuracy)} / ${fmt(baseline.brier, 4)} (n=${baseline.n})`
+    : 'not available';
+  $('learning-frozen-challenger').textContent = challenger.accuracy != null && challenger.brier != null
+    ? `${pct(challenger.accuracy)} / ${fmt(challenger.brier, 4)} (n=${challenger.n})`
+    : 'not available';
+  $('learning-primary-selector').textContent = primary.strict_accuracy != null
+    ? `${pct(primary.strict_accuracy)} / ${primary.mean_net_r != null ? `${fmt(primary.mean_net_r, 3)}R` : 'net R unavailable'} (n=${primary.selected})`
+    : 'not available';
+  const proven = frozen.improvement_proven === true;
+  $('learning-improvement-proven').textContent = proven ? 'YES — review only' : 'NO';
+  $('learning-improvement-proven').className = `value ${proven ? 'pos' : 'neg'}`;
+  const cohortNote = comparisons.length
+    ? `${comparisons.length} exact frozen cohort${comparisons.length === 1 ? '' : 's'}; ${available.length} has both before- and after-filter evidence.`
+    : 'No sealed mature cohort is available.';
+  $('learning-comparison-detail').textContent = report.api_error
+    ? 'Performance comparison could not be loaded. Unavailable is never a pass.'
+    : `${cohortNote} ${report.filter_definition || ''} Challenger: ${frozen.reason || frozen.status || 'not available'}.`;
+  rows($('learning-version-table'),
+    ['Contract','Strategy','Features','Model','Before accuracy / R','After accuracy / R','Retained','Use'],
+    comparisons.length ? comparisons.map(item => {
+      const b = item.before_filter || {};
+      const a = item.after_filter || {};
+      const beforeText = b.strict_accuracy != null
+        ? `${pct(b.strict_accuracy)} / ${b.mean_net_r != null ? `${fmt(b.mean_net_r, 3)}R` : 'R n/a'} (n=${b.n})`
+        : 'not available';
+      const afterText = a.strict_accuracy != null
+        ? `${pct(a.strict_accuracy)} / ${a.mean_net_r != null ? `${fmt(a.mean_net_r, 3)}R` : 'R n/a'} (n=${a.n})`
+        : 'not available';
+      return `<tr><td>${item.contract_version || 'unavailable'}</td><td>${item.strategy_version || 'unavailable'}</td>
+        <td>${item.feature_version || 'unavailable'}</td><td>${item.model_version || 'unavailable'}</td>
+        <td>${beforeText}</td><td>${afterText}</td><td>${item.retained_fraction != null ? pct(item.retained_fraction) : 'not available'}</td>
+        <td class="muted">descriptive only</td></tr>`;
+    }) : ['<tr><td colspan="8" class="empty-note">no sealed mature version cohort available</td></tr>']);
+}
 function renderLearningTable(history) {
   if (!history.length) {
     rows($('learning-table'), ['Date','Status'], [`<tr><td colspan="2" class="empty-note">no EOD learning runs yet</td></tr>`]);

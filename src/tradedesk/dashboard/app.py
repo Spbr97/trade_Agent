@@ -169,6 +169,23 @@ def _self_learning_random_timing_report(market: str) -> dict[str, Any]:
     }
 
 
+def _self_learning_performance_comparison_report(market: str) -> dict[str, Any]:
+    """Build the exact-cohort dashboard report outside the async request loop."""
+
+    from tradedesk.analysis import BSE_LOG, CRYPTO_LOG, NSE_LOG
+    from tradedesk.challenger_workflow import challenger_summary
+    from tradedesk.learning_dataset import build_learning_dataset
+    from tradedesk.performance_comparison import build_performance_comparison
+
+    logs = {"nse": NSE_LOG, "crypto": CRYPTO_LOG, "bse": BSE_LOG}
+    if market not in logs:
+        raise ValueError("invalid market")
+    records = _read_call_log(logs[market], 100_000)
+    dataset = build_learning_dataset(records, market=market, purpose="prospective")
+    summary = challenger_summary(Path(f"data/models/self_learning/{market}"))
+    return build_performance_comparison(dataset, summary)
+
+
 def _read_call_log(log_path: Path, limit: int) -> list[dict[str, Any]]:
     """Shared reader for the crypto/BSE JSONL call logs (signal_tracker.py's output) -
     newest-first, capped at `limit`. Reads raw JSON rather than TrackedSignal(**r), so a
@@ -1959,6 +1976,19 @@ def create_app(
         if market not in {"nse", "bse", "crypto"}:
             return JSONResponse({"error": "invalid market"}, status_code=400)
         return JSONResponse(_self_learning_random_timing_report(market))
+
+    @app.get("/api/self-learning/performance-comparison")
+    async def api_self_learning_performance_comparison(
+        market: str = "nse",
+    ) -> JSONResponse:
+        """Exact-cohort filter and frozen-challenger comparisons; always read-only."""
+
+        if market not in {"nse", "bse", "crypto"}:
+            return JSONResponse({"error": "invalid market"}, status_code=400)
+        report = await asyncio.to_thread(
+            _self_learning_performance_comparison_report, market
+        )
+        return JSONResponse(report)
 
     @app.get("/api/session-report")
     async def api_session_report(

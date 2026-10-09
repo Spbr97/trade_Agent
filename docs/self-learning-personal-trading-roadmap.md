@@ -370,9 +370,9 @@ Keep every evaluated call visible:
 - [x] Never-triggered and invalid calls.
 - [x] Confidence versus actual outcome.
 - [x] Failure-category breakdown.
-- [ ] Accuracy before and after filtering.
-- [ ] Net expectancy before and after filtering.
-- [ ] Model and strategy version comparison.
+- [x] Accuracy before and after filtering.
+- [x] Net expectancy before and after filtering.
+- [x] Model and strategy version comparison.
 
 ### Self-learning status
 
@@ -380,7 +380,7 @@ Show:
 
 - [x] New mature evidence since the last training run.
 - [x] Most frequent failure patterns.
-- [ ] Current challenger and frozen baseline.
+- [x] Current challenger and frozen baseline.
 - [x] Experiments that failed.
 - [x] Development-only improvements.
 - [x] Prospective evidence progress.
@@ -392,6 +392,9 @@ all failed, rejected and pending research calls.
 
 Implementation record:
 [Milestone 10 checkpoint — personal calls](self-learning-m10-personal-calls.md)
+
+Performance-comparison record:
+[Milestone 13 checkpoint — exact-cohort performance comparison](self-learning-m13-performance-comparison.md)
 
 ## Milestone 11 — Promotion and rollback control
 
@@ -419,7 +422,7 @@ Implementation record:
 3. [x] Deterministic outcome resolver.
 4. [x] Failure-attribution engine.
 5. [x] Learning-dataset builder.
-6. [ ] Full performance and self-learning dashboard panels.
+6. [x] Full performance and self-learning dashboard panels.
 7. [ ] Scheduled challenger-training workflow.
 8. [ ] Quick-profit versus swing experiments.
 9. [ ] Precision selector and no-call policy.
