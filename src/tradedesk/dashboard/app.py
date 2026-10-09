@@ -2001,6 +2001,19 @@ def create_app(
         report = await asyncio.to_thread(load_latest_audit, market)
         return JSONResponse(report)
 
+    @app.get("/api/self-learning/leader-separability")
+    async def api_self_learning_leader_separability(
+        market: str = "nse",
+    ) -> JSONResponse:
+        """Read the sealed M15 historical experiment; unavailable is never a pass."""
+
+        from tradedesk.leader_separability import load_latest_separability
+
+        if market not in {"nse", "bse", "crypto"}:
+            return JSONResponse({"error": "invalid market"}, status_code=400)
+        report = await asyncio.to_thread(load_latest_separability, market)
+        return JSONResponse(report)
+
     @app.get("/api/session-report")
     async def api_session_report(
         market: Literal["nse", "crypto", "bse"] = "nse", on: str | None = None

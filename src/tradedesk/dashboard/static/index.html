@@ -844,6 +844,24 @@
     <table id="leader-audit-table"></table>
   </section>
   <section>
+    <h2>Leader separability experiment <span class="info-ic" title="M15: two preregistered models, chronological purges, one locked historical test, momentum/random controls, and an executable next-open quick-profit replay. Historical-only and incapable of changing calls.">ⓘ</span></h2>
+    <div class="cards" style="margin-bottom:10px;">
+      <div class="card"><div class="label">Experiment state</div><div class="value" id="leader-model-status">-</div></div>
+      <div class="card"><div class="label">Validation-selected model</div><div class="value" id="leader-model-name">-</div></div>
+      <div class="card"><div class="label">Locked sessions</div><div class="value" id="leader-model-sessions">-</div></div>
+      <div class="card"><div class="label">Top-1 leader precision</div><div class="value" id="leader-model-top1">not available</div></div>
+      <div class="card"><div class="label">Momentum top-1</div><div class="value" id="leader-model-momentum">not available</div></div>
+      <div class="card"><div class="label">Random opportunity tail</div><div class="value" id="leader-model-random-tail">not available</div></div>
+      <div class="card"><div class="label">Executable accuracy</div><div class="value" id="leader-model-exec-accuracy">not available</div></div>
+      <div class="card"><div class="label">Executable mean net R</div><div class="value" id="leader-model-exec-r">not available</div></div>
+      <div class="card"><div class="label">Gates passed</div><div class="value" id="leader-model-gates">0/12</div></div>
+      <div class="card"><div class="label">Baseline improved</div><div class="value neg" id="leader-model-improved">NO</div></div>
+      <div class="card"><div class="label">Live authority</div><div class="value neg" id="leader-model-authority">NONE</div></div>
+    </div>
+    <div class="muted" id="leader-model-detail"></div>
+    <table id="leader-model-gate-table" style="margin-top:10px;"></table>
+  </section>
+  <section>
     <h2>EOD self-learning <span class="info-ic" title="retrain on this market's real forward evidence only, never the old backtest window. One row per run. Cannot alert - only ever flags Review if it clears the same evidence bar as everything else.">ⓘ</span></h2>
     <div class="cards" style="margin-bottom:10px;">
       <div class="card"><div class="label">Workflow state</div><div class="value" id="learning-workflow-state">-</div></div>
@@ -2025,13 +2043,14 @@ $('research-market-select').addEventListener('change', loadResearch);
 // digging into another tab first) - reads the same /api/eod-learning endpoint.
 async function loadLearning() {
   const market = $('learning-market-select').value;
-  const [r, statusResponse, challengerResponse, timingResponse, comparisonResponse, leaderResponse] = await Promise.all([
+  const [r, statusResponse, challengerResponse, timingResponse, comparisonResponse, leaderResponse, separabilityResponse] = await Promise.all([
     fetch(`/api/eod-learning?market=${market}`),
     fetch(`/api/self-learning/status?market=${market}`),
     fetch(`/api/self-learning/challenger?market=${market}`),
     fetch(`/api/self-learning/random-timing?market=${market}`).catch(() => null),
     fetch(`/api/self-learning/performance-comparison?market=${market}`).catch(() => null),
     fetch(`/api/self-learning/missed-leaders?market=${market}`).catch(() => null),
+    fetch(`/api/self-learning/leader-separability?market=${market}`).catch(() => null),
   ]);
   renderLearningTable(r.ok ? await r.json() : []);
   const status = statusResponse.ok ? await statusResponse.json() : {};
@@ -2107,6 +2126,10 @@ async function loadLearning() {
     ? await leaderResponse.json()
     : {status: 'unavailable', detail: 'Missed-leader audit could not be loaded — unavailable is not a pass.'};
   renderLeaderAudit(leaderAudit);
+  const separability = separabilityResponse && separabilityResponse.ok
+    ? await separabilityResponse.json()
+    : {status: 'unavailable', detail: 'Leader-separability result could not be loaded — unavailable is not a pass.'};
+  renderLeaderSeparability(separability);
   $('learning-workflow-blockers').textContent = (status.blockers || []).join(' · ') || 'challenger dataset threshold reached; active model remains frozen';
 }
 $('learning-market-select').addEventListener('change', loadLearning);
@@ -2144,6 +2167,55 @@ function renderLeaderAudit(report) {
       <td>${(item.miss_reasons || []).map(reason => String(reason).replaceAll('_', ' ')).join(', ') || '-'}</td>
       <td class="muted">diagnostic only</td></tr>`)
       : ['<tr><td colspan="7" class="empty-note">no valid mature leader audit available — not a pass</td></tr>']);
+}
+function renderLeaderSeparability(report) {
+  const status = String(report.status || 'not_available');
+  const candidate = status === 'development_candidate'
+    && report.all_development_candidate_gates_passed === true;
+  const validResult = candidate || status === 'rejected_no_separability';
+  const locked = report.locked_test || {};
+  const model = locked.model || {};
+  const topOne = model.top_1 || {};
+  const momentum = (locked.momentum_control || {}).top_1 || {};
+  const random = locked.random_top_1 || {};
+  const execution = (report.executable_replay || {}).top_1 || {};
+  const gates = report.gates && typeof report.gates === 'object' ? report.gates : {};
+  const gateEntries = Object.entries(gates);
+  const passed = gateEntries.filter(([, value]) => value === true).length;
+  const lockedSessions = ((report.split || {}).locked_test || []);
+
+  $('leader-model-status').textContent = status.replaceAll('_', ' ');
+  $('leader-model-status').className = `value ${candidate ? 'pos' : 'neg'}`;
+  $('leader-model-name').textContent = (report.model_bundle || {}).name || 'not available';
+  $('leader-model-sessions').textContent = validResult ? lockedSessions.length : 'not available';
+  $('leader-model-top1').textContent = topOne.precision != null
+    ? `${pct(topOne.precision)} (${topOne.successes}/${topOne.selected})`
+    : 'not available';
+  $('leader-model-momentum').textContent = momentum.precision != null
+    ? `${pct(momentum.precision)} (${momentum.successes}/${momentum.selected})`
+    : 'not available';
+  $('leader-model-random-tail').textContent = random.tail_probability != null
+    ? fmt(random.tail_probability, 4)
+    : 'not available';
+  $('leader-model-exec-accuracy').textContent = execution.strict_accuracy != null
+    ? `${pct(execution.strict_accuracy)} (${execution.strict_successes}/${execution.selected})`
+    : 'not available';
+  $('leader-model-exec-r').textContent = execution.mean_net_r != null
+    ? `${fmt(execution.mean_net_r, 3)}R`
+    : 'not available';
+  $('leader-model-gates').textContent = `${passed}/${gateEntries.length || 12}`;
+  $('leader-model-improved').textContent = 'NO';
+  $('leader-model-improved').className = 'value neg';
+  $('leader-model-authority').textContent = 'NONE — RESEARCH ONLY';
+  $('leader-model-authority').className = 'value neg';
+  const candidateNote = candidate
+    ? 'All historical development gates passed; fresh prospective evidence is still required.'
+    : 'The historical development gates did not all pass.';
+  $('leader-model-detail').textContent = `${report.detail || 'No valid M15 result exists — unavailable is not a pass.'} ${candidateNote} Active model changed: NO. Baseline improved: NO.`;
+  rows($('leader-model-gate-table'), ['Frozen gate', 'Result'],
+    gateEntries.length
+      ? gateEntries.map(([name, value]) => `<tr><td>${name.replaceAll('_', ' ')}</td><td class="${value === true ? 'pos' : 'neg'}">${value === true ? 'PASS' : 'FAIL'}</td></tr>`)
+      : ['<tr><td colspan="2" class="empty-note">no valid sealed gate evidence — unavailable is not a pass</td></tr>']);
 }
 function renderPerformanceComparison(report) {
   const comparisons = Array.isArray(report.filter_comparisons) ? report.filter_comparisons : [];
