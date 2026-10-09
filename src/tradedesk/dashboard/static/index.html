@@ -882,6 +882,26 @@
     <table id="execution-selector-gate-table" style="margin-top:10px;"></table>
   </section>
   <section>
+    <h2>Intraday execution-contract race <span class="info-ic" title="M17: full-universe causal ranking, then sparse sealed M1/M5/M15 paths for every primary and control candidate. Six quick-profit contracts compete on validation; only one can be opened on the diagnostic block. Missing paths never pass and this panel cannot change live calls.">ⓘ</span></h2>
+    <div class="cards" style="margin-bottom:10px;">
+      <div class="card"><div class="label">M17 state</div><div class="value" id="intraday-contract-status">not started</div></div>
+      <div class="card"><div class="label">Manifest windows</div><div class="value" id="intraday-contract-windows">0</div></div>
+      <div class="card"><div class="label">Acquisition</div><div class="value" id="intraday-contract-acquisition">not started</div></div>
+      <div class="card"><div class="label">Validation paths</div><div class="value" id="intraday-contract-validation-paths">0/36</div></div>
+      <div class="card"><div class="label">Diagnostic paths</div><div class="value" id="intraday-contract-diagnostic-paths">0/36</div></div>
+      <div class="card"><div class="label">Selected contract</div><div class="value" id="intraday-contract-selected">not available</div></div>
+      <div class="card"><div class="label">Diagnostic accuracy</div><div class="value" id="intraday-contract-accuracy">not available</div></div>
+      <div class="card"><div class="label">95% accuracy lower bound</div><div class="value" id="intraday-contract-wilson">not available</div></div>
+      <div class="card"><div class="label">Diagnostic mean net R</div><div class="value" id="intraday-contract-net-r">not available</div></div>
+      <div class="card"><div class="label">No-call frequency</div><div class="value" id="intraday-contract-no-call">not available</div></div>
+      <div class="card"><div class="label">Development gates</div><div class="value" id="intraday-contract-gates">0/0</div></div>
+      <div class="card"><div class="label">Prospective state</div><div class="value" id="intraday-contract-prospective">not registered</div></div>
+      <div class="card"><div class="label">Baseline improved</div><div class="value neg" id="intraday-contract-improved">NO</div></div>
+      <div class="card"><div class="label">Live authority</div><div class="value neg" id="intraday-contract-authority">NONE</div></div>
+    </div>
+    <div class="muted" id="intraday-contract-detail"></div>
+  </section>
+  <section>
     <h2>EOD self-learning <span class="info-ic" title="retrain on this market's real forward evidence only, never the old backtest window. One row per run. Cannot alert - only ever flags Review if it clears the same evidence bar as everything else.">ⓘ</span></h2>
     <div class="cards" style="margin-bottom:10px;">
       <div class="card"><div class="label">Workflow state</div><div class="value" id="learning-workflow-state">-</div></div>
@@ -2063,7 +2083,7 @@ $('research-market-select').addEventListener('change', loadResearch);
 // digging into another tab first) - reads the same /api/eod-learning endpoint.
 async function loadLearning() {
   const market = $('learning-market-select').value;
-  const [r, statusResponse, challengerResponse, timingResponse, comparisonResponse, leaderResponse, separabilityResponse, executionAlignedResponse] = await Promise.all([
+  const [r, statusResponse, challengerResponse, timingResponse, comparisonResponse, leaderResponse, separabilityResponse, executionAlignedResponse, intradayContractResponse] = await Promise.all([
     fetch(`/api/eod-learning?market=${market}`),
     fetch(`/api/self-learning/status?market=${market}`),
     fetch(`/api/self-learning/challenger?market=${market}`),
@@ -2072,6 +2092,7 @@ async function loadLearning() {
     fetch(`/api/self-learning/missed-leaders?market=${market}`).catch(() => null),
     fetch(`/api/self-learning/leader-separability?market=${market}`).catch(() => null),
     fetch(`/api/self-learning/execution-aligned?market=${market}`).catch(() => null),
+    fetch(`/api/self-learning/intraday-contract?market=${market}`).catch(() => null),
   ]);
   renderLearningTable(r.ok ? await r.json() : []);
   const status = statusResponse.ok ? await statusResponse.json() : {};
@@ -2155,6 +2176,10 @@ async function loadLearning() {
     ? await executionAlignedResponse.json()
     : {status: 'unavailable', development: {}, prospective: {status: 'unavailable'}, detail: 'M16 evidence could not be loaded — unavailable is not a pass.'};
   renderExecutionAligned(executionAligned);
+  const intradayContract = intradayContractResponse && intradayContractResponse.ok
+    ? await intradayContractResponse.json()
+    : {status: 'unavailable', development: {}, prospective: {status: 'unavailable'}, detail: 'M17 evidence could not be loaded — unavailable is not a pass.'};
+  renderIntradayContract(intradayContract);
   $('learning-workflow-blockers').textContent = (status.blockers || []).join(' · ') || 'challenger dataset threshold reached; active model remains frozen';
 }
 $('learning-market-select').addEventListener('change', loadLearning);
@@ -2290,6 +2315,46 @@ function renderExecutionAligned(report) {
     gateEntries.length
       ? gateEntries.map(([name, value]) => `<tr><td>${name.replaceAll('_', ' ')}</td><td class="${value === true ? 'pos' : 'neg'}">${value === true ? 'PASS' : 'FAIL'}</td></tr>`)
       : ['<tr><td colspan="2" class="empty-note">no valid sealed gate evidence — unavailable is not a pass</td></tr>']);
+}
+function renderIntradayContract(report) {
+  const manifest = report.manifest || {};
+  const acquisition = report.acquisition || {};
+  const development = report.development || {};
+  const readiness = development.readiness || {};
+  const validationReady = readiness.validation || {};
+  const diagnosticReady = readiness.diagnostic || {};
+  const selected = development.selected_contract || null;
+  const metrics = development.diagnostic_metrics || {};
+  const prospective = report.prospective || {};
+  const status = String(report.status || 'not_started');
+  const forwardPassed = prospective.qualification_passed === true;
+
+  $('intraday-contract-status').textContent = status.replaceAll('_', ' ');
+  $('intraday-contract-status').className = `value ${forwardPassed ? 'pos' : (status === 'manifest_sealed' || status === 'acquisition_incomplete' ? 'planned' : 'neg')}`;
+  $('intraday-contract-windows').textContent = manifest.sealed_windows != null
+    ? `${manifest.sealed_windows}/${manifest.rows || manifest.sealed_windows}` : '0';
+  $('intraday-contract-acquisition').textContent = String(acquisition.status || 'not started').replaceAll('_', ' ');
+  $('intraday-contract-validation-paths').textContent = `${validationReady.valid_paths || 0}/${validationReady.selections || 36}`;
+  $('intraday-contract-diagnostic-paths').textContent = `${diagnosticReady.valid_paths || 0}/${diagnosticReady.selections || 36}`;
+  $('intraday-contract-selected').textContent = selected
+    ? `${String(selected.entry_rule).replaceAll('_', ' ')} / ${fmt(selected.target_r, 2)}R`
+    : 'not available';
+  $('intraday-contract-accuracy').textContent = metrics.strict_accuracy != null
+    ? `${pct(metrics.strict_accuracy)} (${metrics.strict_successes}/${metrics.filled})`
+    : 'not available';
+  $('intraday-contract-wilson').textContent = metrics.wilson_95_lower != null
+    ? pct(metrics.wilson_95_lower) : 'not available';
+  $('intraday-contract-net-r').textContent = metrics.mean_net_r != null
+    ? `${fmt(metrics.mean_net_r, 3)}R` : 'not available';
+  $('intraday-contract-no-call').textContent = metrics.no_call_frequency != null
+    ? pct(metrics.no_call_frequency) : 'not available';
+  $('intraday-contract-gates').textContent = `${development.gates_passed || 0}/${development.gates_total || 0}`;
+  $('intraday-contract-prospective').textContent = String(prospective.status || 'not_registered').replaceAll('_', ' ');
+  $('intraday-contract-improved').textContent = 'NO';
+  $('intraday-contract-improved').className = 'value neg';
+  $('intraday-contract-authority').textContent = 'NONE — RESEARCH ONLY';
+  $('intraday-contract-authority').className = 'value neg';
+  $('intraday-contract-detail').textContent = `${report.detail || 'No valid M17 evidence exists — unavailable is not a pass.'} Exact M1 entry/stop/target order, M5/M15 consistency and after-cost net R are required. Active model changed: NO. Baseline improved: NO.`;
 }
 function renderPerformanceComparison(report) {
   const comparisons = Array.isArray(report.filter_comparisons) ? report.filter_comparisons : [];
