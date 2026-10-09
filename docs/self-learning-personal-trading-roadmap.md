@@ -438,9 +438,27 @@ Implementation record:
 
 Next checkpoint:
 
-- [ ] M15 preregistered pre-move separability and executable top-one/top-three test.
-- [ ] Proceed to a ranker only if causal features beat simple and matched-random baselines.
-- [ ] Keep all M15 output research-only until fresh prospective evidence passes every gate.
+- [x] M15 preregistered pre-move separability and executable top-one/top-three test.
+- [x] Enforce comparisons against simple momentum and matched-random baselines.
+- [x] Keep all M15 output research-only because no market passed every frozen gate.
+
+M15 result: the causal ranker identified hindsight future-high leaders above random, but
+that did not survive the executable contract. Locked top-one trade accuracy was 33.33% NSE,
+33.33% BSE and 41.67% crypto; mean net R was negative in all three markets. NSE passed
+6/12 frozen gates, BSE 7/12 and crypto 8/12. Baseline improvement remains unproven and the
+active model is unchanged.
+
+Implementation record:
+[Milestone 15 checkpoint — leader separability](self-learning-m15-leader-separability.md)
+
+Next checkpoint:
+
+- [ ] M16 preregistered execution-aligned, market-specific two-stage selector.
+- [ ] Train the tradeability stage on target-before-stop and after-cost net R, not a
+  future-high opportunity label.
+- [ ] Learn an explicit no-call threshold subject to a disclosed minimum call count.
+- [ ] Treat M15's locked block as consumed and require fresh prospective evidence before
+  claiming any baseline improvement.
 
 ## Implementation order
 
@@ -458,7 +476,8 @@ Next checkpoint:
 12. [x] Contract-bound random-timing evidence collector.
 13. [x] Exact-cohort before/after performance comparison.
 14. [x] Full-market missed-leader coverage audit.
-15. [ ] Preregistered pre-move separability and executable leader-selection test.
+15. [x] Preregistered pre-move separability and executable leader-selection test.
+16. [ ] Execution-aligned two-stage selector with a fresh prospective qualification cohort.
 
 An implementation checkbox means the machinery exists and is tested. It does not mean its
 empirical gate passed; the unchecked final evidence gates above remain authoritative.
