@@ -605,6 +605,57 @@ def _aggregate_candles(
     return output
 
 
+async def _fetch_with_invalid_code_isolation(
+    client: Any,
+    interval: Interval,
+    codes: Sequence[str],
+    start: datetime,
+    end: datetime,
+) -> tuple[dict[str, list[Candle]], list[dict[str, str]]]:
+    """Keep one obsolete scrip code from discarding every healthy code in its API batch."""
+
+    if not codes:
+        return {}, []
+    try:
+        return await client.candles_history(interval, codes, start, end), []
+    except Exception as exc:
+        if "invalid scrip" not in str(exc).lower():
+            raise
+        if len(codes) == 1:
+            return {codes[0]: []}, [
+                {
+                    "scrip_code": codes[0],
+                    "error_type": type(exc).__name__,
+                    "error": str(exc),
+                }
+            ]
+        midpoint = len(codes) // 2
+        left, left_errors = await _fetch_with_invalid_code_isolation(
+            client, interval, codes[:midpoint], start, end
+        )
+        right, right_errors = await _fetch_with_invalid_code_isolation(
+            client, interval, codes[midpoint:], start, end
+        )
+        return {**left, **right}, left_errors + right_errors
+
+
+def _complete_codes(
+    db_path: Path,
+    codes: Sequence[str],
+    interval: Interval,
+    *,
+    start: datetime,
+    end: datetime,
+) -> set[str]:
+    expected = _expected_index(start, end, interval.seconds // 60)
+    with CandleStore(db_path) as store:
+        return {
+            code
+            for code in codes
+            if store.load(code, interval, start=start, end=end).index.equals(expected)
+        }
+
+
 async def acquire_manifest_paths(
     *,
     market: str,
@@ -643,8 +694,11 @@ async def acquire_manifest_paths(
         start = datetime.fromisoformat(start_text)
         end = datetime.fromisoformat(end_text)
         codes = sorted(code_set)
-        m1_by_code: dict[str, list[Candle]] = {}
         for interval in observed_intervals:
+            already_present = _complete_codes(
+                source_db, codes, interval, start=start, end=end
+            )
+            requested_codes = [code for code in codes if code not in already_present]
             record: dict[str, Any] = {
                 "version": VERSION,
                 "market": market,
@@ -654,32 +708,28 @@ async def acquire_manifest_paths(
                 "window_end": end_text,
                 "interval": interval.value,
                 "codes": codes,
+                "requested_codes": requested_codes,
+                "already_present_codes": sorted(already_present),
                 "source": "observed_api",
             }
             try:
-                fetched = await client.candles_history(interval, codes, start, end)
+                fetched, isolated_errors = await _fetch_with_invalid_code_isolation(
+                    client, interval, requested_codes, start, end
+                )
                 candles = [
                     candle
-                    for code in codes
+                    for code in requested_codes
                     for candle in fetched.get(code, [])
                     if start <= candle.ts < end
                 ]
                 with CandleStore(source_db) as store:
                     stored = store.upsert_candles(candles)
-                if interval is Interval.M1:
-                    m1_by_code = {
-                        code: [
-                            candle
-                            for candle in fetched.get(code, [])
-                            if start <= candle.ts < end
-                        ]
-                        for code in codes
-                    }
                 record.update(
                     {
-                        "status": "completed",
+                        "status": "completed" if not isolated_errors else "partial",
                         "returned_bars": len(candles),
                         "stored_bars": stored,
+                        "isolated_errors": isolated_errors,
                         "bars_by_code": {
                             code: len(
                                 [
@@ -688,7 +738,7 @@ async def acquire_manifest_paths(
                                     if start <= candle.ts < end
                                 ]
                             )
-                            for code in codes
+                            for code in requested_codes
                         },
                     }
                 )
@@ -705,40 +755,67 @@ async def acquire_manifest_paths(
             ledger.append(record)
 
         if market == "crypto":
-            derived = [
-                candle
-                for code in codes
-                for candle in _aggregate_candles(
-                    m1_by_code.get(code, []), Interval.M5, origin=start
+            derived_record: dict[str, Any] = {
+                "version": VERSION,
+                "market": market,
+                "experiment_id": manifest["experiment_id"],
+                "requested_at": now.isoformat(),
+                "window_start": start_text,
+                "window_end": end_text,
+                "interval": Interval.M5.value,
+                "codes": codes,
+                "source": "derived_from_observed_m1",
+            }
+            try:
+                already_present = _complete_codes(
+                    source_db, codes, Interval.M5, start=start, end=end
                 )
-            ]
-            with CandleStore(source_db) as store:
-                stored = store.upsert_candles(derived)
-            ledger.append(
-                {
-                    "version": VERSION,
-                    "market": market,
-                    "experiment_id": manifest["experiment_id"],
-                    "requested_at": now.isoformat(),
-                    "window_start": start_text,
-                    "window_end": end_text,
-                    "interval": Interval.M5.value,
-                    "codes": codes,
-                    "source": "derived_from_observed_m1",
-                    "status": "completed" if m1_by_code else "error",
-                    "returned_bars": len(derived),
-                    "stored_bars": stored,
-                    "bars_by_code": {
-                        code: len(
-                            _aggregate_candles(
-                                m1_by_code.get(code, []), Interval.M5, origin=start
+                to_derive = [code for code in codes if code not in already_present]
+                derived: list[Candle] = []
+                missing_m1: list[str] = []
+                expected_m1 = _expected_index(start, end, 1)
+                with CandleStore(source_db) as store:
+                    for code in to_derive:
+                        frame = store.load(code, Interval.M1, start=start, end=end)
+                        if not frame.index.equals(expected_m1):
+                            missing_m1.append(code)
+                            continue
+                        aggregated = _aggregate_frame(frame, 5, start=start)
+                        derived.extend(
+                            Candle(
+                                scrip_code=code,
+                                interval=Interval.M5,
+                                ts=timestamp.to_pydatetime(),
+                                open=float(bar["open"]),
+                                high=float(bar["high"]),
+                                low=float(bar["low"]),
+                                close=float(bar["close"]),
+                                volume=int(bar["volume"]),
                             )
+                            for timestamp, bar in aggregated.iterrows()
                         )
-                        for code in codes
-                    },
-                    "error": None if m1_by_code else "M1 acquisition unavailable",
-                }
-            )
+                    stored = store.upsert_candles(derived)
+                derived_record.update(
+                    {
+                        "status": "completed" if not missing_m1 else "partial",
+                        "already_present_codes": sorted(already_present),
+                        "derived_codes": sorted(set(to_derive) - set(missing_m1)),
+                        "missing_m1_codes": missing_m1,
+                        "returned_bars": len(derived),
+                        "stored_bars": stored,
+                    }
+                )
+            except Exception as exc:
+                derived_record.update(
+                    {
+                        "status": "error",
+                        "error_type": type(exc).__name__,
+                        "error": str(exc),
+                        "returned_bars": 0,
+                        "stored_bars": 0,
+                    }
+                )
+            ledger.append(derived_record)
 
     market_root = output_root / market
     ledger_path, ledger_sha, ledger_rows = _write_gzip_jsonl(

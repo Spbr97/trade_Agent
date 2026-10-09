@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace
 
 import pandas as pd
+import pytest
 
 from tradedesk.broker.indstocks.models import IST, Candle, Interval
 from tradedesk.data.candle_store import CandleStore
@@ -13,6 +15,7 @@ from tradedesk.intraday_contract_race import (
     _aggregate_frame,
     _attach_windows,
     _contract_metrics,
+    _fetch_with_invalid_code_isolation,
     _frame_payload,
     load_intraday_contract_status,
     replay_contract,
@@ -83,6 +86,27 @@ def test_manifest_window_binding_normalises_duckdb_timestamp_to_date(tmp_path: P
     assert attached[0]["window_status"] == "sealed"
     assert attached[0]["window_start"].startswith("2026-10-09T09:15:00")
     assert attached[0]["window_end"].startswith("2026-10-09T15:30:00")
+
+
+@pytest.mark.asyncio
+async def test_invalid_scrip_is_isolated_without_losing_healthy_neighbours() -> None:
+    start = datetime(2026, 10, 9, 9, 15, tzinfo=IST)
+    end = datetime(2026, 10, 9, 15, 30, tzinfo=IST)
+
+    class Client:
+        async def candles_history(self, interval, codes, start, end):  # noqa: ANN001
+            if "NSE_BAD" in codes:
+                raise RuntimeError("HTTP 400: Invalid scrip codes")
+            return {code: [] for code in codes}
+
+    fetched, errors = await asyncio.wait_for(
+        _fetch_with_invalid_code_isolation(
+            Client(), Interval.M1, ["NSE_GOOD", "NSE_BAD", "NSE_OK"], start, end
+        ),
+        timeout=2.0,
+    )
+    assert set(fetched) == {"NSE_GOOD", "NSE_BAD", "NSE_OK"}
+    assert [error["scrip_code"] for error in errors] == ["NSE_BAD"]
 
 
 class _ZeroCost:
