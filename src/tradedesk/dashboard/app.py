@@ -1990,6 +1990,17 @@ def create_app(
         )
         return JSONResponse(report)
 
+    @app.get("/api/self-learning/missed-leaders")
+    async def api_self_learning_missed_leaders(market: str = "nse") -> JSONResponse:
+        """Read the sealed M14 opportunity-coverage artifact; never recompute in HTTP."""
+
+        from tradedesk.leader_discovery import load_latest_audit
+
+        if market not in {"nse", "bse", "crypto"}:
+            return JSONResponse({"error": "invalid market"}, status_code=400)
+        report = await asyncio.to_thread(load_latest_audit, market)
+        return JSONResponse(report)
+
     @app.get("/api/session-report")
     async def api_session_report(
         market: Literal["nse", "crypto", "bse"] = "nse", on: str | None = None

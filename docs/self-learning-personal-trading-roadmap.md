@@ -2,8 +2,8 @@
 
 Date created: 2026-10-06
 
-Status: in progress; Milestones 1-5 complete and Milestone 6 sealed challenger workflow
-implemented through locked chronological evaluation on 2026-10-06
+Status: engineering implemented through Milestone 14. Empirical qualification and every
+final accuracy/economic gate remain incomplete; no active model has been promoted.
 
 Primary objective: produce a small, useful set of personally tradeable calls with
 verifiable accuracy, positive after-cost expectancy, explicit risk levels and honest
@@ -415,6 +415,33 @@ personal-trading authority.
 Implementation record:
 [Milestone 11 checkpoint — promotion control](self-learning-m11-promotion-control.md)
 
+## Milestone 14 — Full-market missed-leader coverage
+
+- [x] Audit the complete liquid universe rather than only existing setup candidates.
+- [x] Freeze a market-specific three-session opportunity definition before results.
+- [x] Keep future opportunity labels separate from causal decision-time features.
+- [x] Attribute leaders as qualified, shadow, rejected, no-setup or tracker-unobserved.
+- [x] Keep execution outcome separate; never count an opportunity label as a trade win.
+- [x] Persist hash-bound, non-pooled NSE, BSE and crypto datasets.
+- [x] Freeze post-activation prospective sessions against later feature/label rewrites.
+- [x] Refresh after each market tracker without changing calls or management.
+- [x] Show coverage, miss causes and top leaders in the Learning dashboard.
+- [x] State explicitly that this diagnostic does not improve baseline accuracy.
+
+First result: existing setup candidates covered 36/463 (7.78%) NSE leaders across eight
+tracker-observed mature sessions, 0/56 BSE leaders across one session, and 0/30 crypto
+leaders across nineteen sessions. No leader qualified. The dominant gap is candidate
+generation, not merely the final filter.
+
+Implementation record:
+[Milestone 14 checkpoint — missed-leader audit](self-learning-m14-missed-leader-audit.md)
+
+Next checkpoint:
+
+- [ ] M15 preregistered pre-move separability and executable top-one/top-three test.
+- [ ] Proceed to a ranker only if causal features beat simple and matched-random baselines.
+- [ ] Keep all M15 output research-only until fresh prospective evidence passes every gate.
+
 ## Implementation order
 
 1. [x] Evidence categories and frozen outcome contracts.
@@ -422,14 +449,19 @@ Implementation record:
 3. [x] Deterministic outcome resolver.
 4. [x] Failure-attribution engine.
 5. [x] Learning-dataset builder.
-6. [x] Full performance and self-learning dashboard panels.
-7. [ ] Scheduled challenger-training workflow.
-8. [ ] Quick-profit versus swing experiments.
-9. [ ] Precision selector and no-call policy.
-10. [ ] Locked historical validation.
-11. [ ] Prospective shadow cohort.
-12. [ ] Personal-trading qualification panel.
-13. [ ] Explicit promotion and rollback review.
+6. [x] Scheduled challenger-training workflow implementation.
+7. [x] Precision selector and no-call policy implementation.
+8. [x] Quick-profit versus swing paired-contract implementation.
+9. [x] Locked validation and fail-closed evidence ladder implementation.
+10. [x] Personal calls and full performance dashboard.
+11. [x] Explicit promotion and rollback control implementation.
+12. [x] Contract-bound random-timing evidence collector.
+13. [x] Exact-cohort before/after performance comparison.
+14. [x] Full-market missed-leader coverage audit.
+15. [ ] Preregistered pre-move separability and executable leader-selection test.
+
+An implementation checkbox means the machinery exists and is tested. It does not mean its
+empirical gate passed; the unchecked final evidence gates above remain authoritative.
 
 ## Completion definition
 

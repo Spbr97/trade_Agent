@@ -829,6 +829,21 @@
     <span class="info-ic" title="NSE/BSE retrain once daily; crypto twice (24/7 data) - see Research view for the underlying candidate rules this trains on">ⓘ</span>
   </section>
   <section>
+    <h2>Missed-leader coverage audit <span class="info-ic" title="Full liquid universe, evaluated only after three future sessions mature. A hindsight leader is an opportunity label, never a trade win. Features use decision-time data only; markets are never pooled; this panel cannot change calls or models.">ⓘ</span></h2>
+    <div class="cards" style="margin-bottom:10px;">
+      <div class="card"><div class="label">Audit state</div><div class="value" id="leader-audit-status">-</div></div>
+      <div class="card"><div class="label">Mature session</div><div class="value" id="leader-audit-session">-</div></div>
+      <div class="card"><div class="label">Liquid universe</div><div class="value" id="leader-audit-universe">-</div></div>
+      <div class="card"><div class="label">Hindsight leaders</div><div class="value" id="leader-audit-leaders">-</div></div>
+      <div class="card"><div class="label">Any setup recall</div><div class="value" id="leader-audit-candidate-recall">not available</div></div>
+      <div class="card"><div class="label">Qualified-call recall</div><div class="value" id="leader-audit-qualified-recall">not available</div></div>
+      <div class="card"><div class="label">No setup pattern</div><div class="value" id="leader-audit-no-setup">-</div></div>
+      <div class="card"><div class="label">Live authority</div><div class="value neg" id="leader-audit-authority">NONE</div></div>
+    </div>
+    <div class="muted" id="leader-audit-detail" style="margin-bottom:10px;"></div>
+    <table id="leader-audit-table"></table>
+  </section>
+  <section>
     <h2>EOD self-learning <span class="info-ic" title="retrain on this market's real forward evidence only, never the old backtest window. One row per run. Cannot alert - only ever flags Review if it clears the same evidence bar as everything else.">ⓘ</span></h2>
     <div class="cards" style="margin-bottom:10px;">
       <div class="card"><div class="label">Workflow state</div><div class="value" id="learning-workflow-state">-</div></div>
@@ -2010,12 +2025,13 @@ $('research-market-select').addEventListener('change', loadResearch);
 // digging into another tab first) - reads the same /api/eod-learning endpoint.
 async function loadLearning() {
   const market = $('learning-market-select').value;
-  const [r, statusResponse, challengerResponse, timingResponse, comparisonResponse] = await Promise.all([
+  const [r, statusResponse, challengerResponse, timingResponse, comparisonResponse, leaderResponse] = await Promise.all([
     fetch(`/api/eod-learning?market=${market}`),
     fetch(`/api/self-learning/status?market=${market}`),
     fetch(`/api/self-learning/challenger?market=${market}`),
     fetch(`/api/self-learning/random-timing?market=${market}`).catch(() => null),
     fetch(`/api/self-learning/performance-comparison?market=${market}`).catch(() => null),
+    fetch(`/api/self-learning/missed-leaders?market=${market}`).catch(() => null),
   ]);
   renderLearningTable(r.ok ? await r.json() : []);
   const status = statusResponse.ok ? await statusResponse.json() : {};
@@ -2087,9 +2103,48 @@ async function loadLearning() {
     ? await comparisonResponse.json()
     : {api_error: true};
   renderPerformanceComparison(comparison);
+  const leaderAudit = leaderResponse && leaderResponse.ok
+    ? await leaderResponse.json()
+    : {status: 'unavailable', detail: 'Missed-leader audit could not be loaded — unavailable is not a pass.'};
+  renderLeaderAudit(leaderAudit);
   $('learning-workflow-blockers').textContent = (status.blockers || []).join(' · ') || 'challenger dataset threshold reached; active model remains frozen';
 }
 $('learning-market-select').addEventListener('change', loadLearning);
+function renderLeaderAudit(report) {
+  const latest = report.latest_mature_audit || {};
+  const history = report.observed_history || {};
+  const valid = report.status === 'available';
+  $('leader-audit-status').textContent = String(report.status || 'not available').replaceAll('_', ' ');
+  $('leader-audit-status').className = `value ${valid ? 'planned' : 'neg'}`;
+  $('leader-audit-session').textContent = latest.session || 'not available';
+  $('leader-audit-universe').textContent = latest.universe_count ?? 'not available';
+  $('leader-audit-leaders').textContent = latest.leader_count ?? 'not available';
+  $('leader-audit-candidate-recall').textContent = latest.candidate_recall != null
+    ? `${pct(latest.candidate_recall)} (${latest.candidate_count}/${latest.leader_count})`
+    : 'not available';
+  $('leader-audit-qualified-recall').textContent = latest.qualified_recall != null
+    ? `${pct(latest.qualified_recall)} (${latest.qualified_count}/${latest.leader_count})`
+    : 'not available';
+  $('leader-audit-no-setup').textContent = latest.no_setup_count ?? 'not available';
+  $('leader-audit-authority').textContent = 'NONE — DIAGNOSTIC';
+  const missReasons = Object.entries(latest.miss_reasons || {})
+    .map(([reason, count]) => `${reason.replaceAll('_', ' ')}: ${count}`).join(' · ');
+  const historyText = history.sessions
+    ? ` Across ${history.sessions} tracker-observed mature sessions, existing setups covered ${history.candidate_count}/${history.leader_count} leaders (${pct(history.candidate_recall)}) and qualified ${history.qualified_count}.`
+    : ' No tracker-observed mature history is available.';
+  $('leader-audit-detail').textContent = `${report.detail || ''}${historyText}${missReasons ? ` Latest misses: ${missReasons}.` : ''} Baseline improved: NO.`;
+  const leaders = Array.isArray(latest.top_leaders) ? latest.top_leaders : [];
+  rows($('leader-audit-table'),
+    ['Symbol','3-session max opportunity','3-session close','Existing setup','Call outcome','Miss reason','Use'],
+    leaders.length ? leaders.map(item => `<tr><td>${item.symbol || item.scrip_code || '-'}</td>
+      <td class="num">${item.forward_max_high_return_3 != null ? pct(item.forward_max_high_return_3) : '-'}</td>
+      <td class="num">${item.forward_close_return_3 != null ? pct(item.forward_close_return_3) : '-'}</td>
+      <td>${String(item.identification_state || 'not observed').replaceAll('_', ' ')}</td>
+      <td>${String(item.execution_state || 'not observed').replaceAll('_', ' ')}</td>
+      <td>${(item.miss_reasons || []).map(reason => String(reason).replaceAll('_', ' ')).join(', ') || '-'}</td>
+      <td class="muted">diagnostic only</td></tr>`)
+      : ['<tr><td colspan="7" class="empty-note">no valid mature leader audit available — not a pass</td></tr>']);
+}
 function renderPerformanceComparison(report) {
   const comparisons = Array.isArray(report.filter_comparisons) ? report.filter_comparisons : [];
   const available = comparisons.filter(item => item && item.status === 'available');

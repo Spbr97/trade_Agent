@@ -103,6 +103,29 @@ def main(*, strict_accuracy_refresh: bool = False) -> None:
         if flagged:
             print(f"flagged for review: {', '.join(flagged)}")
 
+    try:
+        from tradedesk.leader_discovery import run_missed_leader_audit
+
+        leader_audit = run_missed_leader_audit(
+            market="bse", db_path=DB, tracker_path=LOG
+        )
+        leader_latest = leader_audit["latest_mature_audit"]
+        print(
+            "M14 missed-leader audit: "
+            f"session={leader_latest['session']}, "
+            f"leaders={leader_latest['leader_count']}, "
+            f"candidate_recall={leader_latest['candidate_recall']}, "
+            f"status={leader_audit['status']} (diagnostic only)"
+        )
+    except Exception as exc:
+        detail = (
+            "M14 missed-leader audit unavailable — not a pass: "
+            f"{type(exc).__name__}: {exc}"
+        )
+        print(detail)
+        if strict_accuracy_refresh:
+            raise RuntimeError(detail) from exc
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
