@@ -857,9 +857,21 @@ async def acquire_manifest_paths(
 
 
 def _expected_index(start: datetime, end: datetime, minutes: int) -> pd.DatetimeIndex:
+    start_timestamp = pd.Timestamp(start)
+    end_timestamp = pd.Timestamp(end)
+    start_timestamp = (
+        start_timestamp.tz_localize(IST)
+        if start_timestamp.tzinfo is None
+        else start_timestamp.tz_convert(IST)
+    )
+    end_timestamp = (
+        end_timestamp.tz_localize(IST)
+        if end_timestamp.tzinfo is None
+        else end_timestamp.tz_convert(IST)
+    )
     return pd.date_range(
-        start=start,
-        end=end - timedelta(minutes=minutes),
+        start=start_timestamp,
+        end=end_timestamp - timedelta(minutes=minutes),
         freq=f"{minutes}min",
     )
 

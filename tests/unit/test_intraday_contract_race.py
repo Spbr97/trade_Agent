@@ -15,6 +15,7 @@ from tradedesk.intraday_contract_race import (
     _aggregate_frame,
     _attach_windows,
     _contract_metrics,
+    _expected_index,
     _fetch_with_invalid_code_isolation,
     _frame_payload,
     _matched_random_control,
@@ -59,6 +60,19 @@ def test_intraday_path_requires_exact_grid_and_cross_interval_agreement() -> Non
     )
     assert valid is False
     assert detail == "m5_high_aggregate_mismatch"
+
+
+def test_expected_grid_normalises_fixed_offset_manifest_times_to_ist() -> None:
+    start = datetime.fromisoformat("2026-07-24T05:30:00+05:30")
+    end = datetime.fromisoformat("2026-07-24T05:35:00+05:30")
+    actual = pd.date_range(
+        start=pd.Timestamp("2026-07-24 05:30", tz=IST), periods=5, freq="1min"
+    )
+
+    expected = _expected_index(start, end, 1)
+
+    assert expected.tz == IST
+    assert expected.equals(actual)
 
 
 def test_manifest_window_binding_normalises_duckdb_timestamp_to_date(tmp_path: Path) -> None:
