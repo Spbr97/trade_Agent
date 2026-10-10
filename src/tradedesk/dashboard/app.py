@@ -2027,6 +2027,19 @@ def create_app(
         report = await asyncio.to_thread(load_execution_aligned_status, market)
         return JSONResponse(report)
 
+    @app.get("/api/self-learning/intraday-contract")
+    async def api_self_learning_intraday_contract(
+        market: str = "nse",
+    ) -> JSONResponse:
+        """Read compact M17 path/contract evidence; never acquire or score in HTTP."""
+
+        from tradedesk.intraday_contract_race import load_intraday_contract_status
+
+        if market not in {"nse", "bse", "crypto"}:
+            return JSONResponse({"error": "invalid market"}, status_code=400)
+        report = await asyncio.to_thread(load_intraday_contract_status, market)
+        return JSONResponse(report)
+
     @app.get("/api/session-report")
     async def api_session_report(
         market: Literal["nse", "crypto", "bse"] = "nse", on: str | None = None
