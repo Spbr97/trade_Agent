@@ -18,6 +18,7 @@ from tradedesk.intraday_contract_race import (
     _expected_index,
     _fetch_with_invalid_code_isolation,
     _frame_payload,
+    _load_path_record,
     _matched_random_control,
     _same_timestamp_grid,
     load_intraday_contract_status,
@@ -81,6 +82,62 @@ def test_expected_grid_normalises_fixed_offset_manifest_times_to_ist() -> None:
     assert expected.tz == IST
     assert actual.freq is None
     assert _same_timestamp_grid(actual, expected)
+
+
+def test_crypto_path_uses_derived_m15_and_audits_observed_disagreement(
+    tmp_path: Path,
+) -> None:
+    start = pd.Timestamp("2026-07-24 05:30", tz=IST)
+    end = start + pd.Timedelta(minutes=60)
+    m1 = _minute_frame(start, 60)
+    m5 = _aggregate_frame(m1, 5, start=start.to_pydatetime())
+    observed_m15 = _aggregate_frame(m1, 15, start=start.to_pydatetime())
+    observed_m15.iloc[0, observed_m15.columns.get_loc("open")] += 0.05
+
+    def candles(interval: Interval, frame: pd.DataFrame) -> list[Candle]:
+        return [
+            Candle(
+                scrip_code="CDX_TESTINR",
+                interval=interval,
+                ts=timestamp.to_pydatetime(),
+                open=float(bar["open"]),
+                high=float(bar["high"]),
+                low=float(bar["low"]),
+                close=float(bar["close"]),
+                volume=int(bar["volume"]),
+            )
+            for timestamp, bar in frame.iterrows()
+        ]
+
+    db = tmp_path / "crypto.duckdb"
+    with CandleStore(db) as store:
+        store.upsert_candles(candles(Interval.M1, m1))
+        store.upsert_candles(candles(Interval.M5, m5))
+        store.upsert_candles(candles(Interval.M15, observed_m15))
+        record = _load_path_record(
+            store,
+            {
+                "market": "crypto",
+                "block": "validation",
+                "session": "2026-07-23",
+                "scrip_code": "CDX_TESTINR",
+                "symbol": "TESTINR",
+                "roles": ["ranker_top_1"],
+                "decision_close": 100.0,
+                "atr_14_pct": 0.02,
+                "ranker_score": 0.75,
+                "return_20_rank": 1.0,
+                "window_start": start.isoformat(),
+                "window_end": end.isoformat(),
+                "window_status": "sealed",
+            },
+        )
+
+    assert record["path_status"] == "valid"
+    assert record["m15_source"] == "derived_from_observed_m1"
+    assert record["observed_m15_audit"]["status"] == "feed_disagreement"
+    assert record["observed_m15_audit"]["mismatch_bars_by_field"]["open"] == 1
+    assert record["m15"][0][1] == pytest.approx(float(m1.iloc[0]["open"]))
 
 
 def test_manifest_window_binding_normalises_duckdb_timestamp_to_date(tmp_path: Path) -> None:

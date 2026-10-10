@@ -47,6 +47,10 @@ PATH_BUNDLE_VERSION = "intraday-path-bundle-v1"
 MODEL_VERSION = "intraday-contract-ranker-v1"
 REGISTRATION_VERSION = "intraday-contract-registration-v1"
 PROTOCOL_PATH = Path("docs/self-learning-m17-intraday-contract-protocol.md")
+PROTOCOL_AMENDMENT_PATHS = (
+    Path("docs/self-learning-m17-intraday-contract-amendment-1.md"),
+    Path("docs/self-learning-m17-intraday-contract-amendment-2.md"),
+)
 DEFAULT_OUTPUT_ROOT = Path("data/m14_m18/intraday_contract_race")
 
 SESSION_COUNT = 180
@@ -90,6 +94,15 @@ def _protocol_sha256() -> str:
     if not PROTOCOL_PATH.exists():
         raise FileNotFoundError(f"frozen M17 protocol missing: {PROTOCOL_PATH}")
     return hashlib.sha256(PROTOCOL_PATH.read_bytes()).hexdigest()
+
+
+def _protocol_amendment_bindings() -> list[dict[str, str]]:
+    bindings: list[dict[str, str]] = []
+    for path in PROTOCOL_AMENDMENT_PATHS:
+        if not path.exists():
+            raise FileNotFoundError(f"M17 protocol amendment missing: {path}")
+        bindings.append({"path": str(path), "sha256": _hash_file(path)})
+    return bindings
 
 
 def _hash_file(path: Path) -> str:
@@ -935,31 +948,12 @@ def validate_intraday_path(
     """Require an exact M1 grid and lossless M5/M15 agreement."""
 
     frames = {1: m1, 5: m5, 15: m15}
-    required_columns = ["open", "high", "low", "close", "volume"]
     for minutes, frame in frames.items():
-        if list(frame.columns) != required_columns:
-            return False, f"m{minutes}_columns_mismatch"
-        if not frame.index.is_monotonic_increasing or frame.index.has_duplicates:
-            return False, f"m{minutes}_unordered_or_duplicate"
-        expected = _expected_index(start, end, minutes)
-        if not _same_timestamp_grid(frame.index, expected):
-            return False, f"m{minutes}_timestamp_grid_mismatch"
-        numeric = frame[required_columns].to_numpy(dtype=float)
-        if not np.isfinite(numeric).all():
-            return False, f"m{minutes}_nonfinite_value"
-        if (
-            (frame["open"] <= 0).any()
-            or (frame["high"] <= 0).any()
-            or (frame["low"] <= 0).any()
-            or (frame["close"] <= 0).any()
-            or (frame["volume"] < 0).any()
-        ):
-            return False, f"m{minutes}_invalid_value"
-        if (
-            (frame["high"] < frame[["open", "close", "low"]].max(axis=1)).any()
-            or (frame["low"] > frame[["open", "close", "high"]].min(axis=1)).any()
-        ):
-            return False, f"m{minutes}_invalid_ohlc_geometry"
+        valid, detail = _validate_interval_frame(
+            frame, minutes=minutes, start=start, end=end
+        )
+        if not valid:
+            return valid, detail
 
     for minutes, observed in ((5, m5), (15, m15)):
         aggregated = _aggregate_frame(m1, minutes, start=start)
@@ -979,6 +973,66 @@ def validate_intraday_path(
         ):
             return False, f"m{minutes}_volume_aggregate_mismatch"
     return True, "complete_and_consistent"
+
+
+def _validate_interval_frame(
+    frame: pd.DataFrame, *, minutes: int, start: datetime, end: datetime
+) -> tuple[bool, str]:
+    required_columns = ["open", "high", "low", "close", "volume"]
+    if list(frame.columns) != required_columns:
+        return False, f"m{minutes}_columns_mismatch"
+    if not frame.index.is_monotonic_increasing or frame.index.has_duplicates:
+        return False, f"m{minutes}_unordered_or_duplicate"
+    expected = _expected_index(start, end, minutes)
+    if not _same_timestamp_grid(frame.index, expected):
+        return False, f"m{minutes}_timestamp_grid_mismatch"
+    numeric = frame[required_columns].to_numpy(dtype=float)
+    if not np.isfinite(numeric).all():
+        return False, f"m{minutes}_nonfinite_value"
+    if (
+        (frame["open"] <= 0).any()
+        or (frame["high"] <= 0).any()
+        or (frame["low"] <= 0).any()
+        or (frame["close"] <= 0).any()
+        or (frame["volume"] < 0).any()
+    ):
+        return False, f"m{minutes}_invalid_value"
+    if (
+        (frame["high"] < frame[["open", "close", "low"]].max(axis=1)).any()
+        or (frame["low"] > frame[["open", "close", "high"]].min(axis=1)).any()
+    ):
+        return False, f"m{minutes}_invalid_ohlc_geometry"
+    return True, "complete_grid_and_geometry"
+
+
+def _interval_disagreement_audit(
+    derived: pd.DataFrame, observed: pd.DataFrame
+) -> dict[str, Any]:
+    mismatch_counts: dict[str, int] = {}
+    for column in ("open", "high", "low", "close"):
+        mismatch_counts[column] = int(
+            np.sum(
+                ~np.isclose(
+                    derived[column].to_numpy(dtype=float),
+                    observed[column].to_numpy(dtype=float),
+                    rtol=1e-8,
+                    atol=1e-8,
+                )
+            )
+        )
+    mismatch_counts["volume"] = int(
+        np.sum(
+            derived["volume"].to_numpy(dtype=np.int64)
+            != observed["volume"].to_numpy(dtype=np.int64)
+        )
+    )
+    return {
+        "status": (
+            "agree" if not any(mismatch_counts.values()) else "feed_disagreement"
+        ),
+        "bars": len(observed),
+        "mismatch_bars_by_field": mismatch_counts,
+    }
 
 
 def _load_path_record(store: CandleStore, row: Mapping[str, Any]) -> dict[str, Any]:
@@ -1010,12 +1064,42 @@ def _load_path_record(store: CandleStore, row: Mapping[str, Any]) -> dict[str, A
     end = datetime.fromisoformat(str(row["window_end"]))
     m1 = store.load(row["scrip_code"], Interval.M1, start=start, end=end)
     m5 = store.load(row["scrip_code"], Interval.M5, start=start, end=end)
-    m15 = store.load(row["scrip_code"], Interval.M15, start=start, end=end)
+    observed_m15 = store.load(
+        row["scrip_code"], Interval.M15, start=start, end=end
+    )
+    m15 = observed_m15
+    m15_source = "observed_api"
+    observed_m15_audit: dict[str, Any] | None = None
+    if row["market"] == "crypto":
+        observed_valid, observed_detail = _validate_interval_frame(
+            observed_m15, minutes=15, start=start, end=end
+        )
+        m15 = _aggregate_frame(m1, 15, start=start)
+        m15_source = "derived_from_observed_m1"
+        observed_m15_audit = {
+            "source": "observed_api_auxiliary_only",
+            "frame_status": observed_detail,
+            **(
+                _interval_disagreement_audit(m15, observed_m15)
+                if observed_valid and len(m15) == len(observed_m15)
+                else {
+                    "status": "invalid_or_unavailable",
+                    "bars": len(observed_m15),
+                    "mismatch_bars_by_field": None,
+                }
+            ),
+        }
     valid, detail = validate_intraday_path(m1, m5, m15, start=start, end=end)
+    if row["market"] == "crypto" and observed_m15_audit is not None:
+        if observed_m15_audit["status"] == "invalid_or_unavailable":
+            valid = False
+            detail = f"observed_{observed_m15_audit['frame_status']}"
     record = {
         **base,
         "path_status": "valid" if valid else "invalid_or_unavailable",
         "path_detail": detail,
+        "m15_source": m15_source,
+        "observed_m15_audit": observed_m15_audit,
         "m1": _frame_payload(m1),
         "m5": _frame_payload(m5),
         "m15": _frame_payload(m15),
@@ -1411,6 +1495,8 @@ def _validate_report(report: Mapping[str, Any]) -> None:
         raise ValueError("M17 cannot authorize live use")
     if report.get("baseline_accuracy_improved") is not False:
         raise ValueError("M17 historical evidence cannot improve the baseline")
+    if report.get("protocol_amendments") != _protocol_amendment_bindings():
+        raise ValueError("M17 protocol amendment binding mismatch")
     supplied = report.get("artifact_sha256")
     body = dict(report)
     body.pop("artifact_sha256", None)
@@ -1459,6 +1545,7 @@ def _registration(
             "market": market,
             "experiment_id": manifest["experiment_id"],
             "protocol_sha256": manifest["protocol_sha256"],
+            "protocol_amendments": _protocol_amendment_bindings(),
             "source_sha256": manifest["source"]["sha256"],
             "features": FEATURE_COLUMNS,
             "contract": dict(winner),
@@ -1472,6 +1559,7 @@ def _registration(
         "registered_at": registered_at.isoformat(),
         "starts_strictly_after": manifest["source"]["latest_closed_session"],
         "protocol_sha256": manifest["protocol_sha256"],
+        "protocol_amendments": _protocol_amendment_bindings(),
         "manifest_sha256": manifest["artifact_sha256"],
         "model_path": str(model_path),
         "model_sha256": model_sha,
@@ -1534,6 +1622,7 @@ def run_intraday_contract_race(
             "generated_at": (observed_at or datetime.now(IST)).isoformat(),
             "status": "acquisition_incomplete",
             "terminal": False,
+            "protocol_amendments": _protocol_amendment_bindings(),
             "readiness": readiness,
             "minimum_valid_paths_per_block": MIN_PATHS,
             "authority": "research_only",
@@ -1707,6 +1796,7 @@ def run_intraday_contract_race(
         "status": status,
         "terminal": True,
         "evidence_class": "consumed_historical_development",
+        "protocol_amendments": _protocol_amendment_bindings(),
         "manifest": {
             "path": str(market_root / "manifest.json"),
             "sha256": manifest["artifact_sha256"],
@@ -1838,6 +1928,8 @@ def load_intraday_contract_status(
             supplied = body.pop("artifact_sha256", None)
             if supplied != canonical_sha256(body):
                 raise ValueError("M17 readiness hash mismatch")
+            if readiness.get("protocol_amendments") != _protocol_amendment_bindings():
+                raise ValueError("M17 readiness amendment binding mismatch")
             base["status"] = readiness["status"]
             base["development"] = {
                 "status": "waiting_for_paths",
