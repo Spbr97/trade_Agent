@@ -906,6 +906,23 @@
     <div class="muted" id="intraday-contract-detail"></div>
   </section>
   <section>
+    <h2>Selection dataset readiness <span class="info-ic" title="M18-A: replays one fixed after-cost contract on the exact sealed M17 candidates and joins only causal decision-time features. This checks whether each market has enough positive and negative examples for later selector development; it does not train or promote a model.">ⓘ</span></h2>
+    <div class="cards" style="margin-bottom:10px;">
+      <div class="card"><div class="label">M18-A state</div><div class="value" id="selection-readiness-status">not started</div></div>
+      <div class="card"><div class="label">Dataset rows</div><div class="value" id="selection-readiness-rows">0</div></div>
+      <div class="card"><div class="label">Readiness gates</div><div class="value" id="selection-readiness-gates">0/18</div></div>
+      <div class="card"><div class="label">Development train</div><div class="value" id="selection-readiness-train">not available</div></div>
+      <div class="card"><div class="label">Calibration</div><div class="value" id="selection-readiness-calibration">not available</div></div>
+      <div class="card"><div class="label">Internal diagnostic</div><div class="value" id="selection-readiness-diagnostic">not available</div></div>
+      <div class="card"><div class="label">Model trained</div><div class="value neg" id="selection-readiness-trained">NO</div></div>
+      <div class="card"><div class="label">Prospective observer</div><div class="value neg" id="selection-readiness-prospective">NOT REGISTERED</div></div>
+      <div class="card"><div class="label">Baseline improved</div><div class="value neg" id="selection-readiness-improved">NO</div></div>
+      <div class="card"><div class="label">Live authority</div><div class="value neg" id="selection-readiness-authority">NONE</div></div>
+    </div>
+    <div class="muted" id="selection-readiness-detail"></div>
+    <table id="selection-readiness-block-table" style="margin-top:10px;"></table>
+  </section>
+  <section>
     <h2>EOD self-learning <span class="info-ic" title="retrain on this market's real forward evidence only, never the old backtest window. One row per run. Cannot alert - only ever flags Review if it clears the same evidence bar as everything else.">ⓘ</span></h2>
     <div class="cards" style="margin-bottom:10px;">
       <div class="card"><div class="label">Workflow state</div><div class="value" id="learning-workflow-state">-</div></div>
@@ -2087,7 +2104,7 @@ $('research-market-select').addEventListener('change', loadResearch);
 // digging into another tab first) - reads the same /api/eod-learning endpoint.
 async function loadLearning() {
   const market = $('learning-market-select').value;
-  const [r, statusResponse, challengerResponse, timingResponse, comparisonResponse, leaderResponse, separabilityResponse, executionAlignedResponse, intradayContractResponse] = await Promise.all([
+  const [r, statusResponse, challengerResponse, timingResponse, comparisonResponse, leaderResponse, separabilityResponse, executionAlignedResponse, intradayContractResponse, selectionReadinessResponse] = await Promise.all([
     fetch(`/api/eod-learning?market=${market}`),
     fetch(`/api/self-learning/status?market=${market}`),
     fetch(`/api/self-learning/challenger?market=${market}`),
@@ -2097,6 +2114,7 @@ async function loadLearning() {
     fetch(`/api/self-learning/leader-separability?market=${market}`).catch(() => null),
     fetch(`/api/self-learning/execution-aligned?market=${market}`).catch(() => null),
     fetch(`/api/self-learning/intraday-contract?market=${market}`).catch(() => null),
+    fetch(`/api/self-learning/selection-readiness?market=${market}`).catch(() => null),
   ]);
   renderLearningTable(r.ok ? await r.json() : []);
   const status = statusResponse.ok ? await statusResponse.json() : {};
@@ -2184,6 +2202,10 @@ async function loadLearning() {
     ? await intradayContractResponse.json()
     : {status: 'unavailable', development: {}, prospective: {status: 'unavailable'}, detail: 'M17 evidence could not be loaded — unavailable is not a pass.'};
   renderIntradayContract(intradayContract);
+  const selectionReadiness = selectionReadinessResponse && selectionReadinessResponse.ok
+    ? await selectionReadinessResponse.json()
+    : {status: 'unavailable', blocks: {}, detail: 'M18-A evidence could not be loaded — unavailable is not a pass.'};
+  renderSelectionReadiness(selectionReadiness);
   $('learning-workflow-blockers').textContent = (status.blockers || []).join(' · ') || 'challenger dataset threshold reached; active model remains frozen';
 }
 $('learning-market-select').addEventListener('change', loadLearning);
@@ -2372,6 +2394,45 @@ function renderIntradayContract(report) {
   $('intraday-contract-authority').textContent = 'NONE — RESEARCH ONLY';
   $('intraday-contract-authority').className = 'value neg';
   $('intraday-contract-detail').textContent = `${report.detail || 'No valid M17 evidence exists — unavailable is not a pass.'} Exact M1 entry/stop/target order, M5/M15 consistency and after-cost net R are required. Active model changed: NO. Baseline improved: NO.`;
+}
+function renderSelectionReadiness(report) {
+  const status = String(report.status || 'not_started');
+  const ready = status === 'ready_for_development';
+  const blocks = report.blocks || {};
+  const dataset = report.dataset || {};
+  const names = [
+    ['development_train', 'Development train'],
+    ['calibration', 'Calibration'],
+    ['internal_diagnostic', 'Internal diagnostic'],
+  ];
+  const blockText = block => {
+    const value = blocks[block] || {};
+    if (value.candidate_rows == null) return 'not available';
+    return `${value.model_eligible_rows || 0}/${value.candidate_rows} rows · +${value.positive_labels || 0}/-${value.negative_labels || 0}`;
+  };
+
+  $('selection-readiness-status').textContent = status.replaceAll('_', ' ');
+  $('selection-readiness-status').className = `value ${ready ? 'pos' : (status === 'manifest_sealed' ? 'planned' : 'neg')}`;
+  $('selection-readiness-rows').textContent = dataset.rows != null ? dataset.rows : '0';
+  $('selection-readiness-gates').textContent = `${report.gates_passed || 0}/${report.gates_total || 18}`;
+  $('selection-readiness-train').textContent = blockText('development_train');
+  $('selection-readiness-calibration').textContent = blockText('calibration');
+  $('selection-readiness-diagnostic').textContent = blockText('internal_diagnostic');
+  $('selection-readiness-trained').textContent = 'NO';
+  $('selection-readiness-prospective').textContent = report.prospective_observer_registered ? 'REGISTERED' : 'NOT REGISTERED';
+  $('selection-readiness-improved').textContent = 'NO';
+  $('selection-readiness-authority').textContent = 'NONE — RESEARCH ONLY';
+  const blockers = Array.isArray(report.blockers) && report.blockers.length
+    ? ` Blockers: ${report.blockers.join(' · ')}.` : '';
+  $('selection-readiness-detail').textContent = `${report.detail || 'No valid M18-A evidence exists — unavailable is not a pass.'}${blockers} Fixed contract: next open / +0.75R after costs. Model trained: NO. Active model changed: NO. Baseline improved: NO.`;
+  $('selection-readiness-block-table').innerHTML = [
+    '<tr><th>Block</th><th>Coverage</th><th>Resolved sessions</th><th>Eligible rows</th><th>Labels</th></tr>',
+    ...names.map(([key, label]) => {
+      const value = blocks[key] || {};
+      const coverage = value.valid_resolved_coverage != null ? pct(value.valid_resolved_coverage) : 'not available';
+      return `<tr><td>${esc(label)}</td><td>${coverage}</td><td>${value.resolved_sessions ?? 0}</td><td>${value.model_eligible_rows ?? 0}</td><td>+${value.positive_labels ?? 0} / -${value.negative_labels ?? 0}</td></tr>`;
+    }),
+  ].join('');
 }
 function renderPerformanceComparison(report) {
   const comparisons = Array.isArray(report.filter_comparisons) ? report.filter_comparisons : [];
