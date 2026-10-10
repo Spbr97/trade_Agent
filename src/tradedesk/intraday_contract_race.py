@@ -1954,6 +1954,25 @@ def load_intraday_contract_status(
                 raise ValueError("M17 result path-bundle binding mismatch")
             gates = report["development_gates"]
             selected = report.get("selected_contract")
+            validation_contracts = report.get("validation_contracts") or {}
+            best_validation: dict[str, Any] | None = None
+            if validation_contracts:
+                best_contract_id, best_card = max(
+                    validation_contracts.items(),
+                    key=lambda item: (
+                        float(item[1]["metrics"].get("strict_accuracy") or -1.0),
+                        float(item[1]["metrics"].get("wilson_95_lower") or -1.0),
+                        float(item[1]["metrics"].get("mean_net_r") or -math.inf),
+                        int(item[1]["metrics"].get("filled") or 0),
+                    ),
+                )
+                best_validation = {
+                    "contract_id": best_contract_id,
+                    "entry_rule": best_card["entry_rule"],
+                    "target_r": best_card["target_r"],
+                    "eligible": best_card["eligible"],
+                    "metrics": best_card["metrics"],
+                }
             diagnostic_metrics = (
                 (report.get("diagnostic") or {}).get("metrics") or {}
             )
@@ -1971,6 +1990,7 @@ def load_intraday_contract_status(
                             if selected
                             else None
                         ),
+                        "best_validation_trial": best_validation,
                         "diagnostic_metrics": diagnostic_metrics,
                         "readiness": report["path_bundle"]["readiness"],
                         "gates_passed": sum(bool(value) for value in gates.values()),

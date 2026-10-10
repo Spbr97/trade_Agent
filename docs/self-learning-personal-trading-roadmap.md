@@ -472,12 +472,31 @@ Implementation record:
 
 Next checkpoint:
 
-- [ ] M17 full-universe intraday path and execution-contract feasibility checkpoint.
-- [ ] Add time-ordered M1/M5/M15 paths so entry timing and stop/target order are observed,
+- [x] M17 full-universe intraday path and execution-contract feasibility checkpoint.
+- [x] Add time-ordered M1/M5/M15 paths so entry timing and stop/target order are observed,
   not inferred from daily highs and lows.
-- [ ] Preregister a finite market-specific entry/exit contract race before opening its
+- [x] Preregister a finite market-specific entry/exit contract race before opening its
   results.
-- [ ] Freeze only a positive-after-cost contract and require new prospective evidence.
+- [x] Freeze only a positive-after-cost contract and require new prospective evidence;
+  no contract qualified, so nothing was frozen or registered.
+
+M17 result: NSE and BSE failed the 32/36 primary-path readiness requirement and their
+outcome races were never opened. Crypto reached 36/36 valid paths in both blocks, but no
+contract combined the required volume with positive after-cost mean R. The highest
+displayed accuracy was a non-eligible 2/3 pullback result with 91.67% no-calls; complete
+36-fill contracts achieved only 30.56–33.33% accuracy and negative mean net R. The
+development run was rejected, the diagnostic block stayed unopened and baseline/live
+authority remain unchanged.
+
+Implementation record:
+[Milestone 17 checkpoint — intraday execution contracts](self-learning-m17-intraday-contract.md)
+
+Next checkpoint:
+
+- [ ] M18 selection-first intraday precision experiment using causal pre-entry features
+  and after-cost M1 labels, without reopening M17 exit geometry.
+- [ ] Freeze a new chronological development/diagnostic boundary and matched controls.
+- [ ] Require useful call volume, positive net R and fresh prospective qualification.
 
 ## Implementation order
 
@@ -497,7 +516,9 @@ Next checkpoint:
 14. [x] Full-market missed-leader coverage audit.
 15. [x] Preregistered pre-move separability and executable leader-selection test.
 16. [x] Execution-aligned two-stage selector; development rejected, so no cohort activated.
-17. [ ] Intraday path acquisition and preregistered execution-contract feasibility race.
+17. [x] Intraday path acquisition and preregistered execution-contract feasibility race;
+    crypto development rejected and equity path coverage unavailable.
+18. [ ] Selection-first intraday precision experiment with a new frozen evidence boundary.
 
 An implementation checkbox means the machinery exists and is tested. It does not mean its
 empirical gate passed; the unchecked final evidence gates above remain authoritative.

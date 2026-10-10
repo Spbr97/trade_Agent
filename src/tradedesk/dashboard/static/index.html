@@ -889,6 +889,10 @@
       <div class="card"><div class="label">Acquisition</div><div class="value" id="intraday-contract-acquisition">not started</div></div>
       <div class="card"><div class="label">Validation paths</div><div class="value" id="intraday-contract-validation-paths">0/36</div></div>
       <div class="card"><div class="label">Diagnostic paths</div><div class="value" id="intraday-contract-diagnostic-paths">0/36</div></div>
+      <div class="card"><div class="label">Best validation accuracy trial</div><div class="value" id="intraday-contract-best-validation">not available</div></div>
+      <div class="card"><div class="label">Validation accuracy</div><div class="value" id="intraday-contract-validation-accuracy">not available</div></div>
+      <div class="card"><div class="label">Validation fills / no-calls</div><div class="value" id="intraday-contract-validation-volume">not available</div></div>
+      <div class="card"><div class="label">Validation mean net R</div><div class="value" id="intraday-contract-validation-net-r">not available</div></div>
       <div class="card"><div class="label">Selected contract</div><div class="value" id="intraday-contract-selected">not available</div></div>
       <div class="card"><div class="label">Diagnostic accuracy</div><div class="value" id="intraday-contract-accuracy">not available</div></div>
       <div class="card"><div class="label">95% accuracy lower bound</div><div class="value" id="intraday-contract-wilson">not available</div></div>
@@ -2323,6 +2327,8 @@ function renderIntradayContract(report) {
   const readiness = development.readiness || {};
   const validationReady = readiness.validation || {};
   const diagnosticReady = readiness.diagnostic || {};
+  const bestValidation = development.best_validation_trial || null;
+  const validationMetrics = bestValidation && bestValidation.metrics || {};
   const selected = development.selected_contract || null;
   const metrics = development.diagnostic_metrics || {};
   const prospective = report.prospective || {};
@@ -2336,6 +2342,17 @@ function renderIntradayContract(report) {
   $('intraday-contract-acquisition').textContent = String(acquisition.status || 'not started').replaceAll('_', ' ');
   $('intraday-contract-validation-paths').textContent = `${validationReady.valid_paths || 0}/${validationReady.selections || 36}`;
   $('intraday-contract-diagnostic-paths').textContent = `${diagnosticReady.valid_paths || 0}/${diagnosticReady.selections || 36}`;
+  $('intraday-contract-best-validation').textContent = bestValidation
+    ? `${String(bestValidation.entry_rule).replaceAll('_', ' ')} / ${fmt(bestValidation.target_r, 2)}R — ${bestValidation.eligible ? 'eligible' : 'rejected'}`
+    : 'not available';
+  $('intraday-contract-validation-accuracy').textContent = validationMetrics.strict_accuracy != null
+    ? `${pct(validationMetrics.strict_accuracy)} (${validationMetrics.strict_successes}/${validationMetrics.filled})`
+    : 'not available';
+  $('intraday-contract-validation-volume').textContent = validationMetrics.filled != null
+    ? `${validationMetrics.filled} fills / ${validationMetrics.never_triggered || 0} no-calls`
+    : 'not available';
+  $('intraday-contract-validation-net-r').textContent = validationMetrics.mean_net_r != null
+    ? `${fmt(validationMetrics.mean_net_r, 3)}R` : 'not available';
   $('intraday-contract-selected').textContent = selected
     ? `${String(selected.entry_rule).replaceAll('_', ' ')} / ${fmt(selected.target_r, 2)}R`
     : 'not available';

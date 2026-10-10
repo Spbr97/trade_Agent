@@ -32,6 +32,10 @@ def test_dashboard_exposes_fail_closed_intraday_contract_panel(
     assert "/api/self-learning/intraday-contract?market=${market}" in html
     assert 'id="intraday-contract-validation-paths"' in html
     assert 'id="intraday-contract-diagnostic-paths"' in html
+    assert 'id="intraday-contract-best-validation"' in html
+    assert 'id="intraday-contract-validation-accuracy"' in html
+    assert 'id="intraday-contract-validation-volume"' in html
+    assert 'id="intraday-contract-validation-net-r"' in html
     assert 'id="intraday-contract-accuracy"' in html
     assert "Active model changed: NO. Baseline improved: NO." in html
 
