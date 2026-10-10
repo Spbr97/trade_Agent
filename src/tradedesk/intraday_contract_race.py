@@ -652,7 +652,9 @@ def _complete_codes(
         return {
             code
             for code in codes
-            if store.load(code, interval, start=start, end=end).index.equals(expected)
+            if _same_timestamp_grid(
+                store.load(code, interval, start=start, end=end).index, expected
+            )
         }
 
 
@@ -777,7 +779,7 @@ async def acquire_manifest_paths(
                 with CandleStore(source_db) as store:
                     for code in to_derive:
                         frame = store.load(code, Interval.M1, start=start, end=end)
-                        if not frame.index.equals(expected_m1):
+                        if not _same_timestamp_grid(frame.index, expected_m1):
                             missing_m1.append(code)
                             continue
                         aggregated = _aggregate_frame(frame, 5, start=start)
@@ -876,6 +878,14 @@ def _expected_index(start: datetime, end: datetime, minutes: int) -> pd.Datetime
     )
 
 
+def _same_timestamp_grid(
+    actual: pd.DatetimeIndex, expected: pd.DatetimeIndex
+) -> bool:
+    """Compare exact instants without treating pandas frequency metadata as data."""
+
+    return len(actual) == len(expected) and np.array_equal(actual.asi8, expected.asi8)
+
+
 def _frame_payload(frame: pd.DataFrame) -> list[list[Any]]:
     return [
         [
@@ -932,7 +942,7 @@ def validate_intraday_path(
         if not frame.index.is_monotonic_increasing or frame.index.has_duplicates:
             return False, f"m{minutes}_unordered_or_duplicate"
         expected = _expected_index(start, end, minutes)
-        if not frame.index.equals(expected):
+        if not _same_timestamp_grid(frame.index, expected):
             return False, f"m{minutes}_timestamp_grid_mismatch"
         numeric = frame[required_columns].to_numpy(dtype=float)
         if not np.isfinite(numeric).all():
@@ -953,7 +963,7 @@ def validate_intraday_path(
 
     for minutes, observed in ((5, m5), (15, m15)):
         aggregated = _aggregate_frame(m1, minutes, start=start)
-        if not aggregated.index.equals(observed.index):
+        if not _same_timestamp_grid(aggregated.index, observed.index):
             return False, f"m{minutes}_aggregate_index_mismatch"
         for column in ("open", "high", "low", "close"):
             if not np.allclose(
