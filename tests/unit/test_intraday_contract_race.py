@@ -17,6 +17,7 @@ from tradedesk.intraday_contract_race import (
     _contract_metrics,
     _fetch_with_invalid_code_isolation,
     _frame_payload,
+    _matched_random_control,
     load_intraday_contract_status,
     replay_contract,
     validate_intraday_path,
@@ -207,6 +208,50 @@ def test_invalid_paths_do_not_enter_performance_denominator() -> None:
     assert metrics["invalid_paths"] == 1
     assert metrics["filled"] == 1
     assert metrics["strict_accuracy"] == 1.0
+
+
+def test_matched_random_uses_exact_smaller_sealed_session_sets() -> None:
+    m1 = _frame_payload(
+        _minute_frame(pd.Timestamp("2026-10-09 09:15", tz=IST), 2)
+    )
+    paths = []
+    for session in ("2026-10-01", "2026-10-02"):
+        paths.append(
+            {
+                "session": session,
+                "scrip_code": f"{session}-primary",
+                "roles": ["ranker_top_1"],
+                "path_status": "valid",
+                "market": "nse",
+                "decision_close": 100.0,
+                "atr_14_pct": 0.02,
+                "m1": m1,
+            }
+        )
+        for index in range(3):
+            paths.append(
+                {
+                    "session": session,
+                    "scrip_code": f"{session}-random-{index}",
+                    "roles": [f"random_{index + 1:02d}"],
+                    "path_status": "valid",
+                    "market": "nse",
+                    "decision_close": 100.0,
+                    "atr_14_pct": 0.02,
+                    "m1": m1,
+                }
+            )
+
+    result = _matched_random_control(
+        paths,
+        entry_rule="next_open",
+        target_r=0.50,
+        observed={"strict_accuracy": 0.0, "mean_net_r": 0.0},
+        seed=1701,
+    )
+
+    assert result["status"] == "available"
+    assert result["sessions"] == 2
 
 
 def test_status_fails_closed_without_manifest(tmp_path: Path) -> None:

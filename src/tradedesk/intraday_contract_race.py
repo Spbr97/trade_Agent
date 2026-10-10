@@ -1272,6 +1272,11 @@ def _matched_random_control(
     seed: int,
 ) -> dict[str, Any]:
     scored = _score_random_paths(paths, entry_rule=entry_rule, target_r=target_r)
+    expected_counts: dict[str, int] = {}
+    for path in paths:
+        if any(str(role).startswith("random_") for role in path.get("roles", [])):
+            session = str(path["session"])
+            expected_counts[session] = expected_counts.get(session, 0) + 1
     groups = {
         str(session): group.to_dict(orient="records")
         for session, group in pd.DataFrame(scored).groupby("session")
@@ -1287,7 +1292,10 @@ def _matched_random_control(
         }
     for session in expected_sessions:
         candidates = groups.get(session, [])
-        if len(candidates) != RANDOM_CANDIDATES_PER_SESSION or any(
+        expected_count = expected_counts.get(session, 0)
+        if expected_count < 1 or expected_count > RANDOM_CANDIDATES_PER_SESSION or len(
+            candidates
+        ) != expected_count or any(
             row["path_status"] != "valid" for row in candidates
         ):
             return {
@@ -1297,6 +1305,7 @@ def _matched_random_control(
                     "unavailable is not a pass."
                 ),
                 "session": session,
+                "expected_candidate_count": expected_count,
                 "candidate_count": len(candidates),
                 "valid_paths": sum(row["path_status"] == "valid" for row in candidates),
             }
