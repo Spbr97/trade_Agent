@@ -51,9 +51,8 @@ bar. For each validation and diagnostic decision session it contains:
 
 - the ranker's top three instruments, with top one the primary policy;
 - the `return_20_rank` momentum top one;
-- up to twenty same-session matched-random instruments sampled without replacement with
-  seed 1701; when the complete eligible universe has fewer than twenty instruments, every
-  eligible instrument is sealed and the exact smaller count is required; and
+- twenty same-session matched-random instruments sampled without replacement with seed
+  1701; and
 - the exact next market-session start/end derived from the stored daily calendar.
 
 The manifest is generated from the complete causal liquid universe before path
@@ -144,9 +143,8 @@ Among eligible contracts, select exactly one by:
 Controls for the selected contract:
 
 - identical contract on momentum top one;
-- 2,000 deterministic matched-random top-one repetitions using the exact sealed random
-  candidate set in every identical session (twenty when available, otherwise every
-  eligible instrument); and
+- 2,000 deterministic matched-random top-one repetitions using the twenty sealed random
+  candidates in every identical session; and
 - the same ranker's next-open `+0.75R` contract as the direct M15-style execution anchor.
 
 ## Historical registration gate
