@@ -1,8 +1,8 @@
 """Forward-only pre-takeoff watch discovery.
 
-The daily full-universe opportunity ranker supplies a bounded shortlist. Completed M15
-bars then describe whether each instrument is compressing below resistance before a move.
-The output is an anticipatory research watch, never a trade or promotion shortcut.
+The daily opportunity ranker supplies the causal universe and completed M15 bars describe
+whether each instrument is compressing below resistance before a move. The output is an
+anticipatory research watch, never a trade or promotion shortcut.
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ import json
 import math
 from collections import Counter
 from collections.abc import Mapping, Sequence
-from datetime import datetime, timedelta
+from datetime import datetime, time, timedelta
 from pathlib import Path
 from typing import Any, Literal
 
@@ -20,6 +20,7 @@ import numpy as np
 import pandas as pd
 
 from tradedesk.broker.indstocks.models import IST, Candle, Interval
+from tradedesk.broker.indstocks.rest import IndstocksClient
 from tradedesk.intraday_contract_race import (
     DB_PATHS,
     RESEARCH_CAPITAL,
@@ -594,6 +595,7 @@ def _update_watch_plans(
     *,
     observed_at: datetime,
     output_root: Path,
+    allow_new_plans: bool = True,
 ) -> dict[str, Any]:
     market = str(report["market"])
     path = _plan_ledger(output_root, market)
@@ -634,7 +636,9 @@ def _update_watch_plans(
         for plan in latest.values()
         if plan["state"] in {"pending_trigger", "triggered"}
     }
-    for candidate in report.get("candidates", ()):
+    new_plans_registered = 0
+    registration_candidates = report.get("candidates", ()) if allow_new_plans else ()
+    for candidate in registration_candidates:
         if candidate.get("state") not in {"arming", "watch"}:
             continue
         code = str(candidate["scrip_code"])
@@ -681,6 +685,7 @@ def _update_watch_plans(
         }
         latest[plan_id] = _append_plan_event(path, plan)
         active_codes.add(code)
+        new_plans_registered += 1
 
     states = Counter(str(plan["state"]) for plan in latest.values())
     resolved = [
@@ -698,6 +703,8 @@ def _update_watch_plans(
         "strict_successes": successes,
         "strict_accuracy": successes / len(resolved) if resolved else None,
         "mean_net_r": float(np.mean(net_values)) if net_values else None,
+        "new_plan_registration_open": allow_new_plans,
+        "new_plans_registered": new_plans_registered,
         "plans": [
             {
                 "plan_id": plan["plan_id"],
@@ -717,6 +724,86 @@ def _update_watch_plans(
             )
         ][:20],
     }
+
+
+def _latest_completed_bar(
+    frames: Mapping[str, Sequence[Candle] | pd.DataFrame], observed_at: datetime
+) -> datetime | None:
+    latest: datetime | None = None
+    for source in frames.values():
+        frame = _frame(source, observed_at)
+        if frame.empty:
+            continue
+        closed_at = pd.Timestamp(frame.index[-1]).to_pydatetime() + timedelta(minutes=15)
+        if latest is None or closed_at > latest:
+            latest = closed_at
+    return latest
+
+
+def _equity_registration_open(
+    observed_at: datetime, latest_completed_bar: datetime | None
+) -> bool:
+    local = observed_at.astimezone(IST)
+    if local.weekday() >= 5 or not (time(9, 30) <= local.time() < time(15, 0)):
+        return False
+    if latest_completed_bar is None:
+        return False
+    return latest_completed_bar.astimezone(IST).date() == local.date()
+
+
+async def collect_equity_pre_takeoff_watch(
+    market: str,
+    *,
+    client: IndstocksClient,
+    db_path: Path | None = None,
+    output_root: Path = DEFAULT_OUTPUT_ROOT,
+    observed_at: datetime | None = None,
+) -> dict[str, Any]:
+    """Collect one full daily-liquid NSE/BSE universe using completed M15 bars."""
+
+    if market not in {"nse", "bse"}:
+        raise ValueError("equity pre-takeoff collection requires market nse or bse")
+    now = observed_at or datetime.now(IST)
+    ranked, source = _load_opportunity_shortlist(
+        market,
+        db_path=db_path or DB_PATHS[market],
+        observed_at=now,
+        limit=100_000,
+    )
+    codes = [str(value) for value in ranked["scrip_code"].tolist()]
+    candles = await client.candles_history(
+        Interval.M15,
+        codes,
+        start=now - timedelta(days=Interval.M15.max_window_days),
+        end=now,
+    )
+    latest_bar = _latest_completed_bar(candles, now)
+    registration_open = _equity_registration_open(now, latest_bar)
+    report = build_pre_takeoff_watch(market, ranked, candles, observed_at=now)
+    report.update(
+        {
+            "source": source,
+            "universe_scope": "full_daily_liquid_eligible",
+            "active_pairs": len(ranked),
+            "daily_ranked_pairs": len(ranked),
+            "requested_pairs": len(codes),
+            "latest_completed_bar": latest_bar.isoformat() if latest_bar else None,
+            "new_plan_registration_open": registration_open,
+        }
+    )
+    report.pop("snapshot_sha256", None)
+    report["snapshot_sha256"] = canonical_sha256(report)
+    report["watch_plans"] = _update_watch_plans(
+        report,
+        candles,
+        observed_at=now,
+        output_root=output_root,
+        allow_new_plans=registration_open,
+    )
+    report.pop("snapshot_sha256", None)
+    report["snapshot_sha256"] = canonical_sha256(report)
+    _persist_watch(report, output_root)
+    return report
 
 
 async def collect_crypto_pre_takeoff_watch(

@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timedelta
 
 import numpy as np
 import pandas as pd
 
+import tradedesk.pre_takeoff_watch as pre_takeoff_watch
 from tradedesk.broker.indstocks.models import IST
 from tradedesk.pre_takeoff_watch import (
     _append_plan_event,
@@ -14,6 +16,7 @@ from tradedesk.pre_takeoff_watch import (
     _load_plan_events,
     _update_watch_plans,
     build_pre_takeoff_watch,
+    collect_equity_pre_takeoff_watch,
 )
 
 
@@ -321,3 +324,96 @@ def test_update_watch_plans_persists_a_hash_chained_immutable_plan(tmp_path) -> 
     assert len(events) == 1
     assert events[0]["trigger"] == report["candidates"][0]["trigger"]
     assert events[0]["stop"] == report["candidates"][0]["stop"]
+
+
+def _equity_shortlist() -> pd.DataFrame:
+    return pd.DataFrame(
+        [
+            {
+                "scrip_code": "NSE_1",
+                "symbol": "ONE",
+                "opportunity_rank": 1,
+                "opportunity_probability": 0.8,
+            },
+            {
+                "scrip_code": "NSE_2",
+                "symbol": "TWO",
+                "opportunity_rank": 2,
+                "opportunity_probability": 0.7,
+            },
+        ]
+    )
+
+
+class _FakeEquityClient:
+    def __init__(self, frame: pd.DataFrame) -> None:
+        self.frame = frame
+        self.requests: list[tuple[object, list[str], datetime, datetime]] = []
+
+    async def candles_history(self, interval, codes, start, end):
+        self.requests.append((interval, list(codes), start, end))
+        return {code: self.frame.copy() for code in codes}
+
+
+def test_equity_collector_scans_full_ranked_universe_and_arms_in_session(
+    tmp_path, monkeypatch
+) -> None:
+    frame = _compression_frame()
+    frame.index = pd.date_range("2026-10-09 00:00", periods=40, freq="15min", tz=IST)
+    observed_at = datetime(2026, 10, 9, 10, 1, tzinfo=IST)
+    shortlist = _equity_shortlist()
+    monkeypatch.setattr(
+        pre_takeoff_watch,
+        "_load_opportunity_shortlist",
+        lambda *args, **kwargs: (
+            shortlist,
+            {"full_universe_rows": len(shortlist), "shortlist_rows": len(shortlist)},
+        ),
+    )
+    client = _FakeEquityClient(frame)
+
+    report = asyncio.run(
+        collect_equity_pre_takeoff_watch(
+            "nse", client=client, output_root=tmp_path, observed_at=observed_at
+        )
+    )
+
+    assert report["universe_scope"] == "full_daily_liquid_eligible"
+    assert report["requested_pairs"] == 2
+    assert report["intraday_valid_rows"] == 2
+    assert report["new_plan_registration_open"] is True
+    assert report["watch_plans"]["new_plans_registered"] == 2
+    assert report["tradeable_calls"] == 0
+    assert client.requests[0][1] == ["NSE_1", "NSE_2"]
+    assert client.requests[0][3] - client.requests[0][2] == timedelta(days=7)
+
+
+def test_equity_collector_never_arms_retrospectively_when_market_is_closed(
+    tmp_path, monkeypatch
+) -> None:
+    frame = _compression_frame()
+    frame.index = pd.date_range("2026-10-10 00:00", periods=40, freq="15min", tz=IST)
+    observed_at = datetime(2026, 10, 10, 10, 1, tzinfo=IST)
+    shortlist = _equity_shortlist()
+    monkeypatch.setattr(
+        pre_takeoff_watch,
+        "_load_opportunity_shortlist",
+        lambda *args, **kwargs: (
+            shortlist,
+            {"full_universe_rows": len(shortlist), "shortlist_rows": len(shortlist)},
+        ),
+    )
+
+    report = asyncio.run(
+        collect_equity_pre_takeoff_watch(
+            "nse",
+            client=_FakeEquityClient(frame),
+            output_root=tmp_path,
+            observed_at=observed_at,
+        )
+    )
+
+    assert report["new_plan_registration_open"] is False
+    assert report["watch_plans"]["new_plans_registered"] == 0
+    assert report["watch_plans"]["total_plans"] == 0
+    assert not (tmp_path / "nse" / "plans.jsonl").exists()

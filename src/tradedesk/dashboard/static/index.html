@@ -942,7 +942,9 @@
     <div class="cards" style="margin-bottom:10px;">
       <div class="card"><div class="label">Watch state</div><div class="value" id="pre-takeoff-watch-status">not collected</div></div>
       <div class="card"><div class="label">Snapshot</div><div class="value" id="pre-takeoff-watch-snapshot">not available</div></div>
-      <div class="card"><div class="label">Active / M15 checked</div><div class="value" id="pre-takeoff-watch-coverage">0 / 0</div></div>
+      <div class="card"><div class="label">Eligible / requested</div><div class="value" id="pre-takeoff-watch-coverage">0 / 0</div></div>
+      <div class="card"><div class="label">M15 valid / invalid</div><div class="value" id="pre-takeoff-watch-m15-quality">0 / 0</div></div>
+      <div class="card"><div class="label">New-plan registration</div><div class="value" id="pre-takeoff-watch-registration">not available</div></div>
       <div class="card"><div class="label">Current watches</div><div class="value" id="pre-takeoff-watch-count">0</div></div>
       <div class="card"><div class="label">Tradeable now</div><div class="value neg" id="pre-takeoff-watch-tradeable">0</div></div>
       <div class="card"><div class="label">Active immutable plans</div><div class="value" id="pre-takeoff-watch-active">0</div></div>
@@ -2523,6 +2525,11 @@ function renderPreTakeoffWatch(report) {
   $('pre-takeoff-watch-status').className = `value ${watches.length ? 'planned' : 'neg'}`;
   $('pre-takeoff-watch-snapshot').textContent = report.observed_at || 'not available';
   $('pre-takeoff-watch-coverage').textContent = `${report.active_pairs ?? 0} / ${report.requested_pairs ?? report.shortlist_rows ?? 0}`;
+  $('pre-takeoff-watch-m15-quality').textContent = `${report.intraday_valid_rows ?? 0} / ${report.intraday_invalid_rows ?? 0}`;
+  const registrationOpen = report.new_plan_registration_open ?? plans.new_plan_registration_open;
+  $('pre-takeoff-watch-registration').textContent = registrationOpen == null
+    ? 'not available' : (registrationOpen ? 'OPEN' : 'CLOSED');
+  $('pre-takeoff-watch-registration').className = `value ${registrationOpen ? 'planned' : 'neg'}`;
   $('pre-takeoff-watch-count').textContent = report.watch_candidates ?? watches.length;
   $('pre-takeoff-watch-tradeable').textContent = report.tradeable_calls ?? 0;
   $('pre-takeoff-watch-active').textContent = plans.active_plans ?? 0;

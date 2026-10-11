@@ -40,4 +40,6 @@ def test_dashboard_exposes_fail_closed_pre_takeoff_evidence(
     assert "/api/self-learning/pre-takeoff-watch?market=${market}" in html
     assert 'id="pre-takeoff-selector-curve-table"' in html
     assert 'id="pre-takeoff-watch-table"' in html
+    assert 'id="pre-takeoff-watch-m15-quality"' in html
+    assert 'id="pre-takeoff-watch-registration"' in html
     assert "Only a later completed-bar trigger can create measured trade evidence." in html
