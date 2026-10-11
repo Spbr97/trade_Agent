@@ -2053,6 +2053,32 @@ def create_app(
         report = await asyncio.to_thread(load_selection_readiness_status, market)
         return JSONResponse(report)
 
+    @app.get("/api/self-learning/pre-takeoff-selector")
+    async def api_self_learning_pre_takeoff_selector(
+        market: str = "nse",
+    ) -> JSONResponse:
+        """Read the frozen M19 historical selector result; never train in HTTP."""
+
+        from tradedesk.pre_takeoff_selector import load_pre_takeoff_status
+
+        if market not in {"nse", "bse", "crypto"}:
+            return JSONResponse({"error": "invalid market"}, status_code=400)
+        report = await asyncio.to_thread(load_pre_takeoff_status, market)
+        return JSONResponse(report)
+
+    @app.get("/api/self-learning/pre-takeoff-watch")
+    async def api_self_learning_pre_takeoff_watch(
+        market: str = "nse",
+    ) -> JSONResponse:
+        """Read forward-only M19 watch/plan evidence; never collect in HTTP."""
+
+        from tradedesk.pre_takeoff_watch import load_pre_takeoff_watch
+
+        if market not in {"nse", "bse", "crypto"}:
+            return JSONResponse({"error": "invalid market"}, status_code=400)
+        report = await asyncio.to_thread(load_pre_takeoff_watch, market)
+        return JSONResponse(report)
+
     @app.get("/api/session-report")
     async def api_session_report(
         market: Literal["nse", "crypto", "bse"] = "nse", on: str | None = None
