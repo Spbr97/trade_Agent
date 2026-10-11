@@ -7,6 +7,7 @@ import pandas as pd
 
 from tradedesk.broker.indstocks.models import IST
 from tradedesk.pre_takeoff_watch import (
+    _append_plan_event,
     _candidate_state,
     _evaluate_plan,
     _intraday_features,
@@ -148,6 +149,35 @@ def test_stablecoin_is_never_armed_as_a_directional_crypto_watch() -> None:
     assert candidate["state"] == "observe"
     assert "non_directional_stablecoin" in candidate["blockers"]
     assert report["watch_candidates"] == 0
+
+
+def test_existing_pending_stablecoin_plan_is_invalidated_before_trigger(
+    tmp_path,
+) -> None:
+    frame = _compression_frame()
+    plan = _plan(frame)
+    plan["plan_id"] = "stablecoin-plan"
+    plan["scrip_code"] = "CDX_USDTINR"
+    plan["symbol"] = "USDTINR"
+    _append_plan_event(tmp_path / "crypto" / "plans.jsonl", plan)
+    observed_at = frame.index[-1].to_pydatetime() + timedelta(minutes=15)
+    report = build_pre_takeoff_watch(
+        "crypto",
+        _shortlist().assign(scrip_code="CDX_USDTINR", symbol="USDTINR"),
+        {"CDX_USDTINR": frame},
+        observed_at=observed_at,
+    )
+    summary = _update_watch_plans(
+        report,
+        {"CDX_USDTINR": frame},
+        observed_at=observed_at,
+        output_root=tmp_path,
+    )
+    assert summary["states"] == {"invalidated": 1}
+    events = _load_plan_events(tmp_path / "crypto" / "plans.jsonl")
+    assert events[-1]["resolution_reason"] == (
+        "non_directional_asset_excluded_before_trigger"
+    )
 
 
 def test_feature_snapshot_excludes_unclosed_bar() -> None:

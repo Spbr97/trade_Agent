@@ -602,7 +602,27 @@ def _update_watch_plans(
     frame_views = {code: _frame(value, observed_at) for code, value in frames.items()}
 
     for plan_id, plan in list(latest.items()):
-        frame = frame_views.get(str(plan["scrip_code"]))
+        code = str(plan["scrip_code"])
+        if (
+            market == "crypto"
+            and code in NON_DIRECTIONAL_CRYPTO_CODES
+            and plan["state"] == "pending_trigger"
+        ):
+            exclusion = dict(plan)
+            exclusion.update(
+                {
+                    "event": "plan_invalidated",
+                    "state": "invalidated",
+                    "resolution_reason": "non_directional_asset_excluded_before_trigger",
+                    "resolved_at": observed_at.isoformat(),
+                    "observed_at": observed_at.isoformat(),
+                }
+            )
+            exclusion.pop("event_sha256", None)
+            exclusion.pop("previous_sha256", None)
+            latest[plan_id] = _append_plan_event(path, exclusion)
+            continue
+        frame = frame_views.get(code)
         if frame is None or frame.empty:
             continue
         update = _evaluate_plan(plan, frame, observed_at=observed_at)
