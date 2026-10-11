@@ -642,3 +642,26 @@ first mature `research_qualified` or `rejected` result is terminal and hash-veri
 preventing optional stopping; see the
 [R1 checkpoint](accuracy-evidence-refresh-r1-checkpoint.md) and
 [R2 checkpoint](accuracy-collector-integrity-r2-checkpoint.md).
+
+## M19 pre-takeoff information-set checkpoint
+
+- [x] Freeze and execute one selection-first M19 experiment without opening an internal
+  diagnostic unless calibration has useful call volume and positive after-cost R.
+- [x] Reject NSE (4/9 = 44.44%, -0.244R) and crypto (5/10 = 50.00%, -0.249R) rather than
+  promoting tiny 75–83% subsets. The canonical 21.50% baseline remains unchanged.
+- [x] Change the information set after rejection: collect causal completed-M15
+  contraction, participation, VWAP, pressure and pre-break distance features.
+- [x] Scan all 339 active CoinDCX INR pairs; explicitly distinguish the 26 pairs with
+  current daily-ranker evidence from pairs monitored by M15 structure alone.
+- [x] Freeze trigger, stop and +0.75R target before future bars and resolve a hash-chained
+  plan ledger with conservative ambiguity and after-cost rules.
+- [x] Expose historical failure, current watches and actual resolved performance separately
+  in the dashboard. A watch is never displayed as a trade.
+- [ ] Accumulate terminal forward plans; current evidence is 0 resolved trades, so accuracy
+  is unavailable and not a pass.
+- [ ] Before observing the evaluation result, freeze a precision gate over the new M15
+  information and evaluate it market-by-market. Add NSE/BSE market-hour collection without
+  pooling evidence.
+
+See the [M19 checkpoint](self-learning-m19-pre-takeoff-checkpoint.md) and
+[frozen protocol](self-learning-m19-pre-takeoff-protocol.md).

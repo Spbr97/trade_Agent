@@ -923,6 +923,39 @@
     <table id="selection-readiness-block-table" style="margin-top:10px;"></table>
   </section>
   <section>
+    <h2>Pre-takeoff historical selector <span class="info-ic" title="M19 frozen experiment: train only on the development block, choose model and threshold only on calibration, and leave the diagnostic sealed unless useful call volume and positive after-cost expectancy pass. A rejected experiment has no live authority.">ⓘ</span></h2>
+    <div class="cards" style="margin-bottom:10px;">
+      <div class="card"><div class="label">M19 state</div><div class="value" id="pre-takeoff-selector-status">not started</div></div>
+      <div class="card"><div class="label">Selected policy</div><div class="value" id="pre-takeoff-selector-policy">NONE</div></div>
+      <div class="card"><div class="label">Best useful-volume point</div><div class="value" id="pre-takeoff-selector-calls">not available</div></div>
+      <div class="card"><div class="label">Calibration accuracy</div><div class="value" id="pre-takeoff-selector-accuracy">not available</div></div>
+      <div class="card"><div class="label">Calibration mean net R</div><div class="value" id="pre-takeoff-selector-net-r">not available</div></div>
+      <div class="card"><div class="label">Diagnostic opened</div><div class="value neg" id="pre-takeoff-selector-diagnostic">NO</div></div>
+      <div class="card"><div class="label">Baseline improved</div><div class="value neg" id="pre-takeoff-selector-improved">NO</div></div>
+      <div class="card"><div class="label">Live authority</div><div class="value neg" id="pre-takeoff-selector-authority">NONE</div></div>
+    </div>
+    <div class="muted" id="pre-takeoff-selector-detail"></div>
+    <table id="pre-takeoff-selector-curve-table" style="margin-top:10px;"></table>
+  </section>
+  <section>
+    <h2>Forward pre-takeoff watch <span class="info-ic" title="Current completed M15 bars are scanned for compression below resistance. A watch is not a trade. Its immutable trigger, stop and +0.75R target can only activate on a later completed bar; performance is resolved after configured costs.">ⓘ</span></h2>
+    <div class="cards" style="margin-bottom:10px;">
+      <div class="card"><div class="label">Watch state</div><div class="value" id="pre-takeoff-watch-status">not collected</div></div>
+      <div class="card"><div class="label">Snapshot</div><div class="value" id="pre-takeoff-watch-snapshot">not available</div></div>
+      <div class="card"><div class="label">Active / M15 checked</div><div class="value" id="pre-takeoff-watch-coverage">0 / 0</div></div>
+      <div class="card"><div class="label">Current watches</div><div class="value" id="pre-takeoff-watch-count">0</div></div>
+      <div class="card"><div class="label">Tradeable now</div><div class="value neg" id="pre-takeoff-watch-tradeable">0</div></div>
+      <div class="card"><div class="label">Active immutable plans</div><div class="value" id="pre-takeoff-watch-active">0</div></div>
+      <div class="card"><div class="label">Resolved triggered trades</div><div class="value" id="pre-takeoff-watch-resolved">0</div></div>
+      <div class="card"><div class="label">Resolved strict accuracy</div><div class="value" id="pre-takeoff-watch-accuracy">not available</div></div>
+      <div class="card"><div class="label">Resolved mean net R</div><div class="value" id="pre-takeoff-watch-net-r">not available</div></div>
+      <div class="card"><div class="label">Baseline improved</div><div class="value neg" id="pre-takeoff-watch-improved">NO</div></div>
+      <div class="card"><div class="label">Live authority</div><div class="value neg" id="pre-takeoff-watch-authority">WATCH ONLY</div></div>
+    </div>
+    <div class="muted" id="pre-takeoff-watch-detail"></div>
+    <table id="pre-takeoff-watch-table" style="margin-top:10px;"></table>
+  </section>
+  <section>
     <h2>EOD self-learning <span class="info-ic" title="retrain on this market's real forward evidence only, never the old backtest window. One row per run. Cannot alert - only ever flags Review if it clears the same evidence bar as everything else.">ⓘ</span></h2>
     <div class="cards" style="margin-bottom:10px;">
       <div class="card"><div class="label">Workflow state</div><div class="value" id="learning-workflow-state">-</div></div>
@@ -2104,7 +2137,7 @@ $('research-market-select').addEventListener('change', loadResearch);
 // digging into another tab first) - reads the same /api/eod-learning endpoint.
 async function loadLearning() {
   const market = $('learning-market-select').value;
-  const [r, statusResponse, challengerResponse, timingResponse, comparisonResponse, leaderResponse, separabilityResponse, executionAlignedResponse, intradayContractResponse, selectionReadinessResponse] = await Promise.all([
+  const [r, statusResponse, challengerResponse, timingResponse, comparisonResponse, leaderResponse, separabilityResponse, executionAlignedResponse, intradayContractResponse, selectionReadinessResponse, preTakeoffSelectorResponse, preTakeoffWatchResponse] = await Promise.all([
     fetch(`/api/eod-learning?market=${market}`),
     fetch(`/api/self-learning/status?market=${market}`),
     fetch(`/api/self-learning/challenger?market=${market}`),
@@ -2115,6 +2148,8 @@ async function loadLearning() {
     fetch(`/api/self-learning/execution-aligned?market=${market}`).catch(() => null),
     fetch(`/api/self-learning/intraday-contract?market=${market}`).catch(() => null),
     fetch(`/api/self-learning/selection-readiness?market=${market}`).catch(() => null),
+    fetch(`/api/self-learning/pre-takeoff-selector?market=${market}`).catch(() => null),
+    fetch(`/api/self-learning/pre-takeoff-watch?market=${market}`).catch(() => null),
   ]);
   renderLearningTable(r.ok ? await r.json() : []);
   const status = statusResponse.ok ? await statusResponse.json() : {};
@@ -2206,6 +2241,14 @@ async function loadLearning() {
     ? await selectionReadinessResponse.json()
     : {status: 'unavailable', blocks: {}, detail: 'M18-A evidence could not be loaded — unavailable is not a pass.'};
   renderSelectionReadiness(selectionReadiness);
+  const preTakeoffSelector = preTakeoffSelectorResponse && preTakeoffSelectorResponse.ok
+    ? await preTakeoffSelectorResponse.json()
+    : {status: 'unavailable', detail: 'M19 selector evidence could not be loaded — unavailable is not a pass.'};
+  renderPreTakeoffSelector(preTakeoffSelector);
+  const preTakeoffWatch = preTakeoffWatchResponse && preTakeoffWatchResponse.ok
+    ? await preTakeoffWatchResponse.json()
+    : {status: 'unavailable', candidates: [], detail: 'Forward pre-takeoff evidence could not be loaded — unavailable is not a pass.'};
+  renderPreTakeoffWatch(preTakeoffWatch);
   $('learning-workflow-blockers').textContent = (status.blockers || []).join(' · ') || 'challenger dataset threshold reached; active model remains frozen';
 }
 $('learning-market-select').addEventListener('change', loadLearning);
@@ -2433,6 +2476,78 @@ function renderSelectionReadiness(report) {
       return `<tr><td>${esc(label)}</td><td>${coverage}</td><td>${value.resolved_sessions ?? 0}</td><td>${value.model_eligible_rows ?? 0}</td><td>+${value.positive_labels ?? 0} / -${value.negative_labels ?? 0}</td></tr>`;
     }),
   ].join('');
+}
+function renderPreTakeoffSelector(report) {
+  const status = String(report.status || 'not_started');
+  const curves = report.threshold_curves && typeof report.threshold_curves === 'object'
+    ? Object.entries(report.threshold_curves).flatMap(([model, values]) =>
+      (Array.isArray(values) ? values : []).map(value => ({...value, model})))
+    : [];
+  const useful = [...curves].sort((left, right) =>
+    (right.calls || 0) - (left.calls || 0)
+      || (right.strict_accuracy || 0) - (left.strict_accuracy || 0))[0] || null;
+  const selected = report.selected_policy || null;
+  $('pre-takeoff-selector-status').textContent = status.replaceAll('_', ' ');
+  $('pre-takeoff-selector-status').className = `value ${status === 'historical_candidate' ? 'planned' : 'neg'}`;
+  $('pre-takeoff-selector-policy').textContent = selected
+    ? `${String(selected.model || '').replaceAll('_', ' ')} @ ${fmt(selected.threshold, 2)}`
+    : 'NONE';
+  $('pre-takeoff-selector-calls').textContent = useful
+    ? `${useful.calls} calls / ${useful.total_sessions} sessions` : 'not available';
+  $('pre-takeoff-selector-accuracy').textContent = useful && useful.strict_accuracy != null
+    ? `${pct(useful.strict_accuracy)} (${useful.strict_successes}/${useful.calls})`
+    : 'not available';
+  $('pre-takeoff-selector-net-r').textContent = useful && useful.mean_net_r != null
+    ? `${fmt(useful.mean_net_r, 3)}R` : 'not available';
+  $('pre-takeoff-selector-diagnostic').textContent = report.diagnostic_opened ? 'YES' : 'NO';
+  $('pre-takeoff-selector-diagnostic').className = `value ${report.diagnostic_opened ? 'planned' : 'neg'}`;
+  $('pre-takeoff-selector-improved').textContent = report.baseline_accuracy_improved ? 'YES' : 'NO';
+  $('pre-takeoff-selector-improved').className = `value ${report.baseline_accuracy_improved ? 'pos' : 'neg'}`;
+  $('pre-takeoff-selector-authority').textContent = report.eligible_for_live ? 'ELIGIBLE FOR REVIEW' : 'NONE — RESEARCH ONLY';
+  $('pre-takeoff-selector-authority').className = `value ${report.eligible_for_live ? 'planned' : 'neg'}`;
+  const blockers = Array.isArray(report.blockers) && report.blockers.length
+    ? ` Blockers: ${report.blockers.map(value => String(value).replaceAll('_', ' ')).join(' · ')}.` : '';
+  $('pre-takeoff-selector-detail').textContent = `${report.detail || 'No valid M19 result exists — unavailable is not a pass.'}${blockers} Baseline remains ${report.canonical_baseline_accuracy != null ? pct(report.canonical_baseline_accuracy) : 'unchanged'}.`;
+  rows($('pre-takeoff-selector-curve-table'),
+    ['Model', 'Threshold', 'Calls', 'Strict accuracy', 'Mean net R', 'Useful-volume gate'],
+    curves.length
+      ? curves.map(value => `<tr><td>${esc(String(value.model).replaceAll('_', ' '))}</td><td class="num">${fmt(value.threshold, 2)}</td><td class="num">${value.calls ?? 0}</td><td class="num">${value.strict_accuracy != null ? pct(value.strict_accuracy) : '-'}</td><td class="num">${value.mean_net_r != null ? `${fmt(value.mean_net_r, 3)}R` : '-'}</td><td class="${value.eligible ? 'pos' : 'neg'}">${value.eligible ? 'PASS' : 'FAIL'}</td></tr>`)
+      : ['<tr><td colspan="6" class="empty-note">no valid threshold evidence — unavailable is not a pass</td></tr>']);
+}
+function renderPreTakeoffWatch(report) {
+  const status = String(report.status || 'not_collected');
+  const plans = report.watch_plans || {};
+  const candidates = Array.isArray(report.candidates) ? report.candidates : [];
+  const watches = candidates.filter(value => ['arming', 'watch'].includes(value.state));
+  $('pre-takeoff-watch-status').textContent = status.replaceAll('_', ' ');
+  $('pre-takeoff-watch-status').className = `value ${watches.length ? 'planned' : 'neg'}`;
+  $('pre-takeoff-watch-snapshot').textContent = report.observed_at || 'not available';
+  $('pre-takeoff-watch-coverage').textContent = `${report.active_pairs ?? 0} / ${report.requested_pairs ?? report.shortlist_rows ?? 0}`;
+  $('pre-takeoff-watch-count').textContent = report.watch_candidates ?? watches.length;
+  $('pre-takeoff-watch-tradeable').textContent = report.tradeable_calls ?? 0;
+  $('pre-takeoff-watch-active').textContent = plans.active_plans ?? 0;
+  $('pre-takeoff-watch-resolved').textContent = plans.resolved_trades ?? 0;
+  $('pre-takeoff-watch-accuracy').textContent = plans.strict_accuracy != null
+    ? `${pct(plans.strict_accuracy)} (${plans.strict_successes}/${plans.resolved_trades})`
+    : 'not available';
+  $('pre-takeoff-watch-net-r').textContent = plans.mean_net_r != null
+    ? `${fmt(plans.mean_net_r, 3)}R` : 'not available';
+  $('pre-takeoff-watch-improved').textContent = report.baseline_accuracy_improved ? 'YES' : 'NO';
+  $('pre-takeoff-watch-improved').className = `value ${report.baseline_accuracy_improved ? 'pos' : 'neg'}`;
+  $('pre-takeoff-watch-authority').textContent = report.eligible_for_live ? 'ELIGIBLE FOR REVIEW' : 'WATCH ONLY — NOT A CALL';
+  $('pre-takeoff-watch-authority').className = `value ${report.eligible_for_live ? 'planned' : 'neg'}`;
+  const states = Object.entries(plans.states || {}).map(([name, count]) =>
+    `${String(name).replaceAll('_', ' ')}: ${count}`).join(' · ');
+  $('pre-takeoff-watch-detail').textContent = `${report.detail || 'No forward watch snapshot is available.'}${states ? ` Plan ledger: ${states}.` : ''} Only a later completed-bar trigger can create measured trade evidence. Baseline improved: ${report.baseline_accuracy_improved ? 'YES' : 'NO'}.`;
+  rows($('pre-takeoff-watch-table'),
+    ['Symbol', 'State', 'Last', 'Trigger', 'Stop', '+0.75R target', 'Score', 'Blockers'],
+    candidates.length
+      ? candidates.map(value => {
+        const features = value.features || {};
+        const blockers = Array.isArray(value.blockers) ? value.blockers : [];
+        return `<tr><td>${esc(value.symbol || value.scrip_code || '-')}</td><td>${esc(String(value.state || '-').replaceAll('_', ' '))}</td><td class="num">${features.last_close != null ? fmt(features.last_close, 4) : '-'}</td><td class="num">${value.trigger != null ? fmt(value.trigger, 4) : '-'}</td><td class="num">${value.stop != null ? fmt(value.stop, 4) : '-'}</td><td class="num">${value.quick_target_075r != null ? fmt(value.quick_target_075r, 4) : '-'}</td><td class="num">${value.pre_takeoff_score != null ? pct(value.pre_takeoff_score) : '-'}</td><td class="muted">${esc(blockers.map(item => String(item).replaceAll('_', ' ')).join(', ') || 'none')}</td></tr>`;
+      })
+      : ['<tr><td colspan="8" class="empty-note">no completed-bar pre-takeoff candidates — not a tradeable pass</td></tr>']);
 }
 function renderPerformanceComparison(report) {
   const comparisons = Array.isArray(report.filter_comparisons) ? report.filter_comparisons : [];
