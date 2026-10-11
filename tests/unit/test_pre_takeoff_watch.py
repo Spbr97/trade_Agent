@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+import json
+import subprocess
+import sys
 from datetime import datetime, timedelta
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -417,3 +421,19 @@ def test_equity_collector_never_arms_retrospectively_when_market_is_closed(
     assert report["watch_plans"]["new_plans_registered"] == 0
     assert report["watch_plans"]["total_plans"] == 0
     assert not (tmp_path / "nse" / "plans.jsonl").exists()
+
+
+def test_standalone_collector_script_can_import_shared_pipeline_lock(tmp_path) -> None:
+    script = Path(__file__).parents[2] / "scripts" / "pre_takeoff_watch.py"
+    completed = subprocess.run(
+        [sys.executable, str(script), "status", "--market", "equity"],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    result = json.loads(completed.stdout)
+    assert set(result) == {"nse", "bse"}
+    assert result["nse"]["status"] == "not_collected"
