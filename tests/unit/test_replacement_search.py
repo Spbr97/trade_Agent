@@ -153,6 +153,10 @@ def test_a_drifted_base_blocks_the_search_loudly_not_silently(monkeypatch, tmp_p
 
 
 def test_everything_recently_tested_means_an_empty_batch(monkeypatch, tmp_path: Path) -> None:
+    # The replacement registry timestamps attempts with its own wall clock. Pin that
+    # clock to the scenario's fixed NOW as well, otherwise this test starts depending on
+    # the calendar date on which the suite happens to run.
+    monkeypatch.setattr("tradedesk_lab.registry.now", lambda: NOW.isoformat())
     calls = _stub_world(monkeypatch, tmp_path, verdicts={"a": False})
     _run(tmp_path, time_budget_s=600)
     again = _run(tmp_path, time_budget_s=600, now=NOW + timedelta(days=1))
