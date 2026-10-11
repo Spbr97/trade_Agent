@@ -945,12 +945,18 @@
       <div class="card"><div class="label">Eligible / requested</div><div class="value" id="pre-takeoff-watch-coverage">0 / 0</div></div>
       <div class="card"><div class="label">M15 valid / invalid</div><div class="value" id="pre-takeoff-watch-m15-quality">0 / 0</div></div>
       <div class="card"><div class="label">New-plan registration</div><div class="value" id="pre-takeoff-watch-registration">not available</div></div>
+      <div class="card"><div class="label">Collector health</div><div class="value" id="pre-takeoff-watch-health">not available</div></div>
       <div class="card"><div class="label">Current watches</div><div class="value" id="pre-takeoff-watch-count">0</div></div>
       <div class="card"><div class="label">Tradeable now</div><div class="value neg" id="pre-takeoff-watch-tradeable">0</div></div>
       <div class="card"><div class="label">Active immutable plans</div><div class="value" id="pre-takeoff-watch-active">0</div></div>
       <div class="card"><div class="label">Resolved triggered trades</div><div class="value" id="pre-takeoff-watch-resolved">0</div></div>
       <div class="card"><div class="label">Resolved strict accuracy</div><div class="value" id="pre-takeoff-watch-accuracy">not available</div></div>
       <div class="card"><div class="label">Resolved mean net R</div><div class="value" id="pre-takeoff-watch-net-r">not available</div></div>
+      <div class="card"><div class="label">Evidence sessions</div><div class="value" id="pre-takeoff-watch-sessions">0</div></div>
+      <div class="card"><div class="label">Wilson 95% lower</div><div class="value" id="pre-takeoff-watch-wilson">not available</div></div>
+      <div class="card"><div class="label">Maximum loss streak</div><div class="value" id="pre-takeoff-watch-loss-streak">0</div></div>
+      <div class="card"><div class="label">Qualification</div><div class="value" id="pre-takeoff-watch-qualification">COLLECTING</div></div>
+      <div class="card"><div class="label">Gate progress</div><div class="value" id="pre-takeoff-watch-progress">0 / 0</div></div>
       <div class="card"><div class="label">Baseline improved</div><div class="value neg" id="pre-takeoff-watch-improved">NO</div></div>
       <div class="card"><div class="label">Live authority</div><div class="value neg" id="pre-takeoff-watch-authority">WATCH ONLY</div></div>
     </div>
@@ -2519,6 +2525,9 @@ function renderPreTakeoffSelector(report) {
 function renderPreTakeoffWatch(report) {
   const status = String(report.status || 'not_collected');
   const plans = report.watch_plans || {};
+  const evidence = plans.evidence || {};
+  const metrics = evidence.metrics || {};
+  const health = report.collector_health || {};
   const candidates = Array.isArray(report.candidates) ? report.candidates : [];
   const watches = candidates.filter(value => ['arming', 'watch'].includes(value.state));
   $('pre-takeoff-watch-status').textContent = status.replaceAll('_', ' ');
@@ -2530,22 +2539,38 @@ function renderPreTakeoffWatch(report) {
   $('pre-takeoff-watch-registration').textContent = registrationOpen == null
     ? 'not available' : (registrationOpen ? 'OPEN' : 'CLOSED');
   $('pre-takeoff-watch-registration').className = `value ${registrationOpen ? 'planned' : 'neg'}`;
+  $('pre-takeoff-watch-health').textContent = String(health.status || 'not available').replaceAll('_', ' ');
+  $('pre-takeoff-watch-health').className = `value ${health.status === 'waiting_for_market_session' ? 'planned' : (health.healthy ? 'pos' : 'neg')}`;
   $('pre-takeoff-watch-count').textContent = report.watch_candidates ?? watches.length;
   $('pre-takeoff-watch-tradeable').textContent = report.tradeable_calls ?? 0;
   $('pre-takeoff-watch-active').textContent = plans.active_plans ?? 0;
-  $('pre-takeoff-watch-resolved').textContent = plans.resolved_trades ?? 0;
-  $('pre-takeoff-watch-accuracy').textContent = plans.strict_accuracy != null
-    ? `${pct(plans.strict_accuracy)} (${plans.strict_successes}/${plans.resolved_trades})`
+  $('pre-takeoff-watch-resolved').textContent = metrics.resolved_trades ?? plans.resolved_trades ?? 0;
+  $('pre-takeoff-watch-accuracy').textContent = metrics.strict_accuracy != null
+    ? `${pct(metrics.strict_accuracy)} (${metrics.strict_successes}/${metrics.resolved_trades})`
     : 'not available';
-  $('pre-takeoff-watch-net-r').textContent = plans.mean_net_r != null
-    ? `${fmt(plans.mean_net_r, 3)}R` : 'not available';
+  $('pre-takeoff-watch-net-r').textContent = metrics.mean_net_r != null
+    ? `${fmt(metrics.mean_net_r, 3)}R` : 'not available';
+  $('pre-takeoff-watch-sessions').textContent = metrics.resolved_sessions ?? 0;
+  $('pre-takeoff-watch-wilson').textContent = metrics.wilson_95_lower != null
+    ? pct(metrics.wilson_95_lower) : 'not available';
+  $('pre-takeoff-watch-loss-streak').textContent = metrics.maximum_losing_streak ?? 0;
+  const qualification = String(evidence.status || 'collecting');
+  $('pre-takeoff-watch-qualification').textContent = qualification.replaceAll('_', ' ');
+  $('pre-takeoff-watch-qualification').className = `value ${qualification === 'qualified_for_review' ? 'pos' : (qualification.startsWith('collecting') || qualification === 'controls_pending' ? 'planned' : 'neg')}`;
+  const threshold = evidence.stage === 'early'
+    ? ((evidence.thresholds || {}).early || {})
+    : ((evidence.thresholds || {}).qualification || {});
+  $('pre-takeoff-watch-progress').textContent = `${metrics.resolved_trades ?? 0}/${threshold.resolved_trades ?? 0} calls · ${metrics.resolved_sessions ?? 0}/${threshold.resolved_sessions ?? 0} sessions`;
   $('pre-takeoff-watch-improved').textContent = report.baseline_accuracy_improved ? 'YES' : 'NO';
   $('pre-takeoff-watch-improved').className = `value ${report.baseline_accuracy_improved ? 'pos' : 'neg'}`;
   $('pre-takeoff-watch-authority').textContent = report.eligible_for_live ? 'ELIGIBLE FOR REVIEW' : 'WATCH ONLY — NOT A CALL';
   $('pre-takeoff-watch-authority').className = `value ${report.eligible_for_live ? 'planned' : 'neg'}`;
   const states = Object.entries(plans.states || {}).map(([name, count]) =>
     `${String(name).replaceAll('_', ' ')}: ${count}`).join(' · ');
-  $('pre-takeoff-watch-detail').textContent = `${report.detail || 'No forward watch snapshot is available.'}${states ? ` Plan ledger: ${states}.` : ''} Only a later completed-bar trigger can create measured trade evidence. Baseline improved: ${report.baseline_accuracy_improved ? 'YES' : 'NO'}.`;
+  const evidenceBlockers = Array.isArray(evidence.blockers) && evidence.blockers.length
+    ? ` Gate blockers: ${evidence.blockers.map(value => String(value).replaceAll('_', ' ')).join(' · ')}.` : '';
+  const healthDetail = health.detail ? ` Collector: ${health.detail}` : '';
+  $('pre-takeoff-watch-detail').textContent = `${report.detail || 'No forward watch snapshot is available.'}${states ? ` Plan ledger: ${states}.` : ''}${evidenceBlockers}${healthDetail} Only a later completed-bar trigger can create measured trade evidence. Baseline improved: ${report.baseline_accuracy_improved ? 'YES' : 'NO'}.`;
   rows($('pre-takeoff-watch-table'),
     ['Symbol', 'State', 'Last', 'Trigger', 'Stop', '+0.75R target', 'Score', 'Blockers'],
     candidates.length

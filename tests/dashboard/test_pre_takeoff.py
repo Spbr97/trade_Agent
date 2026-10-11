@@ -27,6 +27,8 @@ def test_dashboard_exposes_fail_closed_pre_takeoff_evidence(
     assert watch["tradeable_calls"] == 0
     assert watch["eligible_for_live"] is False
     assert watch["baseline_accuracy_improved"] is False
+    assert watch["collector_health"]["status"] == "not_collected"
+    assert watch["watch_plans"]["evidence"]["status"] == "collecting_qualification"
 
     html = (
         Path(__file__).parents[2]
@@ -42,4 +44,10 @@ def test_dashboard_exposes_fail_closed_pre_takeoff_evidence(
     assert 'id="pre-takeoff-watch-table"' in html
     assert 'id="pre-takeoff-watch-m15-quality"' in html
     assert 'id="pre-takeoff-watch-registration"' in html
+    assert 'id="pre-takeoff-watch-health"' in html
+    assert 'id="pre-takeoff-watch-sessions"' in html
+    assert 'id="pre-takeoff-watch-wilson"' in html
+    assert 'id="pre-takeoff-watch-loss-streak"' in html
+    assert 'id="pre-takeoff-watch-qualification"' in html
+    assert 'id="pre-takeoff-watch-progress"' in html
     assert "Only a later completed-bar trigger can create measured trade evidence." in html

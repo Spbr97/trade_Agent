@@ -657,11 +657,19 @@ preventing optional stopping; see the
   plan ledger with conservative ambiguity and after-cost rules.
 - [x] Expose historical failure, current watches and actual resolved performance separately
   in the dashboard. A watch is never displayed as a trade.
-- [ ] Accumulate terminal forward plans; current evidence is 0 resolved trades, so accuracy
-  is unavailable and not a pass.
-- [ ] Before observing the evaluation result, freeze a precision gate over the new M15
-  information and evaluate it market-by-market. Add NSE/BSE market-hour collection without
-  pooling evidence.
+- [ ] Accumulate the frozen minimum terminal forward plans separately for NSE, BSE and
+  crypto; thin evidence remains unavailable and never passes.
+- [x] Freeze market-specific precision gates over the completed-M15 information before
+  NSE/BSE forward outcomes and preserve crypto's already frozen M19 prospective gate.
+- [x] Add full daily-liquid NSE/BSE market-hour collection without pooling evidence with
+  each other or crypto.
+- [x] Record immutable first-look gate decisions and expose sessions, Wilson lower bound,
+  mean net R, maximum loss streak, progress and fail-closed qualification in the dashboard.
+- [x] Report schedule-aware collector freshness for all three markets; weekends wait for
+  the next equity session while continuously scheduled crypto becomes stale after 45
+  minutes.
 
 See the [M19 checkpoint](self-learning-m19-pre-takeoff-checkpoint.md) and
-[frozen protocol](self-learning-m19-pre-takeoff-protocol.md).
+[frozen protocol](self-learning-m19-pre-takeoff-protocol.md), the
+[M20 equity protocol](self-learning-m20-equity-pre-takeoff-protocol.md), and the
+[M20 qualification/health checkpoint](self-learning-m20-qualification-health-checkpoint.md).

@@ -32,6 +32,11 @@ from tradedesk.intraday_contract_race import (
 )
 from tradedesk.leader_discovery import FEATURE_COLUMNS, extract_decision_universe
 from tradedesk.models import TradeType, price_decimal
+from tradedesk.pre_takeoff_evidence import (
+    load_pre_takeoff_evidence,
+    pre_takeoff_collector_health,
+    record_pre_takeoff_evidence,
+)
 from tradedesk.prediction_ledger import canonical_sha256
 
 VERSION = "pre-takeoff-watch-v1"
@@ -428,6 +433,10 @@ def _plan_ledger(output_root: Path, market: str) -> Path:
     return output_root / market / "plans.jsonl"
 
 
+def _qualification_ledger(output_root: Path, market: str) -> Path:
+    return output_root / market / "qualification.jsonl"
+
+
 def _load_plan_events(path: Path) -> list[dict[str, Any]]:
     if not path.exists():
         return []
@@ -636,8 +645,15 @@ def _update_watch_plans(
         for plan in latest.values()
         if plan["state"] in {"pending_trigger", "triggered"}
     }
+    evidence = record_pre_takeoff_evidence(
+        market,
+        latest,
+        gate_path=_qualification_ledger(output_root, market),
+        observed_at=observed_at,
+    )
+    registration_open = allow_new_plans and not bool(evidence["terminal"])
     new_plans_registered = 0
-    registration_candidates = report.get("candidates", ()) if allow_new_plans else ()
+    registration_candidates = report.get("candidates", ()) if registration_open else ()
     for candidate in registration_candidates:
         if candidate.get("state") not in {"arming", "watch"}:
             continue
@@ -703,8 +719,9 @@ def _update_watch_plans(
         "strict_successes": successes,
         "strict_accuracy": successes / len(resolved) if resolved else None,
         "mean_net_r": float(np.mean(net_values)) if net_values else None,
-        "new_plan_registration_open": allow_new_plans,
+        "new_plan_registration_open": registration_open,
         "new_plans_registered": new_plans_registered,
+        "evidence": evidence,
         "plans": [
             {
                 "plan_id": plan["plan_id"],
@@ -800,6 +817,9 @@ async def collect_equity_pre_takeoff_watch(
         output_root=output_root,
         allow_new_plans=registration_open,
     )
+    report["new_plan_registration_open"] = report["watch_plans"][
+        "new_plan_registration_open"
+    ]
     report.pop("snapshot_sha256", None)
     report["snapshot_sha256"] = canonical_sha256(report)
     _persist_watch(report, output_root)
@@ -877,12 +897,17 @@ async def collect_crypto_pre_takeoff_watch(
     report["active_pairs"] = len(active)
     report["daily_ranked_pairs"] = len(ranked)
     report["requested_pairs"] = len(codes)
+    latest_bar = _latest_completed_bar(candles, now)
+    report["latest_completed_bar"] = latest_bar.isoformat() if latest_bar else None
     # Source metadata is appended before the final integrity hash and durable write.
     report.pop("snapshot_sha256", None)
     report["snapshot_sha256"] = canonical_sha256(report)
     report["watch_plans"] = _update_watch_plans(
         report, candles, observed_at=now, output_root=output_root
     )
+    report["new_plan_registration_open"] = report["watch_plans"][
+        "new_plan_registration_open"
+    ]
     report.pop("snapshot_sha256", None)
     report["snapshot_sha256"] = canonical_sha256(report)
     _persist_watch(report, output_root)
@@ -890,11 +915,14 @@ async def collect_crypto_pre_takeoff_watch(
 
 
 def load_pre_takeoff_watch(
-    market: str, *, output_root: Path = DEFAULT_OUTPUT_ROOT
+    market: str,
+    *,
+    output_root: Path = DEFAULT_OUTPUT_ROOT,
+    observed_at: datetime | None = None,
 ) -> dict[str, Any]:
     path = output_root / market / "latest.json"
     if not path.exists():
-        return {
+        report: dict[str, Any] = {
             "version": VERSION,
             "market": market,
             "status": "not_collected",
@@ -906,10 +934,38 @@ def load_pre_takeoff_watch(
             "baseline_accuracy_improved": False,
             "detail": "No forward pre-takeoff snapshot has been collected.",
         }
+        report["watch_plans"] = {
+            "evidence": load_pre_takeoff_evidence(
+                market, output_root=output_root, observed_at=observed_at
+            )
+        }
+        report["collector_health"] = pre_takeoff_collector_health(
+            market,
+            last_observed_at=None,
+            latest_completed_bar=None,
+            observed_at=observed_at,
+        )
+        return report
     value = json.loads(path.read_text(encoding="utf-8"))
     supplied = value.get("snapshot_sha256")
     body = dict(value)
     body.pop("snapshot_sha256", None)
     if supplied != canonical_sha256(body):
         raise ValueError("pre-takeoff watch snapshot hash mismatch")
-    return dict(value)
+    report = dict(value)
+    plans = dict(report.get("watch_plans") or {})
+    plans["evidence"] = load_pre_takeoff_evidence(
+        market, output_root=output_root, observed_at=observed_at
+    )
+    report["watch_plans"] = plans
+    report["collector_health"] = pre_takeoff_collector_health(
+        market,
+        last_observed_at=str(report.get("observed_at") or "") or None,
+        latest_completed_bar=(
+            str(report["latest_completed_bar"])
+            if report.get("latest_completed_bar")
+            else None
+        ),
+        observed_at=observed_at,
+    )
+    return report
