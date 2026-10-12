@@ -2109,6 +2109,22 @@ def create_app(
         report = await asyncio.to_thread(load_momentum_ignition_watch, market)
         return JSONResponse(report)
 
+    @app.get("/api/self-learning/momentum-ignition-watch-m22")
+    async def api_self_learning_momentum_ignition_watch_m22(
+        market: str = "crypto",
+    ) -> JSONResponse:
+        """Read separate forward-only M22 feed-aware evidence; never collect in HTTP."""
+
+        if market not in {"nse", "bse", "crypto"}:
+            return JSONResponse({"error": "invalid market"}, status_code=400)
+
+        from tradedesk.momentum_ignition_watch_m22 import (
+            load_momentum_ignition_watch_m22,
+        )
+
+        report = await asyncio.to_thread(load_momentum_ignition_watch_m22, market)
+        return JSONResponse(report)
+
     @app.get("/api/session-report")
     async def api_session_report(
         market: Literal["nse", "crypto", "bse"] = "nse", on: str | None = None

@@ -831,9 +831,10 @@ async def collect_crypto_pre_takeoff_watch(
     db_path: Path = DB_PATHS["crypto"],
     output_root: Path = DEFAULT_OUTPUT_ROOT,
     momentum_output_root: Path | None = None,
+    momentum_m22_output_root: Path | None = None,
     observed_at: datetime | None = None,
 ) -> dict[str, Any]:
-    """Refresh M20 and the isolated M21 challenger from one completed-M15 fetch."""
+    """Refresh M20 and isolated M21/M22 challengers from one completed-M15 fetch."""
 
     from tradedesk.broker.coindcx import CoinDcxClient
     from tradedesk.broker.coindcx.models import candle_from_api
@@ -938,18 +939,42 @@ async def collect_crypto_pre_takeoff_watch(
             if output_root == DEFAULT_OUTPUT_ROOT
             else output_root / "momentum_ignition_watch"
         )
+    precise_frames = precise_crypto_frames(precise_rows)
+    momentum_source = {
+        **source,
+        "active_pairs": len(active),
+        "requested_pairs": len(codes),
+        "shared_m15_fetch_with_m20": True,
+        "m15_volume_contract": "coindcx_raw_fractional_base_asset_v1",
+    }
     collect_momentum_ignition_watch(
         shortlist,
-        precise_crypto_frames(precise_rows),
+        precise_frames,
         observed_at=now,
         output_root=challenger_root,
-        source={
-            **source,
-            "active_pairs": len(active),
-            "requested_pairs": len(codes),
-            "shared_m15_fetch_with_m20": True,
-            "m15_volume_contract": "coindcx_raw_fractional_base_asset_v1",
-        },
+        source=momentum_source,
+    )
+
+    from tradedesk.momentum_ignition_watch_m22 import (
+        DEFAULT_OUTPUT_ROOT as MOMENTUM_M22_DEFAULT_OUTPUT_ROOT,
+    )
+    from tradedesk.momentum_ignition_watch_m22 import (
+        collect_momentum_ignition_watch_m22,
+    )
+
+    m22_root = momentum_m22_output_root
+    if m22_root is None:
+        m22_root = (
+            MOMENTUM_M22_DEFAULT_OUTPUT_ROOT
+            if output_root == DEFAULT_OUTPUT_ROOT
+            else output_root / "momentum_ignition_watch_m22"
+        )
+    collect_momentum_ignition_watch_m22(
+        shortlist,
+        precise_frames,
+        observed_at=now,
+        output_root=m22_root,
+        source=momentum_source,
     )
     return report
 

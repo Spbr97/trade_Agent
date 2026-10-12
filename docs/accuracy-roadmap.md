@@ -702,3 +702,40 @@ See the [M19 checkpoint](self-learning-m19-pre-takeoff-checkpoint.md) and
 See the
 [frozen M21 protocol](self-learning-m21-crypto-momentum-ignition-protocol.md) and
 [M21 implementation checkpoint](self-learning-m21-crypto-momentum-ignition-checkpoint.md).
+
+## M22 feed-aware crypto momentum-ignition challenger
+
+- [x] Keep M21 frozen and create the separately versioned
+  `momentum-ignition-watch-m22-v1` prospective challenger. No M20/M21 artifact,
+  inspected path, or pre-activation diagnostic may be backfilled into M22 evidence.
+- [x] Freeze `momentum-ignition-m22-contract-v1` and an integrity-protected activation
+  manifest. Require 300 requested pairs, 90% activation overlap, and requested-universe
+  size within 90–110% of activation before new registration can open.
+- [x] Separate exact contiguous 96-bar feed validity from feature validity. Require at
+  least 95% feed coverage while treating genuine zero-volume and zero-range bars as
+  observed inactivity, not missing data.
+- [x] Require at least 200 feature-valid rows and 60% feature breadth. Feature-invalid
+  rows receive no percentile, score, rank, or plan.
+- [x] Reuse M21's pinned feature, signal, rank, registration, confirmation, geometry,
+  adaptive-target, cost, outcome, and first-look implementation without relaxing a
+  threshold. Any inherited implementation-hash change fails closed.
+- [x] Write M22 activation, snapshots, plans, and qualification evidence only beneath
+  `data/m14_m18/momentum_ignition_watch_m22/crypto/`; never pool its denominator with
+  M21, M20, NSE, or BSE. Enforce the `momentum-ignition-plan-m22-v1` namespace,
+  activation cutoff, and activation binding for every historical evidence chain.
+- [ ] Verify the first post-freeze production M22 snapshot and display its activation,
+  feed, feature-breadth, invalid-reason, and registration-gate state without presenting
+  a research watch as a trade.
+- [ ] Accumulate at least 60 resolved M22 calls across 40 distinct IST dates without
+  backfill, retuning, or an optional interim statistical look.
+- [ ] At the single first look, demonstrate at least 70% strict accuracy, a 55% Wilson
+  lower bound, positive after-cost mean net R, complete economics, loss streak no greater
+  than six, and zero integrity violations.
+- [ ] Complete independent M22 matched controls. M21 controls cannot be reused, and even
+  final qualification remains review-only until explicit human approval.
+
+The observed 339/339 feed-valid and 213/339 feature-valid counts only motivated the
+prospective separation. M22 currently has no production outcomes, so accuracy and
+profitability are unavailable and baseline improvement remains false. See the
+[frozen M22 protocol](self-learning-m22-feed-aware-momentum-ignition-protocol.md) and
+[M22 implementation checkpoint](self-learning-m22-feed-aware-momentum-ignition-checkpoint.md).

@@ -434,11 +434,13 @@ def test_crypto_collector_updates_m20_and_isolated_m21_from_one_fetch(
     )
     m20_root = tmp_path / "m20"
     m21_root = tmp_path / "m21"
+    m22_root = tmp_path / "m22"
 
     report = asyncio.run(
         collect_crypto_pre_takeoff_watch(
             output_root=m20_root,
             momentum_output_root=m21_root,
+            momentum_m22_output_root=m22_root,
             observed_at=observed_at,
         )
     )
@@ -450,6 +452,7 @@ def test_crypto_collector_updates_m20_and_isolated_m21_from_one_fetch(
     assert client.candles_history_calls == 0
     m20_latest = json.loads((m20_root / "crypto" / "latest.json").read_text())
     m21_latest = json.loads((m21_root / "crypto" / "latest.json").read_text())
+    m22_latest = json.loads((m22_root / "crypto" / "latest.json").read_text())
     assert m20_latest["snapshot_sha256"] == report["snapshot_sha256"]
     assert m20_latest["candidates"][0]["features"]["average_notional_20"] == pytest.approx(
         np.mean(frame["close"].iloc[-20:] * np.round(frame["volume"].iloc[-20:]))
@@ -461,6 +464,13 @@ def test_crypto_collector_updates_m20_and_isolated_m21_from_one_fetch(
         == "coindcx_raw_fractional_base_asset_v1"
     )
     assert m21_latest["candidates"][0]["features"]["prior_volume_20"] == pytest.approx(100.4)
+    assert m22_latest["version"] == "momentum-ignition-watch-m22-v1"
+    assert m22_latest["source"]["shared_m15_fetch_with_m20"] is True
+    assert m22_latest["source"]["m15_volume_contract"] == (
+        "coindcx_raw_fractional_base_asset_v1"
+    )
+    assert m22_latest["coverage_gate_passed"] is False
+    assert (m22_root / "crypto" / "activation.json").exists()
     assert (m20_root / "crypto" / "plans.jsonl").exists()
     assert not (m20_root / "momentum_ignition_watch" / "crypto" / "latest.json").exists()
 

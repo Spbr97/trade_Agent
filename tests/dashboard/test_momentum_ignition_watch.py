@@ -35,9 +35,15 @@ def test_m21_dashboard_is_separate_from_m20_and_fetches_last() -> None:
     assert "M21 momentum-ignition challenger" in html
     assert "/api/self-learning/momentum-ignition-watch?market=${market}" in html
     assert "preTakeoffWatchResponse] = await Promise.all" not in html
-    assert html.index("preTakeoffWatchResponse, momentumIgnitionResponse] = await Promise.all") > 0
+    assert html.index(
+        "preTakeoffWatchResponse, momentumIgnitionResponse, "
+        "momentumIgnitionM22Response] = await Promise.all"
+    ) > 0
     assert html.index("/api/self-learning/pre-takeoff-watch?market=${market}") < html.index(
         "/api/self-learning/momentum-ignition-watch?market=${market}"
+    )
+    assert html.index("/api/self-learning/momentum-ignition-watch?market=${market}") < (
+        html.index("/api/self-learning/momentum-ignition-watch-m22?market=${market}")
     )
 
     for element_id in (
