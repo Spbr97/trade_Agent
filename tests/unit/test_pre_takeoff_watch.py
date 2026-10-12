@@ -6,6 +6,7 @@ import subprocess
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
@@ -20,6 +21,7 @@ from tradedesk.pre_takeoff_watch import (
     _load_plan_events,
     _update_watch_plans,
     build_pre_takeoff_watch,
+    collect_crypto_pre_takeoff_watch,
     collect_equity_pre_takeoff_watch,
 )
 
@@ -357,6 +359,80 @@ class _FakeEquityClient:
     async def candles_history(self, interval, codes, start, end):
         self.requests.append((interval, list(codes), start, end))
         return {code: self.frame.copy() for code in codes}
+
+
+class _FakeCoinDcxClient:
+    def __init__(self, frame: pd.DataFrame) -> None:
+        self.frame = frame
+        self.registered: dict[str, str] = {}
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, traceback) -> None:
+        return None
+
+    async def instruments(self):
+        return [
+            SimpleNamespace(
+                scrip_code="CDX_TESTINR",
+                custom_symbol="TEST_INR",
+                trading_symbol="TESTINR",
+                symbol_name="TEST",
+            )
+        ]
+
+    def register_pairs(self, pairs: dict[str, str]) -> None:
+        self.registered = dict(pairs)
+
+    async def candles_history(self, interval, codes, start, end):
+        return {code: self.frame.copy() for code in codes}
+
+
+def test_crypto_collector_updates_m20_and_isolated_m21_from_one_fetch(
+    tmp_path, monkeypatch
+) -> None:
+    from tradedesk.broker import coindcx
+    from tradedesk.markets import crypto_universe
+
+    frame = _compression_frame()
+    observed_at = frame.index[-1].to_pydatetime() + timedelta(minutes=15)
+    client = _FakeCoinDcxClient(frame)
+    monkeypatch.setattr(coindcx, "CoinDcxClient", lambda: client)
+    monkeypatch.setattr(
+        crypto_universe,
+        "active_crypto_codes",
+        lambda instruments: {"CDX_TESTINR"},
+    )
+    monkeypatch.setattr(
+        pre_takeoff_watch,
+        "_load_opportunity_shortlist",
+        lambda *args, **kwargs: (
+            _shortlist(),
+            {"full_universe_rows": 1, "shortlist_rows": 1, "ranker_sha256": "test"},
+        ),
+    )
+    m20_root = tmp_path / "m20"
+    m21_root = tmp_path / "m21"
+
+    report = asyncio.run(
+        collect_crypto_pre_takeoff_watch(
+            output_root=m20_root,
+            momentum_output_root=m21_root,
+            observed_at=observed_at,
+        )
+    )
+
+    assert report["version"] == "pre-takeoff-watch-v1"
+    assert report["requested_pairs"] == 1
+    assert client.registered == {"CDX_TESTINR": "TEST_INR"}
+    m20_latest = json.loads((m20_root / "crypto" / "latest.json").read_text())
+    m21_latest = json.loads((m21_root / "crypto" / "latest.json").read_text())
+    assert m20_latest["snapshot_sha256"] == report["snapshot_sha256"]
+    assert m21_latest["version"] == "momentum-ignition-watch-v1"
+    assert m21_latest["source"]["shared_m15_fetch_with_m20"] is True
+    assert (m20_root / "crypto" / "plans.jsonl").exists()
+    assert not (m20_root / "momentum_ignition_watch" / "crypto" / "latest.json").exists()
 
 
 def test_equity_collector_scans_full_ranked_universe_and_arms_in_session(

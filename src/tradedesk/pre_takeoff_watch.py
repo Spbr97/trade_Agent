@@ -830,9 +830,10 @@ async def collect_crypto_pre_takeoff_watch(
     *,
     db_path: Path = DB_PATHS["crypto"],
     output_root: Path = DEFAULT_OUTPUT_ROOT,
+    momentum_output_root: Path | None = None,
     observed_at: datetime | None = None,
 ) -> dict[str, Any]:
-    """Refresh the current crypto shortlist and collect completed M15 snapshots."""
+    """Refresh M20 and the isolated M21 challenger from one completed-M15 fetch."""
 
     from tradedesk.broker.coindcx import CoinDcxClient
     from tradedesk.markets.crypto_universe import active_crypto_codes
@@ -911,6 +912,36 @@ async def collect_crypto_pre_takeoff_watch(
     report.pop("snapshot_sha256", None)
     report["snapshot_sha256"] = canonical_sha256(report)
     _persist_watch(report, output_root)
+
+    # M21 is a separate forward experiment with its own ledgers and qualification
+    # denominator. Reusing this already-fetched full-universe frame keeps the scheduled
+    # task bounded, while persisting M20 first ensures the benchmark remains independent
+    # of any challenger failure. A non-default M20 root gets a contained sibling only for
+    # tests/callers that deliberately isolate runtime artifacts.
+    from tradedesk.momentum_ignition_watch import (
+        DEFAULT_OUTPUT_ROOT as MOMENTUM_DEFAULT_OUTPUT_ROOT,
+    )
+    from tradedesk.momentum_ignition_watch import collect_momentum_ignition_watch
+
+    challenger_root = momentum_output_root
+    if challenger_root is None:
+        challenger_root = (
+            MOMENTUM_DEFAULT_OUTPUT_ROOT
+            if output_root == DEFAULT_OUTPUT_ROOT
+            else output_root / "momentum_ignition_watch"
+        )
+    collect_momentum_ignition_watch(
+        shortlist,
+        candles,
+        observed_at=now,
+        output_root=challenger_root,
+        source={
+            **source,
+            "active_pairs": len(active),
+            "requested_pairs": len(codes),
+            "shared_m15_fetch_with_m20": True,
+        },
+    )
     return report
 
 

@@ -938,7 +938,7 @@
     <table id="pre-takeoff-selector-curve-table" style="margin-top:10px;"></table>
   </section>
   <section>
-    <h2>Forward pre-takeoff watch <span class="info-ic" title="Current completed M15 bars are scanned for compression below resistance. A watch is not a trade. Its immutable trigger, stop and +0.75R target can only activate on a later completed bar; performance is resolved after configured costs.">ⓘ</span></h2>
+    <h2>M20 compression benchmark <span class="info-ic" title="Current completed M15 bars are scanned for compression below resistance. A watch is not a trade. Its immutable trigger, stop and +0.75R target can only activate on a later completed bar; performance is resolved after configured costs.">ⓘ</span></h2>
     <div class="cards" style="margin-bottom:10px;">
       <div class="card"><div class="label">Watch state</div><div class="value" id="pre-takeoff-watch-status">not collected</div></div>
       <div class="card"><div class="label">Snapshot</div><div class="value" id="pre-takeoff-watch-snapshot">not available</div></div>
@@ -962,6 +962,36 @@
     </div>
     <div class="muted" id="pre-takeoff-watch-detail"></div>
     <table id="pre-takeoff-watch-table" style="margin-top:10px;"></table>
+  </section>
+  <section>
+    <h2>M21 momentum-ignition challenger <span class="info-ic" title="Crypto-only forward research challenger. It ranks the full universe on completed M15 ignition and shakeout-reclaim structures, registers up to the top three eligible plans independently of the top-12 display, and freezes an after-cost feasible target before a later bar may trigger. It has no live-call authority.">ⓘ</span></h2>
+    <div class="cards" style="margin-bottom:10px;">
+      <div class="card"><div class="label">Challenger state</div><div class="value" id="momentum-ignition-status">not collected</div></div>
+      <div class="card"><div class="label">Snapshot</div><div class="value" id="momentum-ignition-snapshot">not available</div></div>
+      <div class="card"><div class="label">Collector health</div><div class="value" id="momentum-ignition-health">not available</div></div>
+      <div class="card"><div class="label">Eligible / requested</div><div class="value" id="momentum-ignition-coverage">0 / 0</div></div>
+      <div class="card"><div class="label">Completed timeframes</div><div class="value" id="momentum-ignition-timeframes">M15 only</div></div>
+      <div class="card"><div class="label">New-plan registration</div><div class="value" id="momentum-ignition-registration">not available</div></div>
+      <div class="card"><div class="label">Eligible candidates</div><div class="value" id="momentum-ignition-candidates">0</div></div>
+      <div class="card"><div class="label">Ignition candidates</div><div class="value" id="momentum-ignition-ignition">0</div></div>
+      <div class="card"><div class="label">Reclaim candidates</div><div class="value" id="momentum-ignition-reclaims">0</div></div>
+      <div class="card"><div class="label">Economically feasible</div><div class="value" id="momentum-ignition-economics">0</div></div>
+      <div class="card"><div class="label">Active immutable plans</div><div class="value" id="momentum-ignition-active">0</div></div>
+      <div class="card"><div class="label">Resolved triggered trades</div><div class="value" id="momentum-ignition-resolved">0</div></div>
+      <div class="card"><div class="label">Resolved strict accuracy</div><div class="value" id="momentum-ignition-accuracy">not available</div></div>
+      <div class="card"><div class="label">Resolved mean net R</div><div class="value" id="momentum-ignition-net-r">not available</div></div>
+      <div class="card"><div class="label">Evidence sessions</div><div class="value" id="momentum-ignition-sessions">0</div></div>
+      <div class="card"><div class="label">Wilson 95% lower</div><div class="value" id="momentum-ignition-wilson">not available</div></div>
+      <div class="card"><div class="label">Maximum loss streak</div><div class="value" id="momentum-ignition-loss-streak">0</div></div>
+      <div class="card"><div class="label">Qualification</div><div class="value" id="momentum-ignition-qualification">COLLECTING</div></div>
+      <div class="card"><div class="label">Gate progress</div><div class="value" id="momentum-ignition-progress">0 / 0</div></div>
+      <div class="card"><div class="label">Baseline improved</div><div class="value neg" id="momentum-ignition-improved">NO</div></div>
+      <div class="card"><div class="label">Live authority</div><div class="value neg" id="momentum-ignition-authority">NONE</div></div>
+    </div>
+    <div class="muted" id="momentum-ignition-detail"></div>
+    <table id="momentum-ignition-table" style="margin-top:10px;"></table>
+    <div class="muted" style="margin-top:14px;">Separate forward ledgers; results are never pooled. M20 remains the immutable compression benchmark.</div>
+    <table id="pre-takeoff-m20-m21-table" style="margin-top:6px;"></table>
   </section>
   <section>
     <h2>EOD self-learning <span class="info-ic" title="retrain on this market's real forward evidence only, never the old backtest window. One row per run. Cannot alert - only ever flags Review if it clears the same evidence bar as everything else.">ⓘ</span></h2>
@@ -2145,7 +2175,7 @@ $('research-market-select').addEventListener('change', loadResearch);
 // digging into another tab first) - reads the same /api/eod-learning endpoint.
 async function loadLearning() {
   const market = $('learning-market-select').value;
-  const [r, statusResponse, challengerResponse, timingResponse, comparisonResponse, leaderResponse, separabilityResponse, executionAlignedResponse, intradayContractResponse, selectionReadinessResponse, preTakeoffSelectorResponse, preTakeoffWatchResponse] = await Promise.all([
+  const [r, statusResponse, challengerResponse, timingResponse, comparisonResponse, leaderResponse, separabilityResponse, executionAlignedResponse, intradayContractResponse, selectionReadinessResponse, preTakeoffSelectorResponse, preTakeoffWatchResponse, momentumIgnitionResponse] = await Promise.all([
     fetch(`/api/eod-learning?market=${market}`),
     fetch(`/api/self-learning/status?market=${market}`),
     fetch(`/api/self-learning/challenger?market=${market}`),
@@ -2158,6 +2188,7 @@ async function loadLearning() {
     fetch(`/api/self-learning/selection-readiness?market=${market}`).catch(() => null),
     fetch(`/api/self-learning/pre-takeoff-selector?market=${market}`).catch(() => null),
     fetch(`/api/self-learning/pre-takeoff-watch?market=${market}`).catch(() => null),
+    fetch(`/api/self-learning/momentum-ignition-watch?market=${market}`).catch(() => null),
   ]);
   renderLearningTable(r.ok ? await r.json() : []);
   const status = statusResponse.ok ? await statusResponse.json() : {};
@@ -2257,6 +2288,10 @@ async function loadLearning() {
     ? await preTakeoffWatchResponse.json()
     : {status: 'unavailable', candidates: [], detail: 'Forward pre-takeoff evidence could not be loaded — unavailable is not a pass.'};
   renderPreTakeoffWatch(preTakeoffWatch);
+  const momentumIgnition = momentumIgnitionResponse && momentumIgnitionResponse.ok
+    ? await momentumIgnitionResponse.json()
+    : {status: 'unavailable', candidates: [], detail: 'M21 momentum-ignition evidence could not be loaded — unavailable is not a pass.'};
+  renderMomentumIgnitionWatch(momentumIgnition, preTakeoffWatch);
   $('learning-workflow-blockers').textContent = (status.blockers || []).join(' · ') || 'challenger dataset threshold reached; active model remains frozen';
 }
 $('learning-market-select').addEventListener('change', loadLearning);
@@ -2580,6 +2615,115 @@ function renderPreTakeoffWatch(report) {
         return `<tr><td>${esc(value.symbol || value.scrip_code || '-')}</td><td>${esc(String(value.state || '-').replaceAll('_', ' '))}</td><td class="num">${features.last_close != null ? fmt(features.last_close, 4) : '-'}</td><td class="num">${value.trigger != null ? fmt(value.trigger, 4) : '-'}</td><td class="num">${value.stop != null ? fmt(value.stop, 4) : '-'}</td><td class="num">${value.quick_target_075r != null ? fmt(value.quick_target_075r, 4) : '-'}</td><td class="num">${value.pre_takeoff_score != null ? pct(value.pre_takeoff_score) : '-'}</td><td class="muted">${esc(blockers.map(item => String(item).replaceAll('_', ' ')).join(', ') || 'none')}</td></tr>`;
       })
       : ['<tr><td colspan="8" class="empty-note">no completed-bar pre-takeoff candidates — not a tradeable pass</td></tr>']);
+}
+function renderMomentumIgnitionWatch(report, benchmarkReport) {
+  const status = String(report.status || 'not_collected');
+  const plans = report.watch_plans || report.plans || {};
+  const evidence = plans.evidence || report.evidence || {};
+  const metrics = evidence.metrics || report.metrics || {};
+  const health = report.collector_health || {};
+  const candidates = Array.isArray(report.candidates) ? report.candidates : [];
+  const mechanismCounts = report.mechanism_counts || {};
+  const ignitionCount = report.ignition_candidates
+    ?? mechanismCounts.breakout_ignition
+    ?? candidates.filter(value => value.mechanism === 'breakout_ignition').length;
+  const reclaimCount = report.reclaim_candidates
+    ?? mechanismCounts.shakeout_reclaim
+    ?? candidates.filter(value => value.mechanism === 'shakeout_reclaim').length;
+  const feasibleCount = report.economically_feasible_candidates
+    ?? report.economics_eligible_candidates
+    ?? report.watch_candidates
+    ?? candidates.filter(value => value.economically_feasible === true
+      || (Number.isFinite(value.target_net_r)
+        && Number.isFinite(value.break_even_win_rate))).length;
+  const applicable = status !== 'not_applicable';
+  const healthy = health.healthy === true;
+  $('momentum-ignition-status').textContent = status.replaceAll('_', ' ');
+  $('momentum-ignition-status').className = `value ${applicable && candidates.length ? 'planned' : 'neg'}`;
+  $('momentum-ignition-snapshot').textContent = report.observed_at || 'not available';
+  $('momentum-ignition-health').textContent = applicable
+    ? String(health.status || 'not available').replaceAll('_', ' ')
+    : 'not applicable';
+  $('momentum-ignition-health').className = `value ${healthy ? 'pos' : 'neg'}`;
+  $('momentum-ignition-coverage').textContent = applicable
+    ? `${report.intraday_valid_rows ?? report.valid_feature_rows ?? report.active_pairs ?? 0} / ${report.requested_pairs ?? report.active_pairs ?? report.shortlist_rows ?? 0}`
+    : 'not applicable';
+  const rawTimeframes = report.completed_timeframes ?? report.timeframes ?? report.timeframe;
+  const timeframeText = Array.isArray(rawTimeframes)
+    ? rawTimeframes.join(' · ')
+    : (rawTimeframes && typeof rawTimeframes === 'object'
+      ? Object.entries(rawTimeframes).map(([name, count]) => `${name}: ${count}`).join(' · ')
+      : (rawTimeframes || (applicable ? 'M15 only' : 'not applicable')));
+  $('momentum-ignition-timeframes').textContent = String(timeframeText).replaceAll('_', ' ');
+  const registrationOpen = report.new_plan_registration_open ?? plans.new_plan_registration_open;
+  $('momentum-ignition-registration').textContent = applicable
+    ? (registrationOpen == null ? 'not available' : (registrationOpen ? 'OPEN' : 'CLOSED'))
+    : 'not applicable';
+  $('momentum-ignition-registration').className = `value ${registrationOpen ? 'planned' : 'neg'}`;
+  $('momentum-ignition-candidates').textContent = applicable
+    ? (report.displayed_candidates ?? report.watch_candidates ?? candidates.length) : 0;
+  $('momentum-ignition-ignition').textContent = applicable ? ignitionCount : 0;
+  $('momentum-ignition-reclaims').textContent = applicable ? reclaimCount : 0;
+  $('momentum-ignition-economics').textContent = applicable ? feasibleCount : 0;
+  $('momentum-ignition-active').textContent = plans.active_plans ?? 0;
+  $('momentum-ignition-resolved').textContent = metrics.resolved_trades ?? plans.resolved_trades ?? 0;
+  $('momentum-ignition-accuracy').textContent = metrics.strict_accuracy != null
+    ? `${pct(metrics.strict_accuracy)} (${metrics.strict_successes ?? 0}/${metrics.resolved_trades ?? 0})`
+    : 'not available';
+  $('momentum-ignition-net-r').textContent = metrics.mean_net_r != null
+    ? `${fmt(metrics.mean_net_r, 3)}R` : 'not available';
+  $('momentum-ignition-sessions').textContent = metrics.resolved_sessions ?? 0;
+  $('momentum-ignition-wilson').textContent = metrics.wilson_95_lower != null
+    ? pct(metrics.wilson_95_lower) : 'not available';
+  $('momentum-ignition-loss-streak').textContent = metrics.maximum_losing_streak ?? 0;
+  const qualification = applicable
+    ? String(evidence.status || report.qualification_status || 'collecting')
+    : 'not_applicable';
+  $('momentum-ignition-qualification').textContent = qualification.replaceAll('_', ' ');
+  $('momentum-ignition-qualification').className = `value ${qualification === 'qualified_for_review' ? 'pos' : (qualification.startsWith('collecting') || qualification === 'controls_pending' ? 'planned' : 'neg')}`;
+  const threshold = evidence.stage === 'early'
+    ? ((evidence.thresholds || {}).early || {})
+    : ((evidence.thresholds || {}).qualification || {});
+  $('momentum-ignition-progress').textContent = applicable
+    ? `${metrics.resolved_trades ?? 0}/${threshold.resolved_trades ?? 0} calls · ${metrics.resolved_sessions ?? 0}/${threshold.resolved_sessions ?? 0} sessions`
+    : 'not applicable';
+  $('momentum-ignition-improved').textContent = report.baseline_accuracy_improved ? 'YES' : 'NO';
+  $('momentum-ignition-improved').className = `value ${report.baseline_accuracy_improved ? 'pos' : 'neg'}`;
+  $('momentum-ignition-authority').textContent = report.eligible_for_live
+    ? 'ELIGIBLE FOR REVIEW' : 'NONE — RESEARCH ONLY';
+  $('momentum-ignition-authority').className = `value ${report.eligible_for_live ? 'planned' : 'neg'}`;
+  const states = Object.entries(plans.states || {}).map(([name, count]) =>
+    `${String(name).replaceAll('_', ' ')}: ${count}`).join(' · ');
+  const evidenceBlockers = Array.isArray(evidence.blockers) && evidence.blockers.length
+    ? ` Gate blockers: ${evidence.blockers.map(value => String(value).replaceAll('_', ' ')).join(' · ')}.` : '';
+  const healthDetail = health.detail ? ` Collector: ${health.detail}` : '';
+  $('momentum-ignition-detail').textContent = `${report.detail || 'No forward M21 snapshot is available — unavailable is not a pass.'}${states ? ` Plan ledger: ${states}.` : ''}${evidenceBlockers}${healthDetail} M21 evidence remains separate from M20 and cannot create a live call. Baseline improved: ${report.baseline_accuracy_improved ? 'YES' : 'NO'}.`;
+  rows($('momentum-ignition-table'),
+    ['Symbol', 'Setup', 'State', 'Last', 'Trigger', 'Stop', 'Adaptive target', 'Target net R', 'Break-even win rate', 'Score', 'Blockers'],
+    candidates.length
+      ? candidates.map(value => {
+        const features = value.features || {};
+        const blockers = Array.isArray(value.blockers) ? value.blockers : [];
+        const last = features.last_close ?? value.last_close;
+        const target = value.target ?? value.adaptive_target ?? value.target_price
+          ?? value.selected_target ?? value.plan_target;
+        const score = value.momentum_score ?? value.score;
+        return `<tr><td>${esc(value.symbol || value.scrip_code || '-')}</td><td>${esc(String(value.mechanism || value.setup || '-').replaceAll('_', ' '))}</td><td>${esc(String(value.state || '-').replaceAll('_', ' '))}</td><td class="num">${last != null ? fmt(last, 4) : '-'}</td><td class="num">${value.trigger != null ? fmt(value.trigger, 4) : '-'}</td><td class="num">${value.stop != null ? fmt(value.stop, 4) : '-'}</td><td class="num">${target != null ? fmt(target, 4) : '-'}</td><td class="num">${value.target_net_r != null ? `${fmt(value.target_net_r, 3)}R` : '-'}</td><td class="num">${value.break_even_win_rate != null ? pct(value.break_even_win_rate) : '-'}</td><td class="num">${score != null ? pct(score) : '-'}</td><td class="muted">${esc(blockers.map(item => String(item).replaceAll('_', ' ')).join(', ') || 'none')}</td></tr>`;
+      })
+      : ['<tr><td colspan="11" class="empty-note">no completed-bar M21 candidates — unavailable or empty is not a tradeable pass</td></tr>']);
+
+  function comparisonRow(label, value) {
+    const valuePlans = value.watch_plans || value.plans || {};
+    const valueEvidence = valuePlans.evidence || value.evidence || {};
+    const valueMetrics = valueEvidence.metrics || value.metrics || {};
+    return `<tr><td>${esc(label)}</td><td>${esc(String(value.status || 'not collected').replaceAll('_', ' '))}</td><td class="num">${valuePlans.active_plans ?? 0}</td><td class="num">${valueMetrics.resolved_trades ?? valuePlans.resolved_trades ?? 0}</td><td class="num">${valueMetrics.strict_accuracy != null ? pct(valueMetrics.strict_accuracy) : '-'}</td><td class="num">${valueMetrics.mean_net_r != null ? `${fmt(valueMetrics.mean_net_r, 3)}R` : '-'}</td><td class="num">${valueMetrics.resolved_sessions ?? 0}</td><td class="num">${valueMetrics.wilson_95_lower != null ? pct(valueMetrics.wilson_95_lower) : '-'}</td><td class="neg">${value.eligible_for_live ? 'review only' : 'none'}</td></tr>`;
+  }
+  rows($('pre-takeoff-m20-m21-table'),
+    ['Separate ledger', 'State', 'Active', 'Resolved', 'Strict accuracy', 'Mean net R', 'Sessions', 'Wilson 95% lower', 'Live authority'],
+    [
+      comparisonRow('M20 compression benchmark', benchmarkReport || {}),
+      comparisonRow('M21 momentum-ignition challenger', report),
+    ]);
 }
 function renderPerformanceComparison(report) {
   const comparisons = Array.isArray(report.filter_comparisons) ? report.filter_comparisons : [];

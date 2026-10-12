@@ -673,3 +673,32 @@ See the [M19 checkpoint](self-learning-m19-pre-takeoff-checkpoint.md) and
 [frozen protocol](self-learning-m19-pre-takeoff-protocol.md), the
 [M20 equity protocol](self-learning-m20-equity-pre-takeoff-protocol.md), and the
 [M20 qualification/health checkpoint](self-learning-m20-qualification-health-checkpoint.md).
+
+## M21 crypto momentum-ignition challenger
+
+- [x] Freeze a crypto-only completed-M15 causal hypothesis before the first M21
+  production artifact; treat inspected Sonic/LINK paths as motivating failures, never
+  prospective wins or training examples.
+- [x] Separate M21 snapshots, plans, qualification events, and denominators from the M20
+  compression benchmark. Side-by-side display must not pool evidence.
+- [x] Scan the complete active CoinDCX INR universe, require at least 85% valid M15
+  coverage, rank the full valid cross-section, register at most the top three eligible
+  plans, and keep the top twelve rows as display only.
+- [x] Freeze the momentum-ignition and post-failure VWAP-reclaim gates, along with
+  one-active-plan, cooldown, per-date, expiry, and timeout limits.
+- [x] Replace the uneconomic fixed-target assumption for this challenger with the frozen
+  `0.75R` through `3R` grid; register only the smallest target whose after-cost target/stop
+  payoff needs no more than a 70% break-even win rate.
+- [x] Preserve gap-aware fills, conservative same-bar ordering, immutable targets, and
+  explicit invalid/expired plans without calling either a success or failure.
+- [ ] Accumulate at least 60 resolved M21 calls across 40 distinct IST dates without
+  backfill, retuning, or an optional interim statistical look.
+- [ ] At the single first look, demonstrate at least 70% strict accuracy, a 55% Wilson
+  lower bound, positive mean after-cost net R, complete economics, loss streak no greater
+  than six, and zero integrity violations.
+- [ ] Complete M21-specific matched controls. A core pass is `controls_pending`, and even
+  final qualification is review-only until explicit human approval.
+
+See the
+[frozen M21 protocol](self-learning-m21-crypto-momentum-ignition-protocol.md) and
+[M21 implementation checkpoint](self-learning-m21-crypto-momentum-ignition-checkpoint.md).

@@ -2079,6 +2079,36 @@ def create_app(
         report = await asyncio.to_thread(load_pre_takeoff_watch, market)
         return JSONResponse(report)
 
+    @app.get("/api/self-learning/momentum-ignition-watch")
+    async def api_self_learning_momentum_ignition_watch(
+        market: str = "crypto",
+    ) -> JSONResponse:
+        """Read separate forward-only M21 crypto evidence; never collect in HTTP."""
+
+        if market not in {"nse", "bse", "crypto"}:
+            return JSONResponse({"error": "invalid market"}, status_code=400)
+        if market != "crypto":
+            return JSONResponse(
+                {
+                    "version": "momentum-ignition-watch-v1",
+                    "market": market,
+                    "status": "not_applicable",
+                    "candidates": [],
+                    "tradeable_calls": 0,
+                    "eligible_for_live": False,
+                    "baseline_accuracy_improved": False,
+                    "detail": (
+                        "M21 is a crypto-only research challenger; "
+                        "this market is not applicable."
+                    ),
+                }
+            )
+
+        from tradedesk.momentum_ignition_watch import load_momentum_ignition_watch
+
+        report = await asyncio.to_thread(load_momentum_ignition_watch, market)
+        return JSONResponse(report)
+
     @app.get("/api/session-report")
     async def api_session_report(
         market: Literal["nse", "crypto", "bse"] = "nse", on: str | None = None
