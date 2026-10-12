@@ -87,3 +87,38 @@ signal/economics threshold from provisional M22 results.
 The first empirical qualification decision remains the single inherited 60-resolved-call,
 40-IST-date look. Until that gate and M22-specific controls mature, the only accurate
 status is `collecting` or the applicable fail-closed input state.
+
+## First post-freeze production verification
+
+The first contract-valid production collection completed at
+`2026-10-12T22:32:52.002663+05:30` after commit `e074618` was durable on `origin/main`.
+The dashboard loader verified the manifest and independent snapshot/plan chains. Exact
+readiness state:
+
+- requested pairs: **339**;
+- activation overlap: **339/339**, manifest gate **PASS**;
+- feed-valid pairs: **339/339 (100%)**, feed gate **PASS**;
+- feature-valid pairs: **214/339 (63.13%)**, feature gate **PASS**;
+- feature-invalid pairs: **125** — 94 zero prior-three-bar volume, 28 zero ATR14,
+  and three zero prior-20 true range;
+- feed-invalid pairs: **0**;
+- registration candidates: **1**; and
+- newly registered plans: **1**.
+
+The registered plan is an OSMO/INR breakout-ignition research watch. It was armed at the
+same observation time with trigger `4.603599`, structural stop `3.992004`, adaptive target
+`5.06229525`, target multiple `0.75R`, estimated target net `0.619715R`, and estimated
+break-even win rate `63.99%`. It is `pending_trigger`, not a tradeable call: a causally
+later completed M15 close-plus-volume confirmation is still required.
+
+Resolved M22 calls remain **0**; strict accuracy, Wilson lower bound, and mean net R remain
+**unavailable**; baseline improvement and live eligibility remain **false**. The one active
+watch therefore proves that the feed-aware gate can expose a qualifying setup without
+weakening M21's signal/economics rules, but it does not prove accuracy or profitability.
+
+One automatic pre-release snapshot had been written before the M22 plan namespace was
+finalized. It contained zero plans and zero outcomes, failed the final activation-contract
+check, and was moved intact to
+`data/m14_m18/momentum_ignition_watch_m22_pre_release_invalid_20261012_184726/`.
+It is excluded from the production M22 root and denominator rather than rewritten or
+backfilled.

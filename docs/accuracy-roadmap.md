@@ -723,7 +723,7 @@ See the
   `data/m14_m18/momentum_ignition_watch_m22/crypto/`; never pool its denominator with
   M21, M20, NSE, or BSE. Enforce the `momentum-ignition-plan-m22-v1` namespace,
   activation cutoff, and activation binding for every historical evidence chain.
-- [ ] Verify the first post-freeze production M22 snapshot and display its activation,
+- [x] Verify the first post-freeze production M22 snapshot and display its activation,
   feed, feature-breadth, invalid-reason, and registration-gate state without presenting
   a research watch as a trade.
 - [ ] Accumulate at least 60 resolved M22 calls across 40 distinct IST dates without
@@ -734,8 +734,10 @@ See the
 - [ ] Complete independent M22 matched controls. M21 controls cannot be reused, and even
   final qualification remains review-only until explicit human approval.
 
-The observed 339/339 feed-valid and 213/339 feature-valid counts only motivated the
-prospective separation. M22 currently has no production outcomes, so accuracy and
-profitability are unavailable and baseline improvement remains false. See the
+The pre-activation 339/339 feed-valid and 213/339 feature-valid counts only motivated the
+prospective separation. The first valid forward run recorded 339/339 feed-valid and
+214/339 feature-valid pairs and armed one OSMO/INR research plan. It still has no resolved
+production outcomes, so accuracy and profitability are unavailable and baseline
+improvement remains false. See the
 [frozen M22 protocol](self-learning-m22-feed-aware-momentum-ignition-protocol.md) and
 [M22 implementation checkpoint](self-learning-m22-feed-aware-momentum-ignition-checkpoint.md).
