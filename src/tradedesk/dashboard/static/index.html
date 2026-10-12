@@ -1175,6 +1175,12 @@
 
 <script>
 const $ = (id) => document.getElementById(id);
+const esc = (value) => String(value ?? '')
+  .replaceAll('&', '&amp;')
+  .replaceAll('<', '&lt;')
+  .replaceAll('>', '&gt;')
+  .replaceAll('"', '&quot;')
+  .replaceAll("'", '&#39;');
 const fmt = (x, d=2) => (x === null || x === undefined) ? '-' : Number(x).toFixed(d);
 const pct = (x) => (x === null || x === undefined) ? '-' : (Number(x)*100).toFixed(2) + '%';
 const money = (x) => (x === null || x === undefined) ? '-' : (x>=0?'+':'') + Number(x).toFixed(0);

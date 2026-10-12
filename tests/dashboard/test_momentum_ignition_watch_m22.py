@@ -45,6 +45,7 @@ def test_m22_dashboard_separates_feed_feature_and_performance_evidence() -> None
     ).read_text(encoding="utf-8")
 
     assert "M22 feed-aware momentum-ignition challenger" in html
+    assert html.index("const esc = (value)") < html.index("async function loadLearning()")
     assert "Universe and data readiness — not performance" in html
     assert "Forward performance — separate M22 evidence" in html
     assert "/api/self-learning/momentum-ignition-watch-m22?market=${market}" in html
