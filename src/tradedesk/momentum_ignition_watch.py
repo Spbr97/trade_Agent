@@ -565,12 +565,19 @@ def build_momentum_ignition_watch(
             blockers.append("cost_or_geometry_gate_failed")
         if coverage < MIN_COVERAGE:
             blockers.append("insufficient_universe_coverage")
+        raw_probability = source["opportunity_probability"]
+        probability = (
+            float(raw_probability)
+            if raw_probability is not None
+            and math.isfinite(float(raw_probability))
+            else None
+        )
         candidate: dict[str, Any] = {
             "market": "crypto",
             "scrip_code": code,
             "symbol": str(source["symbol"]),
-            "opportunity_probability": source["opportunity_probability"],
-            "daily_rank_available": bool(source["daily_rank_available"]),
+            "opportunity_probability": probability,
+            "daily_rank_available": probability is not None,
             "mechanism": mechanism,
             "state": "arming" if not blockers else "observe",
             "momentum_score": float(source["momentum_score"]),

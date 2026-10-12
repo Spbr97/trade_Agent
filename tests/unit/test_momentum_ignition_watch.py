@@ -114,6 +114,27 @@ def test_full_universe_ranks_are_separate_from_top12_display_and_top3_registrati
     assert all(row["tradeable_now"] is False for row in registration)
 
 
+def test_missing_daily_rank_is_serialized_as_null_never_nan() -> None:
+    shortlist = _shortlist(16)
+    shortlist.loc[shortlist.index % 2 == 0, "opportunity_probability"] = None
+    frames = {
+        str(row.scrip_code): _ignition_frame(index)
+        for index, row in enumerate(shortlist.itertuples(index=False), 1)
+    }
+
+    report, registration = build_momentum_ignition_watch(
+        shortlist,
+        frames,
+        observed_at=_observed_at(next(iter(frames.values()))),
+    )
+
+    json.dumps(report, allow_nan=False)
+    json.dumps(registration, allow_nan=False)
+    unranked = [row for row in report["candidates"] if not row["daily_rank_available"]]
+    assert unranked
+    assert all(row["opportunity_probability"] is None for row in unranked)
+
+
 def test_coverage_below_85_percent_blocks_only_new_registration() -> None:
     shortlist = _shortlist(10)
     frames = {
