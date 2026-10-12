@@ -17,6 +17,12 @@ The challenger uses its own hash-chained snapshots, plans, and qualification eve
 `data/m14_m18/momentum_ignition_watch/crypto/`. M20 evidence is not rewritten or pooled.
 The dashboard comparison is descriptive only.
 
+The first coverage-only production snapshot registered no plan because shared CoinDCX
+candles rounded fractional base volume and left only 195/339 valid feature rows. Before
+the first plan, the collector was corrected to give M21 raw fractional CoinDCX volume
+while deriving M20's unchanged rounded candle view from the same fetched rows. This is a
+data-fidelity correction, not a gate or threshold change.
+
 ## Why this is an economics change, not an accuracy claim
 
 The M20 fixed `+0.75R` target frequently required an implausibly high target-hit rate

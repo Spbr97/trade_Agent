@@ -3,6 +3,14 @@
 Protocol frozen: 2026-10-12 IST, before the first production M21 snapshot, plan, or
 outcome was collected.
 
+Implementation clarification: the first coverage-only snapshot registered zero plans
+and exposed the shared crypto candle model's documented integer-volume rounding. Before
+the first M21 plan, `V` was bound explicitly to CoinDCX's raw fractional base-asset
+volume. M20 still receives its unchanged rounded shared candles. No M21 threshold,
+ranking weight, geometry, first-look rule, or already-recorded artifact was altered.
+Snapshots collected after this correction carry the machine-readable source marker
+`m15_volume_contract=coindcx_raw_fractional_base_asset_v1`.
+
 Status: preregistered, forward-only crypto challenger. It is a research observer only.
 It cannot authorize an alert, a personal call, an order, sizing, model promotion, or a
 baseline-improvement claim.
@@ -39,6 +47,9 @@ before their eligible future bars may enter M21 evidence.
   register a directional plan.
 - The only decision-time price information is completed M15 OHLCV. The decision bar is
   unavailable until its close; it can never trigger the plan created from it.
+- M21 volume is the raw fractional base-asset volume returned by CoinDCX. It is fetched
+  through the existing rate-limited public client and is never rounded into the shared
+  equity-compatible integer `Candle.volume` field.
 - At least 32 completed M15 bars are required for a valid feature row. Non-finite prices,
   invalid OHLC geometry, negative volume, non-positive close, or undefined required
   ratios make the row invalid, never eligible.

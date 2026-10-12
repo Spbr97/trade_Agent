@@ -21,6 +21,7 @@ from tradedesk.momentum_ignition_watch import (
     build_momentum_ignition_watch,
     collect_momentum_ignition_watch,
     load_momentum_ignition_watch,
+    precise_crypto_frames,
     update_momentum_ignition_plans,
 )
 from tradedesk.prediction_ledger import canonical_sha256
@@ -82,6 +83,26 @@ def _shortlist(count: int) -> pd.DataFrame:
 
 def _observed_at(frame: pd.DataFrame) -> datetime:
     return frame.index[-1].to_pydatetime() + timedelta(minutes=15)
+
+
+def test_precise_crypto_frames_keep_subunit_volume() -> None:
+    timestamp = datetime(2026, 10, 10, tzinfo=IST)
+    frames = precise_crypto_frames(
+        {
+            "CDX_BTCINR": [
+                {
+                    "time": int(timestamp.timestamp() * 1000),
+                    "open": 5_000_000,
+                    "high": 5_010_000,
+                    "low": 4_990_000,
+                    "close": 5_005_000,
+                    "volume": 0.12345678,
+                }
+            ]
+        }
+    )
+
+    assert frames["CDX_BTCINR"].iloc[0]["volume"] == pytest.approx(0.12345678)
 
 
 def _build_many(count: int = 16):

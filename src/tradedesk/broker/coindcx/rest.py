@@ -8,7 +8,8 @@ hard rule; M12 only, and this adapter has no order module at all, not even a stu
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import httpx
 
@@ -92,6 +93,23 @@ class CoinDcxClient:
         INDstocks' 5-codes-per-call). Both startTime and endTime are ALWAYS sent
         together, ms epoch - see models.py: passing only one is silently ignored and
         returns the latest bars regardless of what was asked for."""
+        body = await self.candle_rows(interval, pair, start, end)
+        scrip_code = scrip_code_for_pair(pair)
+        candles = [candle_from_api(scrip_code, interval, row) for row in body]
+        candles.sort(key=lambda c: c.ts)  # API returns newest-first; store expects ascending
+        return candles
+
+    async def candle_rows(
+        self, interval: Interval, pair: str, start: datetime, end: datetime
+    ) -> list[dict[str, Any]]:
+        """Return validated raw rows without rounding CoinDCX's fractional volume.
+
+        The shared :class:`Candle` contract intentionally keeps whole-unit volume for
+        equities. M21 needs the exchange's precise base-asset volume for causal relative-
+        volume features, so this additive view preserves the public payload while using
+        the same endpoint, time bounds, and rate limiter as :meth:`candles`.
+        """
+
         params: dict[str, str | int | float | bool | None] = {
             "pair": pair,
             "interval": coindcx_interval(interval),
@@ -102,10 +120,33 @@ class CoinDcxClient:
         body = await self._get_json(CANDLES_PATH, params)
         if not isinstance(body, list):
             raise CoinDcxError(200, f"unexpected candles body: {str(body)[:200]}")
-        scrip_code = scrip_code_for_pair(pair)
-        candles = [candle_from_api(scrip_code, interval, row) for row in body]
-        candles.sort(key=lambda c: c.ts)  # API returns newest-first; store expects ascending
-        return candles
+        if not all(isinstance(row, dict) for row in body):
+            raise CoinDcxError(200, f"unexpected candle row: {str(body)[:200]}")
+        return [dict(row) for row in body]
+
+    async def candle_rows_history_by_pair(
+        self, interval: Interval, pairs: Sequence[str], start: datetime, end: datetime
+    ) -> dict[str, list[dict[str, Any]]]:
+        """Page raw rows by pair while preserving fractional base-asset volume."""
+
+        window = timedelta(seconds=interval.seconds * MAX_CANDLES_PER_CALL)
+        result: dict[str, list[dict[str, Any]]] = {}
+        for pair in pairs:
+            bucket: dict[int, dict[str, Any]] = {}
+            win_end = end
+            while win_end > start:
+                win_start = max(start, win_end - window)
+                got = await self.candle_rows(interval, pair, win_start, win_end)
+                if not got:
+                    break
+                for row in got:
+                    timestamp_ms = int(row["time"])
+                    timestamp = datetime.fromtimestamp(timestamp_ms / 1000, tz=UTC)
+                    if start <= timestamp < end:
+                        bucket[timestamp_ms] = row
+                win_end = win_start
+            result[pair] = [bucket[key] for key in sorted(bucket)]
+        return result
 
     async def candles_history_by_pair(
         self, interval: Interval, pairs: Sequence[str], start: datetime, end: datetime
@@ -122,22 +163,26 @@ class CoinDcxClient:
         trades for an entire multi-hundred-day window). Not expected for the 338 already
         liquidity-filtered INR pairs this targets; revisit if Phase 3's quality report
         shows truncated history for a pair that should have more."""
-        window = timedelta(seconds=interval.seconds * MAX_CANDLES_PER_CALL)
-        result: dict[str, list[Candle]] = {}
-        for pair in pairs:
-            bucket: dict[datetime, Candle] = {}
-            win_end = end
-            while win_end > start:
-                win_start = max(start, win_end - window)
-                got = await self.candles(interval, pair, win_start, win_end)
-                if not got:
-                    break  # reached the real start of this pair's history
-                for c in got:
-                    if start <= c.ts < end:
-                        bucket[c.ts] = c
-                win_end = win_start
-            result[pair] = [bucket[k] for k in sorted(bucket)]
-        return result
+        rows = await self.candle_rows_history_by_pair(interval, pairs, start, end)
+        return {
+            pair: [candle_from_api(scrip_code_for_pair(pair), interval, row) for row in values]
+            for pair, values in rows.items()
+        }
+
+    async def candle_rows_history(
+        self, interval: Interval, codes: Sequence[str], start: datetime, end: datetime
+    ) -> dict[str, list[dict[str, Any]]]:
+        """Scrip-code-keyed precise rows for research features that need float volume."""
+
+        resolved = {code: self.pair_for_code[code] for code in codes if code in self.pair_for_code}
+        pair_to_code = {pair: code for code, pair in resolved.items()}
+        by_pair = await self.candle_rows_history_by_pair(
+            interval, list(resolved.values()), start, end
+        )
+        output = {pair_to_code[pair]: values for pair, values in by_pair.items()}
+        for code in codes:
+            output.setdefault(code, [])
+        return output
 
     async def candles_history(
         self, interval: Interval, codes: Sequence[str], start: datetime, end: datetime

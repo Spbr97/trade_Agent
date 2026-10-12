@@ -10,6 +10,7 @@ from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
+import pytest
 
 import tradedesk.pre_takeoff_watch as pre_takeoff_watch
 from tradedesk.broker.indstocks.models import IST
@@ -365,6 +366,8 @@ class _FakeCoinDcxClient:
     def __init__(self, frame: pd.DataFrame) -> None:
         self.frame = frame
         self.registered: dict[str, str] = {}
+        self.candles_history_calls = 0
+        self.candle_rows_history_calls = 0
 
     async def __aenter__(self):
         return self
@@ -386,7 +389,23 @@ class _FakeCoinDcxClient:
         self.registered = dict(pairs)
 
     async def candles_history(self, interval, codes, start, end):
+        self.candles_history_calls += 1
         return {code: self.frame.copy() for code in codes}
+
+    async def candle_rows_history(self, interval, codes, start, end):
+        self.candle_rows_history_calls += 1
+        rows = [
+            {
+                "time": int(timestamp.timestamp() * 1000),
+                "open": float(bar["open"]),
+                "high": float(bar["high"]),
+                "low": float(bar["low"]),
+                "close": float(bar["close"]),
+                "volume": float(bar["volume"]),
+            }
+            for timestamp, bar in self.frame.iterrows()
+        ]
+        return {code: list(rows) for code in codes}
 
 
 def test_crypto_collector_updates_m20_and_isolated_m21_from_one_fetch(
@@ -396,6 +415,7 @@ def test_crypto_collector_updates_m20_and_isolated_m21_from_one_fetch(
     from tradedesk.markets import crypto_universe
 
     frame = _compression_frame()
+    frame["volume"] += 0.4
     observed_at = frame.index[-1].to_pydatetime() + timedelta(minutes=15)
     client = _FakeCoinDcxClient(frame)
     monkeypatch.setattr(coindcx, "CoinDcxClient", lambda: client)
@@ -426,11 +446,21 @@ def test_crypto_collector_updates_m20_and_isolated_m21_from_one_fetch(
     assert report["version"] == "pre-takeoff-watch-v1"
     assert report["requested_pairs"] == 1
     assert client.registered == {"CDX_TESTINR": "TEST_INR"}
+    assert client.candle_rows_history_calls == 1
+    assert client.candles_history_calls == 0
     m20_latest = json.loads((m20_root / "crypto" / "latest.json").read_text())
     m21_latest = json.loads((m21_root / "crypto" / "latest.json").read_text())
     assert m20_latest["snapshot_sha256"] == report["snapshot_sha256"]
+    assert m20_latest["candidates"][0]["features"]["average_notional_20"] == pytest.approx(
+        np.mean(frame["close"].iloc[-20:] * np.round(frame["volume"].iloc[-20:]))
+    )
     assert m21_latest["version"] == "momentum-ignition-watch-v1"
     assert m21_latest["source"]["shared_m15_fetch_with_m20"] is True
+    assert (
+        m21_latest["source"]["m15_volume_contract"]
+        == "coindcx_raw_fractional_base_asset_v1"
+    )
+    assert m21_latest["candidates"][0]["features"]["prior_volume_20"] == pytest.approx(100.4)
     assert (m20_root / "crypto" / "plans.jsonl").exists()
     assert not (m20_root / "momentum_ignition_watch" / "crypto" / "latest.json").exists()
 

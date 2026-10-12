@@ -125,6 +125,29 @@ async def test_candles_sorts_ascending_and_labels_scrip_code(client: CoinDcxClie
 
 
 @respx.mock
+async def test_precise_candle_rows_preserve_fractional_base_volume(
+    client: CoinDcxClient,
+) -> None:
+    timestamp = datetime(2026, 9, 11, tzinfo=UTC)
+    respx.get(CANDLES).mock(
+        return_value=httpx.Response(
+            200,
+            json=[candle_row(timestamp, volume=0.12345678)],
+        )
+    )
+    client.register_pairs({"CDX_BTCINR": "I-BTC_INR"})
+
+    got = await client.candle_rows_history(
+        Interval.M15,
+        ["CDX_BTCINR"],
+        timestamp - timedelta(minutes=15),
+        timestamp + timedelta(minutes=15),
+    )
+
+    assert got["CDX_BTCINR"][0]["volume"] == 0.12345678
+
+
+@respx.mock
 async def test_candles_sends_pair_interval_limit_and_ms_times(client: CoinDcxClient) -> None:
     route = respx.get(CANDLES).mock(return_value=httpx.Response(200, json=[]))
     start = datetime(2026, 1, 1, tzinfo=UTC)

@@ -836,6 +836,7 @@ async def collect_crypto_pre_takeoff_watch(
     """Refresh M20 and the isolated M21 challenger from one completed-M15 fetch."""
 
     from tradedesk.broker.coindcx import CoinDcxClient
+    from tradedesk.broker.coindcx.models import candle_from_api
     from tradedesk.markets.crypto_universe import active_crypto_codes
 
     now = observed_at or datetime.now(IST)
@@ -890,9 +891,13 @@ async def collect_crypto_pre_takeoff_watch(
             )
         shortlist = pd.DataFrame(universe_rows)
         codes = sorted(active)
-        candles = await client.candles_history(
+        precise_rows = await client.candle_rows_history(
             Interval.M15, codes, start=now - timedelta(hours=48), end=now
         )
+        candles = {
+            code: [candle_from_api(code, Interval.M15, row) for row in rows]
+            for code, rows in precise_rows.items()
+        }
     report = build_pre_takeoff_watch("crypto", shortlist, candles, observed_at=now)
     report["source"] = source
     report["active_pairs"] = len(active)
@@ -921,7 +926,10 @@ async def collect_crypto_pre_takeoff_watch(
     from tradedesk.momentum_ignition_watch import (
         DEFAULT_OUTPUT_ROOT as MOMENTUM_DEFAULT_OUTPUT_ROOT,
     )
-    from tradedesk.momentum_ignition_watch import collect_momentum_ignition_watch
+    from tradedesk.momentum_ignition_watch import (
+        collect_momentum_ignition_watch,
+        precise_crypto_frames,
+    )
 
     challenger_root = momentum_output_root
     if challenger_root is None:
@@ -932,7 +940,7 @@ async def collect_crypto_pre_takeoff_watch(
         )
     collect_momentum_ignition_watch(
         shortlist,
-        candles,
+        precise_crypto_frames(precise_rows),
         observed_at=now,
         output_root=challenger_root,
         source={
@@ -940,6 +948,7 @@ async def collect_crypto_pre_takeoff_watch(
             "active_pairs": len(active),
             "requested_pairs": len(codes),
             "shared_m15_fetch_with_m20": True,
+            "m15_volume_contract": "coindcx_raw_fractional_base_asset_v1",
         },
     )
     return report

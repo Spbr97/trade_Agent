@@ -12,7 +12,7 @@ import json
 import math
 from collections import Counter
 from collections.abc import Mapping, Sequence
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -64,6 +64,35 @@ NON_DIRECTIONAL_CRYPTO_CODES = frozenset(
         "CDX_USDTINR",
     }
 )
+
+
+def precise_crypto_frames(
+    rows_by_code: Mapping[str, Sequence[Mapping[str, Any]]],
+) -> dict[str, pd.DataFrame]:
+    """Convert raw CoinDCX rows to M15 frames without integer volume rounding."""
+
+    frames: dict[str, pd.DataFrame] = {}
+    for code, rows in rows_by_code.items():
+        records = [
+            {
+                "ts": datetime.fromtimestamp(int(row["time"]) / 1000, tz=UTC),
+                "open": float(row["open"]),
+                "high": float(row["high"]),
+                "low": float(row["low"]),
+                "close": float(row["close"]),
+                "volume": float(row["volume"]),
+            }
+            for row in rows
+        ]
+        if not records:
+            frames[code] = pd.DataFrame(
+                columns=["open", "high", "low", "close", "volume"],
+                index=pd.DatetimeIndex([], tz=UTC),
+            )
+            continue
+        frame = pd.DataFrame(records).set_index("ts")
+        frames[code] = frame[~frame.index.duplicated(keep="last")].sort_index()
+    return frames
 
 
 def _plan_ledger(output_root: Path) -> Path:
@@ -1144,5 +1173,6 @@ __all__ = [
     "load_momentum_ignition_plan_events",
     "load_momentum_ignition_watch",
     "persist_momentum_ignition_watch",
+    "precise_crypto_frames",
     "update_momentum_ignition_plans",
 ]
