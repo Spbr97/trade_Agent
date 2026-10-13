@@ -402,7 +402,32 @@ def _stress_summary(root: Path, state: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _quarantined_sessions(root: Path) -> dict[str, str]:
+    """Armed sessions whose source watchlist is known to be irrecoverable (human-approved).
+
+    Only the source-watchlist hash check is waived for these; every other check stays strict.
+    """
+
+    path = root / "config" / "evidence_quarantine.yaml"
+    if not path.is_file():
+        return {}
+    import yaml
+
+    raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    return {
+        str(item["session"]): str(item.get("reason", ""))
+        for item in raw.get("quarantined_sessions") or []
+    }
+
+
+def _canonical(value: Any) -> str:
+    """Stable text form so a stored JSON summary and a freshly computed one compare equal."""
+
+    return json.dumps(value, sort_keys=True, default=str)
+
+
 def _integrity_checks(root: Path, state: dict[str, Any]) -> dict[str, Any]:
+    quarantined = _quarantined_sessions(root)
     activation = state["activation"]
     records = state.get("records", [])
     failures = []
@@ -424,7 +449,9 @@ def _integrity_checks(root: Path, state: dict[str, Any]) -> dict[str, Any]:
         if row.get("prediction_sha256") != _prediction_hash(row):
             failures.append(f"prediction_hash:{signal_id}")
         source = root / "data/watchlists" / str(row.get("source_watchlist", ""))
-        if not source.is_file() or digest(source) != row.get("source_sha256"):
+        if row.get("armed_on") not in quarantined and (
+            not source.is_file() or digest(source) != row.get("source_sha256")
+        ):
             failures.append(f"source_watchlist_hash:{signal_id}")
         if (
             row.get("prospective_eligible") is True
@@ -437,7 +464,7 @@ def _integrity_checks(root: Path, state: dict[str, Any]) -> dict[str, Any]:
     recomputed = summarize({"records": records})
     stored = state.get("summary") or {}
     compared = set(recomputed) - {"updated_at"}
-    if any(stored.get(name) != recomputed.get(name) for name in compared):
+    if any(_canonical(stored.get(name)) != _canonical(recomputed.get(name)) for name in compared):
         failures.append("summary_mismatch")
     availability = _watchlist_availability(root, state)
     if availability["missing_watchlist_sessions"]:

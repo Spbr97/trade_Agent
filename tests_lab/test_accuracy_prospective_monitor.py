@@ -3,6 +3,7 @@ from datetime import date, timedelta
 from types import SimpleNamespace
 
 import duckdb
+import numpy as np
 import pandas as pd
 import pytest
 import tradedesk_lab.accuracy_prospective_monitor as monitor_module
@@ -179,3 +180,24 @@ def test_late_zero_candidate_watchlist_is_not_a_valid_zero_call_session(
     assert result["missing_watchlist_sessions"] == []
     assert result["late_watchlist_sessions"] == ["2026-10-05"]
     assert result["sessions"][0]["registration_valid"] is False
+
+
+def test_stored_summary_compares_equal_to_numpy_recomputed_summary() -> None:
+    from tradedesk_lab.accuracy_prospective_monitor import _canonical
+
+    stored = {"gate_checks": {"session_target_rate": "True", "accuracy": True}}
+    fresh = {"gate_checks": {"session_target_rate": np.True_, "accuracy": True}}
+    assert _canonical(stored) == _canonical(fresh)
+    assert _canonical({"a": 1}) != _canonical({"a": 2})
+
+
+def test_quarantine_file_lists_sessions_and_defaults_to_none(tmp_path) -> None:
+    from tradedesk_lab.accuracy_prospective_monitor import _quarantined_sessions
+
+    assert _quarantined_sessions(tmp_path) == {}
+    (tmp_path / "config").mkdir()
+    (tmp_path / "config" / "evidence_quarantine.yaml").write_text(
+        "quarantined_sessions:\n  - session: '2026-10-05'\n    reason: lost original\n",
+        encoding="utf-8",
+    )
+    assert _quarantined_sessions(tmp_path) == {"2026-10-05": "lost original"}

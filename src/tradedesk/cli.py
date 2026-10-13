@@ -1931,6 +1931,15 @@ def live(
     typer.echo(f"recording: {recording}")
 
 
+def _last_scan_ts(store: CandleStore, ref: str, market: str) -> datetime | None:
+    """The session `scan` evaluates when run with --date today (see the comment there)."""
+    from tradedesk.broker.indstocks.models import Interval
+
+    if market == "crypto":
+        return store.last_closed_ts(ref, Interval.D1)
+    return store.last_ts(ref, Interval.D1)
+
+
 @app.command()
 def scan(
     on: str = typer.Option("today", "--date", help="YYYY-MM-DD or 'today' (last stored session)"),
@@ -1972,9 +1981,11 @@ def scan(
         if on == "today":
             # last_closed_ts, not last_ts: crypto's feed continuously updates the
             # currently-forming UTC day's bar rather than only publishing it once closed -
-            # using last_ts() here would arm signals off a not-yet-final close. No-op for
-            # NSE/BSE, whose candles are only ever loaded after the real session close.
-            last = store.last_closed_ts(ref, Interval.D1)
+            # using last_ts() here would arm signals off a not-yet-final close. NOT a no-op
+            # for NSE/BSE: a daily bar only counts as closed 24h after its timestamp, so at
+            # the 16:00 after-close run it would scan the PREVIOUS session and overwrite that
+            # day's watchlist. Equity bars are only stored after the real close, so last_ts.
+            last = _last_scan_ts(store, ref, market)
             if last is None:
                 raise typer.BadParameter("no benchmark candles stored; run `tradedesk data load`")
             day = last.date()

@@ -328,3 +328,25 @@ def test_connect_raises_the_real_error_once_retries_are_exhausted(tmp_path: Path
     finally:
         proc.kill()
         proc.wait(timeout=5)
+
+
+def test_scan_uses_todays_bar_for_equity_but_only_closed_bars_for_crypto(
+    store: CandleStore,
+) -> None:
+    """Regression (found 2026-10-14): `scan --date today` used last_closed_ts for every
+    market, so the 16:00 NSE/BSE after-close run saw today's bar as 'still forming' (it only
+    counts as closed 24h later), scanned the PREVIOUS session and overwrote its watchlist."""
+    from tradedesk.cli import _last_scan_ts
+
+    day2 = datetime.now(IST).replace(hour=0, minute=0, second=0, microsecond=0)
+    day1 = day2 - timedelta(days=1)
+    store.upsert_candles([
+        Candle(scrip_code="NSE_3045", interval=Interval.D1, ts=t,
+               open=100.0, high=101.0, low=99.0, close=100.5, volume=10)
+        for t in (day1, day2)
+    ])  # fmt: skip
+
+    assert _last_scan_ts(store, "NSE_3045", "nse") == day2
+    assert _last_scan_ts(store, "NSE_3045", "bse") == day2
+    # crypto: today's bar is still forming until its 24h window ends, so only day1 is final
+    assert _last_scan_ts(store, "NSE_3045", "crypto") == day1
