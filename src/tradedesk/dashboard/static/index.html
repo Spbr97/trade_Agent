@@ -964,6 +964,19 @@
     <table id="pre-takeoff-watch-table" style="margin-top:10px;"></table>
   </section>
   <section>
+    <h2>Potential movers <span class="info-ic" title="Research screen, not a call. Ranks stocks by how likely they are to close at least +5% next session, learned from history and judged on data the model never saw. Much of such a move happens at the open and the picks' open-to-close return is about zero out of sample, so there is no entry, stop or size here. Direction is not guaranteed.">ⓘ</span></h2>
+    <div class="cards" style="margin-bottom:10px;">
+      <div class="card"><div class="label">Ranking method</div><div class="value" id="movers-method">not collected</div></div>
+      <div class="card"><div class="label">As of session</div><div class="value" id="movers-asof">not available</div></div>
+      <div class="card"><div class="label">Hit rate out of sample</div><div class="value" id="movers-hit">not available</div></div>
+      <div class="card"><div class="label">All-stock base rate</div><div class="value" id="movers-base">not available</div></div>
+      <div class="card"><div class="label">Forward hit rate (live lists)</div><div class="value" id="movers-forward">not enough yet</div></div>
+      <div class="card"><div class="label">Live authority</div><div class="value neg">NONE</div></div>
+    </div>
+    <div class="muted" id="movers-detail"></div>
+    <table id="movers-table" style="margin-top:10px;"></table>
+  </section>
+  <section>
     <h2>M23 opening-impulse continuation <span class="info-ic" title="NSE/BSE forward-only research for a second leg after a strong opening move holds. It is separate from M20 compression evidence. Accuracy is descriptive; after-cost expectancy, its lower bound, profit factor and matched-random edge decide profitability review.">ⓘ</span></h2>
     <div class="cards" style="margin-bottom:10px;">
       <div class="card"><div class="label">M23 state</div><div class="value" id="impulse-m23-status">not collected</div></div>
@@ -2240,8 +2253,29 @@ $('research-market-select').addEventListener('change', loadResearch);
 // ---------------------------------------------------------------- Learning tab
 // Its own top-level tab (moved out of Research 2026-09-14 so it's easier to check without
 // digging into another tab first) - reads the same /api/eod-learning endpoint.
+async function loadPotentialMovers(market) {
+  const pct = (v) => (v == null ? 'n/a' : (v * 100).toFixed(1) + '%');
+  const set = (id, text) => { const el = document.getElementById(id); if (el) el.textContent = text; };
+  let r;
+  try { r = await (await fetch(`/api/self-learning/potential-movers?market=${market}`)).json(); }
+  catch (e) { set('movers-method', 'unavailable'); return; }
+  if (!r || r.status === 'not_collected' || r.error) { set('movers-method', 'not collected'); return; }
+  const ev = (r.model_evaluation || {}).locked || {};
+  const m = ev.model || {};
+  set('movers-method', r.rank_method === 'model' ? 'learned model' : 'fixed tier rules');
+  set('movers-asof', r.as_of + (r.recorded_as_forecast ? '' : ' (late, not logged)'));
+  set('movers-hit', m.up5_rate != null ? pct(m.up5_rate) + ' (' + (m.lift || 0).toFixed(1) + 'x)' : 'rules only');
+  set('movers-base', m.universe_up5_rate != null ? pct(m.universe_up5_rate) : 'n/a');
+  const f = r.forward_tracking || {};
+  set('movers-forward', f.picks ? pct(f.up5_rate) + ' of ' + f.picks + ' picks' : 'not enough yet');
+  set('movers-detail', r.detail || '');
+  const rows = (r.candidates || []).map(c => `<tr><td>${c.symbol}</td><td>${c.model_probability != null ? pct(c.model_probability) : (c.tier || '')}</td><td>${c.close}</td><td>${c.below_ema50_pct}%</td><td>${c.five_session_change_pct}%</td><td>${c.volume_vs_20d}x</td></tr>`).join('');
+  document.getElementById('movers-table').innerHTML = '<tr><th>Stock</th><th>Chance of +5%</th><th>Close</th><th>vs EMA50</th><th>5-session</th><th>Volume vs 20d</th></tr>' + rows;
+}
+
 async function loadLearning() {
   const market = $('learning-market-select').value;
+  loadPotentialMovers(market);
   const [r, statusResponse, challengerResponse, timingResponse, comparisonResponse, leaderResponse, separabilityResponse, executionAlignedResponse, intradayContractResponse, selectionReadinessResponse, preTakeoffSelectorResponse, preTakeoffWatchResponse, impulseM23Response, momentumIgnitionResponse, momentumIgnitionM22Response] = await Promise.all([
     fetch(`/api/eod-learning?market=${market}`),
     fetch(`/api/self-learning/status?market=${market}`),
