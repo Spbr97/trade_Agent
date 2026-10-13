@@ -36,3 +36,15 @@ about zero on the whole universe (NSE -0.25% gross, 217 trades, 508 sessions; BS
 trades, 72 sessions) and worse on listed names (-0.75% gross buying at 09:30). Listed names
 reverse more often than they follow through. This is a screen for what to watch, not a trade.
 The forward hit rate in `forward_tracking` is the evidence to watch; nothing has been promoted.
+
+## Updates, 2026-10-13 (later)
+- New listings are included (45+ daily bars, was 260) with listing age as a feature: Shringar
+  House of Mangalsutra (202 bars) and Caliber Mining (56) rose 16% and 15% on 48x/64x volume and
+  had been excluded by design. Locked-block top-25 hit rate: NSE 14.3% (4.4x base).
+- Results calendar: `tradedesk data refresh-results` reads NSE's public board-meetings API
+  (task `tradedesk-results-calendar`, weekdays 07:30 and 16:50). The calendar had stopped on
+  11 Sep, so HCL Tech's 12 Oct results were unknown when it rose 7.4%. Results timing did not
+  improve the top-25 ranking, so the report also carries a separate "results due" list (ranked by
+  each stock's own past results move) whose direction is unknown by construction. On past
+  results days a >=5% move happened 30% of the time vs 6.7% on ordinary days.
+- Stale daily data is flagged (`data_stale`, `sessions_behind`) in the report and dashboard.

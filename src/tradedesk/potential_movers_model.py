@@ -23,7 +23,7 @@ from tradedesk.potential_movers import LIST_SIZE, MOVE, TIER_ORDER
 
 FEATURES = [
     "below50", "pos6m", "d5", "ret1", "ret20", "gap", "close_loc", "atr_pct",
-    "dist_hi20", "rng_rel", "vol_rel",
+    "dist_hi20", "rng_rel", "vol_rel", "age_bars",
 ]  # fmt: skip
 EVENT_FEATURES = ["res_today", "res_next", "hist_res_move"]
 PURGE_SESSIONS = 3

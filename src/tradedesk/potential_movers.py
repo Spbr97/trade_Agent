@@ -31,7 +31,7 @@ from tradedesk.prediction_ledger import canonical_sha256
 VERSION = "potential-movers-v1"
 DEFAULT_OUTPUT_ROOT = Path("data/m14_m18/potential_movers")
 MOVE = 0.05  # the "big move" the list is about
-MIN_HISTORY_BARS = 260
+MIN_HISTORY_BARS = 45  # new listings are some of the biggest movers; the model sees their age
 MIN_NOTIONAL = {"nse": 2e7, "bse": 2e7, "crypto": 0.0}  # 20-day average traded value
 LIST_SIZE = 25
 MIN_TIER_SAMPLES = 200  # a tier with less history than this is shown but not ranked on it
@@ -147,7 +147,8 @@ def build_panel(
             continue
         close = g["close"].astype(float)
         rng = (g["high"] - g["low"]).astype(float) / close
-        high6, low6 = close.rolling(126).max(), close.rolling(126).min()
+        high6 = close.rolling(126, min_periods=40).max()
+        low6 = close.rolling(126, min_periods=40).min()
         row_dates = (
             pd.to_datetime(g["ts"], unit="s", utc=True).dt.tz_convert("Asia/Kolkata").dt.date
         )
@@ -169,13 +170,14 @@ def build_panel(
                 "d5": close / close.shift(5) - 1,
                 "ret1": close.pct_change(),
                 "ret20": close / close.shift(20) - 1,
+                "age_bars": np.arange(1, len(g) + 1, dtype=float),
                 "gap": g["open"].astype(float) / close.shift(1) - 1,
                 "close_loc": (close - g["low"]) / (g["high"] - g["low"]).replace(0, np.nan),
-                "atr_pct": rng.rolling(14).mean(),
-                "dist_hi20": close / g["high"].rolling(20).max().shift(1) - 1,
-                "rng_rel": rng / rng.rolling(20).median(),
-                "vol_rel": g["volume"] / g["volume"].rolling(20).mean(),
-                "notional": (g["volume"] * close).rolling(20).mean(),
+                "atr_pct": rng.rolling(14, min_periods=10).mean(),
+                "dist_hi20": close / g["high"].rolling(20, min_periods=15).max().shift(1) - 1,
+                "rng_rel": rng / rng.rolling(20, min_periods=15).median(),
+                "vol_rel": g["volume"] / g["volume"].rolling(20, min_periods=15).mean(),
+                "notional": (g["volume"] * close).rolling(20, min_periods=15).mean(),
                 "next_ret": close.shift(-1) / close - 1,
                 "next_high": g["high"].shift(-1) / close - 1,
                 "next_open_to_close": close.shift(-1) / g["open"].astype(float).shift(-1) - 1,
