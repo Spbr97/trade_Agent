@@ -20,6 +20,7 @@ class SetupKind(StrEnum):
     R_ADX_THRUST_TSMOM_UP_TREND_TRAIL = "r_adx_thrust_tsmom_up_trend_trail"
     R_TSMOM252_VOLUME_CONFIRM_TREND_TRAIL = "r_tsmom252_volume_confirm_trend_trail"
     R_DONCHIAN55_ANY_TREND_TRAIL = "r_donchian55_any_trend_trail"
+    R_DONCHIAN20_STRONG_TREND_TREND_TRAIL = "r_donchian20_strong_trend_trend_trail"
 
 
 class ExitPlan(BaseModel):
