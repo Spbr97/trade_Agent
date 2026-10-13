@@ -519,6 +519,12 @@ Next checkpoint:
 17. [x] Intraday path acquisition and preregistered execution-contract feasibility race;
     crypto development rejected and equity path coverage unavailable.
 18. [ ] Selection-first intraday precision experiment with a new frozen evidence boundary.
+19. [x] Retire accuracy as a current promotion gate; retain it as a descriptive diagnostic
+    and as a replay-only requirement for experiments sealed under the old policy.
+20. [x] Add the isolated M23 NSE/BSE opening-impulse continuation collector, immutable
+    same-session plans, profitability scorecard and dashboard panel.
+21. [ ] Accumulate and evaluate M23 forward evidence and matched-random timing controls
+    separately for NSE and BSE.
 
 An implementation checkbox means the machinery exists and is tested. It does not mean its
 empirical gate passed; the unchecked final evidence gates above remain authoritative.
@@ -529,7 +535,8 @@ This roadmap is complete only when:
 
 - failed calls remain visible and measurably influence versioned challenger training;
 - the dashboard separates personal calls from research without hiding either;
-- one frozen market-specific candidate passes every historical, random-control,
-  prospective, accuracy, uncertainty and economic gate;
+- one frozen market-specific candidate passes every applicable historical, random-control,
+  prospective, uncertainty and economic gate; accuracy remains visible but is not a
+  current pass/fail gate;
 - an independent reproduction agrees with its scorecard; and
 - the user explicitly approves any change in trading authority.

@@ -741,3 +741,28 @@ production outcomes, so accuracy and profitability are unavailable and baseline
 improvement remains false. See the
 [frozen M22 protocol](self-learning-m22-feed-aware-momentum-ignition-protocol.md) and
 [M22 implementation checkpoint](self-learning-m22-feed-aware-momentum-ignition-checkpoint.md).
+
+## 13 October 2026 decision — profitability replaces accuracy as the gate
+
+The historical 80% observed / 70% Wilson requirements above remain part of the sealed
+experiments that used them, but they no longer control current setup promotion. A high hit
+rate can still lose after costs, while an asymmetric setup can be profitable below 50%.
+Accordingly:
+
+- [x] Make accuracy and Wilson intervals descriptive in the current eligibility policy.
+- [x] Require at least +0.05R mean after-cost expectancy, sufficient total/OOS evidence,
+  and at least +0.10R versus matched random timing.
+- [x] Require a positive expectancy lower confidence bound and profit factor of at least
+  1.20 in new prospective promotion results.
+- [x] Preserve the old accuracy policy behind an explicit replay-only switch so sealed
+  historical results are reproducible.
+- [x] Add M23 as a separate NSE/BSE opening-impulse continuation experiment for stocks
+  that M20 correctly labels already moving but that may offer a causal second leg.
+- [ ] Accumulate M23's forward-only 60 resolved trades across 40 sessions separately for
+  NSE and BSE, then complete its matched-random timing control.
+
+This change does not make any currently losing setup tradeable. Missing expectancy,
+negative expectancy, insufficient evidence, or failure to beat matched random timing still
+blocks it. See the
+[frozen M23 protocol](self-learning-m23-equity-impulse-continuation-protocol.md) and
+[implementation checkpoint](self-learning-m23-equity-impulse-continuation-checkpoint.md).

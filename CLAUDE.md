@@ -17,7 +17,8 @@ Measured via a matched random-timing null (not just win rate/expectancy, which c
 while still losing to random): all three setups underperform random entry timing on every
 market tested, and NSE's -0.557R / crypto's -0.515R backtested expectancy over 2023-2026
 confirm it independently. `engine/scoring.py::eligibility()` therefore blocks all three from
-ever alerting (500 resolved trades / 100 OOS / 80% win rate / beat-random-by-0.10R, fails
+ever alerting (500 resolved trades / 100 OOS / +0.05R after-cost expectancy /
+beat-random-by-0.10R; accuracy is descriptive, and unknown evidence fails
 closed) until real evidence says otherwise. One real gross edge was found -
 `rsi2<10 & above ema50` beats random by +0.067-0.077R (t>3-7) - but does not clear crypto/NSE
 costs at policy-compliant position sizing (breakeven ~0.75% risk/trade); it is tracked forward

@@ -219,6 +219,7 @@ def _eligibility_policy(settings: Settings) -> EligibilityPolicy:
         min_score=e.min_score,
         min_trades=e.min_trades,
         min_oos_trades=e.min_oos_trades,
+        accuracy_gate_enabled=e.accuracy_gate_enabled,
         min_win_rate=e.min_win_rate,
         min_win_rate_wilson_lb=e.min_win_rate_wilson_lb,
         min_expectancy_r=e.min_expectancy_r,

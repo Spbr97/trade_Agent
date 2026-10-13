@@ -506,6 +506,12 @@ def test_equity_collector_scans_full_ranked_universe_and_arms_in_session(
     assert report["tradeable_calls"] == 0
     assert client.requests[0][1] == ["NSE_1", "NSE_2"]
     assert client.requests[0][3] - client.requests[0][2] == timedelta(days=7)
+    assert (
+        tmp_path
+        / "equity_impulse_continuation_m23"
+        / "nse"
+        / "latest.json"
+    ).exists()
 
 
 def test_equity_collector_never_arms_retrospectively_when_market_is_closed(

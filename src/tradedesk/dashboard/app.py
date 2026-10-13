@@ -253,6 +253,7 @@ def create_app(
         )
         return JSONResponse(
             {
+                "accuracy_gate_enabled": gate.accuracy_gate_enabled,
                 "min_win_rate": gate.min_win_rate,
                 "min_win_rate_wilson_lb": gate.min_win_rate_wilson_lb,
                 "min_trades": gate.min_trades,
@@ -2077,6 +2078,21 @@ def create_app(
         if market not in {"nse", "bse", "crypto"}:
             return JSONResponse({"error": "invalid market"}, status_code=400)
         report = await asyncio.to_thread(load_pre_takeoff_watch, market)
+        return JSONResponse(report)
+
+    @app.get("/api/self-learning/equity-impulse-continuation-m23")
+    async def api_self_learning_equity_impulse_continuation_m23(
+        market: str = "nse",
+    ) -> JSONResponse:
+        """Read isolated M23 profitability evidence; never collect in HTTP."""
+
+        from tradedesk.equity_impulse_continuation_m23 import (
+            load_equity_impulse_continuation,
+        )
+
+        if market not in {"nse", "bse", "crypto"}:
+            return JSONResponse({"error": "invalid market"}, status_code=400)
+        report = await asyncio.to_thread(load_equity_impulse_continuation, market)
         return JSONResponse(report)
 
     @app.get("/api/self-learning/momentum-ignition-watch")

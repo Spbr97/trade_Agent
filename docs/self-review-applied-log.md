@@ -106,3 +106,24 @@ Nothing is written here by hand; this file is append-only from `apply()`'s own c
 - applied: 2026-10-03T17:45:55.150727+00:00
 - commit: `53a06c8a7f89f1b85c8b25b78935f27866db702f`
 - files: config\setups.yaml
+
+## NEW DETECTOR r_tsmom252_volume_confirm_trend_trail on bse
+
+- item: `bse:2026-10-05T17:00:20.030579+05:30`
+- applied: 2026-10-13T03:19:29.957037+00:00
+- commit: `2431a6ff925dfd90ba4cd3f826543374f2fe2479`
+- files: src\tradedesk\engine\signals.py, src\tradedesk\setups\r_tsmom252_volume_confirm_trend_trail.py, src\tradedesk\setups\__init__.py, config\setups.yaml
+
+## NEW DETECTOR r_donchian55_any_trend_trail on bse
+
+- item: `bse:2026-10-10T17:22:21.678904+05:30`
+- applied: 2026-10-13T03:19:39.339086+00:00
+- commit: `9ec8d2ff2bd69eca4891ad7970c636344414f406`
+- files: src\tradedesk\engine\signals.py, src\tradedesk\setups\r_donchian55_any_trend_trail.py, src\tradedesk\setups\__init__.py, config\setups.yaml
+
+## NEW DETECTOR r_donchian20_strong_trend_trend_trail on bse
+
+- item: `bse:2026-10-10T17:22:21.666940+05:30`
+- applied: 2026-10-13T03:19:43.043022+00:00
+- commit: `1e6bd79f67a2d3f84585b1a1739b06c802c9461a`
+- files: src\tradedesk\engine\signals.py, src\tradedesk\setups\r_donchian20_strong_trend_trend_trail.py, src\tradedesk\setups\__init__.py, config\setups.yaml

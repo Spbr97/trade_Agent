@@ -4,6 +4,9 @@ from pathlib import Path
 
 from tradedesk.dashboard.app import create_app
 from tradedesk.dashboard.state import DashboardState
+from tradedesk.equity_impulse_continuation_m23 import (
+    load_equity_impulse_continuation,
+)
 from tradedesk.pre_takeoff_selector import load_pre_takeoff_status
 from tradedesk.pre_takeoff_watch import load_pre_takeoff_watch
 
@@ -16,6 +19,7 @@ def test_dashboard_exposes_fail_closed_pre_takeoff_evidence(
     routes = {route.path for route in app.routes}
     assert "/api/self-learning/pre-takeoff-selector" in routes
     assert "/api/self-learning/pre-takeoff-watch" in routes
+    assert "/api/self-learning/equity-impulse-continuation-m23" in routes
 
     selector = load_pre_takeoff_status("nse")
     assert selector["status"] == "not_started"
@@ -30,6 +34,11 @@ def test_dashboard_exposes_fail_closed_pre_takeoff_evidence(
     assert watch["collector_health"]["status"] == "not_collected"
     assert watch["watch_plans"]["evidence"]["status"] == "collecting_qualification"
 
+    impulse = load_equity_impulse_continuation("nse", output_root=tmp_path)
+    assert impulse["status"] == "not_collected"
+    assert impulse["accuracy_role"] == "descriptive_only"
+    assert impulse["eligible_for_live"] is False
+
     html = (
         Path(__file__).parents[2]
         / "src"
@@ -40,6 +49,7 @@ def test_dashboard_exposes_fail_closed_pre_takeoff_evidence(
     ).read_text(encoding="utf-8")
     assert "/api/self-learning/pre-takeoff-selector?market=${market}" in html
     assert "/api/self-learning/pre-takeoff-watch?market=${market}" in html
+    assert "/api/self-learning/equity-impulse-continuation-m23?market=${market}" in html
     assert 'id="pre-takeoff-selector-curve-table"' in html
     assert 'id="pre-takeoff-watch-table"' in html
     assert 'id="pre-takeoff-watch-m15-quality"' in html
@@ -50,4 +60,9 @@ def test_dashboard_exposes_fail_closed_pre_takeoff_evidence(
     assert 'id="pre-takeoff-watch-loss-streak"' in html
     assert 'id="pre-takeoff-watch-qualification"' in html
     assert 'id="pre-takeoff-watch-progress"' in html
+    assert 'id="impulse-m23-table"' in html
+    assert 'id="impulse-m23-lower-r"' in html
+    assert 'id="impulse-m23-profit-factor"' in html
+    assert 'id="impulse-m23-accuracy"' in html
+    assert "Accuracy is descriptive only; inspected examples and backfill are excluded." in html
     assert "Only a later completed-bar trigger can create measured trade evidence." in html

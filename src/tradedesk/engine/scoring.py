@@ -33,11 +33,11 @@ already imports TrackRecord from this module, so it re-exports this for its own 
 class EligibilityPolicy:
     """The evidence a setup must show before it may alert at all (SDD sections 18 and 23).
 
-    Research profitability and live accuracy are deliberately separate. A detector may be
-    worth studying at a 35-45% win rate because of its payoff geometry, but it must not issue
-    an accuracy-qualified live call until it has at least 80% observed wins and a 70% Wilson
-    lower bound. Positive expectancy after costs and a real edge over matched-random timing
-    remain mandatory as well; a small-target rule cannot pass on hit rate alone.
+    Accuracy is descriptive, not a promotion gate. A profitable asymmetric setup can have a
+    modest win rate, while a tiny-target setup can show a high win rate and still lose after
+    costs. Promotion is therefore governed by after-cost expectancy and matched-random edge.
+    ``accuracy_gate_enabled`` remains explicit only so old sealed experiments can be replayed
+    under their original contract; the active policy retires it.
 
     `must_beat_random_by_r` is not in the SDD and is the stronger test: a win rate alone
     cannot distinguish a real edge from one that merely tracks a rising market. The live
@@ -48,9 +48,10 @@ class EligibilityPolicy:
     min_score: int = 85
     min_trades: int = 500
     min_oos_trades: int = 100
+    accuracy_gate_enabled: bool = False
     min_win_rate: float = 0.80
     min_win_rate_wilson_lb: float = 0.70
-    min_expectancy_r: float = 0.0
+    min_expectancy_r: float = 0.05
     must_beat_random_by_r: float = 0.10
 
 
@@ -94,15 +95,16 @@ def eligibility(
         reasons.append(f"only {trades} resolved trades, need {policy.min_trades}")
     if oos_trades < policy.min_oos_trades:
         reasons.append(f"only {oos_trades} out-of-sample trades, need {policy.min_oos_trades}")
-    if win_rate < policy.min_win_rate:
-        reasons.append(f"win rate {win_rate:.1%} < required {policy.min_win_rate:.1%}")
-    wins = round(max(0.0, min(1.0, win_rate)) * trades)
-    win_rate_lb = wilson_lower_bound(wins, trades)
-    if win_rate_lb < policy.min_win_rate_wilson_lb:
-        reasons.append(
-            f"win-rate Wilson lower bound {win_rate_lb:.1%} < required "
-            f"{policy.min_win_rate_wilson_lb:.1%}"
-        )
+    if policy.accuracy_gate_enabled:
+        if win_rate < policy.min_win_rate:
+            reasons.append(f"win rate {win_rate:.1%} < required {policy.min_win_rate:.1%}")
+        wins = round(max(0.0, min(1.0, win_rate)) * trades)
+        win_rate_lb = wilson_lower_bound(wins, trades)
+        if win_rate_lb < policy.min_win_rate_wilson_lb:
+            reasons.append(
+                f"win-rate Wilson lower bound {win_rate_lb:.1%} < required "
+                f"{policy.min_win_rate_wilson_lb:.1%}"
+            )
     if expectancy_r < policy.min_expectancy_r:
         reasons.append(
             f"expectancy {expectancy_r:+.3f}R < required {policy.min_expectancy_r:+.3f}R"

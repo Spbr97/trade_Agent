@@ -774,9 +774,10 @@ async def collect_equity_pre_takeoff_watch(
     client: IndstocksClient,
     db_path: Path | None = None,
     output_root: Path = DEFAULT_OUTPUT_ROOT,
+    impulse_output_root: Path | None = None,
     observed_at: datetime | None = None,
 ) -> dict[str, Any]:
-    """Collect one full daily-liquid NSE/BSE universe using completed M15 bars."""
+    """Collect M20 and isolated M23 from one full-universe completed-M15 fetch."""
 
     if market not in {"nse", "bse"}:
         raise ValueError("equity pre-takeoff collection requires market nse or bse")
@@ -823,6 +824,30 @@ async def collect_equity_pre_takeoff_watch(
     report.pop("snapshot_sha256", None)
     report["snapshot_sha256"] = canonical_sha256(report)
     _persist_watch(report, output_root)
+
+    # M23 is deliberately a separate contract, ledger and denominator.  It reuses the
+    # expensive full-universe fetch only; it cannot modify an M20 plan or outcome.
+    from tradedesk.equity_impulse_continuation_m23 import (
+        DEFAULT_OUTPUT_ROOT as DEFAULT_IMPULSE_OUTPUT_ROOT,
+    )
+    from tradedesk.equity_impulse_continuation_m23 import (
+        collect_equity_impulse_continuation,
+    )
+
+    m23_root = impulse_output_root
+    if m23_root is None:
+        m23_root = (
+            DEFAULT_IMPULSE_OUTPUT_ROOT
+            if output_root == DEFAULT_OUTPUT_ROOT
+            else output_root / "equity_impulse_continuation_m23"
+        )
+    collect_equity_impulse_continuation(
+        market,
+        ranked,
+        candles,
+        observed_at=now,
+        output_root=m23_root,
+    )
     return report
 
 

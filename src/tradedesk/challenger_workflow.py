@@ -912,6 +912,10 @@ def run_challenger_experiment(
             "sample_threshold_reached": (
                 evidence_ladder["stage"] == "production_sample_threshold_reached"
             ),
+            "primary_selector_policy_clears_profitability_gate": bool(
+                primary_score["passes_profitability_gate"]
+            ),
+            # Historical aliases are retained in the artifact for older readers only.
             "primary_selector_policy_clears_accuracy_and_net_gate": bool(
                 primary_score["passes_final_accuracy_gate"]
             ),
@@ -934,8 +938,8 @@ def run_challenger_experiment(
         model=model_report,
         blockers=(
             []
-            if primary_score["passes_final_accuracy_gate"]
-            else ["frozen primary selector accuracy/net gate not passed"]
+            if primary_score["passes_profitability_gate"]
+            else ["frozen primary selector profitability gate not passed"]
         )
         + (
             []

@@ -18,7 +18,7 @@ if (-not (Test-Path -LiteralPath $collector)) {
 
 $weekdays = @('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday')
 $firstRun = [datetime]::Today.AddHours(9).AddMinutes(31)
-$lastRun = [datetime]::Today.AddHours(15).AddMinutes(16)
+$lastRun = [datetime]::Today.AddHours(15).AddMinutes(31)
 $triggers = @()
 for ($runAt = $firstRun; $runAt -le $lastRun; $runAt = $runAt.AddMinutes(15)) {
     $triggers += New-ScheduledTaskTrigger `
@@ -28,7 +28,7 @@ for ($runAt = $firstRun; $runAt -le $lastRun; $runAt = $runAt.AddMinutes(15)) {
         -At $runAt
 }
 
-Write-Host "${taskName}: weekdays 09:31-15:16 IST every 15 minutes"
+Write-Host "${taskName}: weekdays 09:31-15:31 IST every 15 minutes"
 Write-Host 'Scope: full daily-liquid NSE then BSE universe; research only'
 Write-Host "Action: $python $arguments"
 if (-not $Apply) {

@@ -222,6 +222,11 @@ def _operating_point_score(
             (len(sessions) - len(selected_sessions)) / len(sessions) if sessions else 1.0
         ),
         "maximum_losing_streak": maximum_losing_streak,
+        "passes_profitability_gate": bool(
+            selected and net_values and float(np.mean(net_values)) >= 0.05
+        ),
+        # Historical diagnostic retained so old sealed selector artifacts remain readable.
+        # It no longer controls current promotion eligibility.
         "passes_final_accuracy_gate": bool(
             selected
             and wins / len(selected) >= 0.80

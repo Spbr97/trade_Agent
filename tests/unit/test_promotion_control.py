@@ -108,6 +108,7 @@ def _challenger(experiment_id: str = "experiment-1") -> dict:  # type: ignore[ty
                     "strict_accuracy": 0.82,
                     "wilson_95_low": 0.73,
                     "mean_net_r": 0.2,
+                    "passes_profitability_gate": True,
                     "passes_final_accuracy_gate": True,
                 }
             },
@@ -116,6 +117,7 @@ def _challenger(experiment_id: str = "experiment-1") -> dict:  # type: ignore[ty
         "timing_selection": {"context_sha256": timing["selection_context_sha256"]},
         "final_evidence_gates": {
             "sample_threshold_reached": True,
+            "primary_selector_policy_clears_profitability_gate": True,
             "primary_selector_policy_clears_accuracy_and_net_gate": True,
             "any_preregistered_selector_policy_clears_accuracy_and_net_gate": True,
             "matched_random_timing_margin_passed": True,
@@ -132,6 +134,8 @@ def _passing_metrics() -> dict:  # type: ignore[type-arg]
         "sessions": 40,
         "mean_net_r": 0.25,
         "mean_after_tax_r": 0.18,
+        "expectancy_lcb_r": 0.08,
+        "profit_factor": 1.8,
         "random_timing_margin_r": 0.12,
         "integrity_passed": True,
     }
@@ -161,6 +165,25 @@ def test_prospective_registration_refuses_incomplete_historical_gates(tmp_path) 
     challenger["final_evidence_gates"]["matched_random_timing_margin_passed"] = False
     with pytest.raises(ValueError, match="matched_random_timing_margin_passed"):
         register_prospective_cohort(challenger, tmp_path / "cohort.json", starts_after="x")
+
+
+def test_forward_profitability_passes_without_an_accuracy_threshold(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    challenger = _challenger()
+    cohort = register_prospective_cohort(
+        challenger, tmp_path / "cohort.json", starts_after="2026-10-06"
+    )
+    metrics = {**_passing_metrics(), "wins": 55}
+    result = seal_prospective_result(cohort, metrics, tmp_path / "result.json")
+
+    assert result["metrics"]["strict_accuracy"] == pytest.approx(55 / 120)
+    assert result["metrics"]["strict_accuracy"] < 0.80
+    assert result["passed"] is True
+
+    weak_profit_factor = {**metrics, "profit_factor": 1.05}
+    failed = seal_prospective_result(
+        cohort, weak_profit_factor, tmp_path / "weak-result.json"
+    )
+    assert failed["passed"] is False
 
 
 def test_prospective_registration_binds_exact_random_timing_evidence(tmp_path) -> None:  # type: ignore[no-untyped-def]
@@ -221,8 +244,8 @@ def test_prospective_registration_rejects_selector_or_timing_context_mismatch(
     false_score = _challenger()
     false_score["precision_selector"]["operating_points"][
         "top_1_per_session"
-    ]["strict_accuracy"] = 0.5
-    with pytest.raises(ValueError, match="primary selector evidence is incomplete"):
+    ]["mean_net_r"] = 0.01
+    with pytest.raises(ValueError, match="primary selector profitability is incomplete"):
         register_prospective_cohort(
             false_score, tmp_path / "score.json", starts_after="2026-10-06"
         )

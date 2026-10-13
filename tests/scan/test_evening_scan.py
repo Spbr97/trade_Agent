@@ -165,16 +165,16 @@ def test_a_fully_proven_setup_is_eligible_and_alertable() -> None:
     assert score.alertable and score.no_trade_reasons == ()
 
 
-def test_accuracy_first_default_rejects_below_80_percent() -> None:
+def test_profitability_first_default_allows_lower_accuracy_with_proven_edge() -> None:
     kw = dict(trades=600, oos_trades=150, expectancy_r=0.40, random_baseline_r=0.10)
     ok, reasons = eligibility(win_rate=0.55, **kw)  # type: ignore[arg-type]
-    assert not ok and any("win rate" in r for r in reasons)
+    assert ok and not any("win rate" in r for r in reasons)
 
 
 def test_wilson_floor_rejects_a_lucky_small_sample() -> None:
     policy = EligibilityPolicy(
         min_trades=10, min_oos_trades=0, min_win_rate=0.80,
-        min_win_rate_wilson_lb=0.70,
+        min_win_rate_wilson_lb=0.70, accuracy_gate_enabled=True,
     )
     ok, reasons = eligibility(
         trades=10, oos_trades=10, win_rate=0.90, expectancy_r=0.40,

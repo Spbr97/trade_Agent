@@ -194,7 +194,7 @@ def _latest_challenger(dataset: LearningDataset, summary: Mapping[str, Any]) -> 
     complete = baseline is not None and challenger is not None and isinstance(primary, Mapping)
     required_gates = (
         "sample_threshold_reached",
-        "primary_selector_policy_clears_accuracy_and_net_gate",
+        "primary_selector_policy_clears_profitability_gate",
         "matched_random_timing_margin_passed",
         "prospective_cohort_passed",
         "all_passed",
@@ -203,7 +203,7 @@ def _latest_challenger(dataset: LearningDataset, summary: Mapping[str, Any]) -> 
         isinstance(final_gates, Mapping)
         and all(final_gates.get(name) is True for name in required_gates)
         and isinstance(primary, Mapping)
-        and primary.get("passes_final_accuracy_gate") is True
+        and primary.get("passes_profitability_gate") is True
     )
     return {
         "status": "available" if complete else "incomplete_artifact_not_a_pass",

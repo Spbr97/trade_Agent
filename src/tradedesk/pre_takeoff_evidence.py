@@ -387,7 +387,7 @@ def _previous_weekday(value: datetime) -> datetime:
 
 def _equity_schedule(now: datetime) -> tuple[datetime, datetime, bool]:
     first = datetime.combine(now.date(), time(9, 31), tzinfo=IST)
-    last = datetime.combine(now.date(), time(15, 16), tzinfo=IST)
+    last = datetime.combine(now.date(), time(15, 31), tzinfo=IST)
     in_collection_window = now.weekday() < 5 and first <= now <= last + timedelta(minutes=15)
     if now.weekday() < 5 and now >= first:
         capped = min(now, last)
@@ -395,7 +395,7 @@ def _equity_schedule(now: datetime) -> tuple[datetime, datetime, bool]:
         previous = first + timedelta(minutes=15 * (elapsed // 15))
     else:
         prior = _previous_weekday(now - timedelta(days=1))
-        previous = datetime.combine(prior.date(), time(15, 16), tzinfo=IST)
+        previous = datetime.combine(prior.date(), time(15, 31), tzinfo=IST)
     if now.weekday() < 5 and now < first:
         next_due = first
     elif now.weekday() < 5 and now < last:

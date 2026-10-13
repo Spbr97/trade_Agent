@@ -258,9 +258,10 @@ class EligibilityRules(Strict):
     min_score: int = 85
     min_trades: int = 500
     min_oos_trades: int = 100
+    accuracy_gate_enabled: bool = False
     min_win_rate: float = 0.80
     min_win_rate_wilson_lb: float = 0.70
-    min_expectancy_r: float = 0.0
+    min_expectancy_r: float = 0.05
     must_beat_random_by_r: float = 0.10
 
 

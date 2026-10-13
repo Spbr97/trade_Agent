@@ -2,7 +2,7 @@
 
 The public instruments endpoint is the authority for what is active now.  Keeping this
 selection separate from trade eligibility is deliberate: every active INR pair is
-monitored, while liquidity, stale-data, setup and accuracy gates remain free to reject it.
+monitored, while liquidity, stale-data, setup and profitability gates remain free to reject it.
 """
 
 from __future__ import annotations

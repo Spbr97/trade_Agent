@@ -13,7 +13,7 @@ from tradedesk.dashboard import DashboardState, create_app
 
 
 @pytest.mark.asyncio
-async def test_accuracy_policy_exposes_live_gate_and_shadow_detectors() -> None:
+async def test_policy_exposes_retired_accuracy_gate_and_profitability_floor() -> None:
     app = create_app(DashboardState())
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://test"
@@ -24,6 +24,8 @@ async def test_accuracy_policy_exposes_live_gate_and_shadow_detectors() -> None:
     body = response.json()
     assert body["min_win_rate"] == 0.80
     assert body["min_win_rate_wilson_lb"] == 0.70
+    assert body["accuracy_gate_enabled"] is False
+    assert body["min_expectancy_r"] == 0.05
     assert body["min_trades"] == 500
     assert body["min_oos_trades"] == 100
     assert "crypto:r_adx_thrust_tsmom_up_trend_trail" in body["research_only"]

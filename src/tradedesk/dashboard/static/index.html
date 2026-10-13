@@ -91,7 +91,7 @@
   <h1>tradedesk</h1>
   <span class="light">regime <b id="regime">-</b></span>
   <span class="light muted" id="updated"></span>
-  <span class="light" id="agent-reliability" style="margin-left:auto; gap:10px;" title="95% Wilson lower-bound confidence across all resolved calls evaluated during actual agent runs. Includes executable, rejected and shadow evaluations; excludes historical backfill and research replay. This display does not change the separate live-accuracy gate.">
+  <span class="light" id="agent-reliability" style="margin-left:auto; gap:10px;" title="95% Wilson lower-bound confidence across all resolved calls evaluated during actual agent runs. Includes executable, rejected and shadow evaluations; excludes historical backfill and research replay. This is descriptive and is not a promotion gate.">
     <span class="muted">evaluated confidence</span>
     <span>nse <b id="agent-reliability-nse">-</b></span>
     <span>crypto <b id="agent-reliability-crypto">-</b></span>
@@ -107,8 +107,8 @@
 </nav>
 
 <details id="status-banner" class="banner">
-  <summary class="banner-summary">Accuracy-qualified alerts: <b>off</b> - no setup has cleared the 80% live gate <span class="muted" style="margin-left:auto; text-transform:none;">details</span></summary>
-  <div class="banner-full">Research approval installs a detector for shadow measurement only. Live calls require at least <b>80% observed success</b>, a <b>70% Wilson lower bound</b>, sufficient total and out-of-sample evidence, positive expectancy after costs, and an edge over matched random timing. Lower-accuracy detectors remain visible for learning but cannot alert.</div>
+  <summary class="banner-summary">Profitability-qualified alerts: <b>off</b> - no setup has proven an after-cost edge <span class="muted" style="margin-left:auto; text-transform:none;">details</span></summary>
+  <div class="banner-full">The 80% accuracy gate was retired on 13 October 2026. Win rate remains visible but cannot pass or fail a setup. Live review requires sufficient total and out-of-sample evidence, at least <b>+0.05R mean after-cost expectancy</b>, and at least <b>+0.10R versus matched random timing</b>. Existing losing setups remain blocked by those profitability tests.</div>
 </details>
 
 <div class="perf-strip" id="perf-strip">
@@ -417,7 +417,7 @@
 
 <main id="tab-crypto" hidden>
   <section>
-    <h2>Monitoring universe <span class="info-ic" title="All active CoinDCX INR pairs are monitored; liquidity, data quality and accuracy gates still decide whether a call is allowed.">ⓘ</span></h2>
+    <h2>Monitoring universe <span class="info-ic" title="All active CoinDCX INR pairs are monitored; liquidity, data quality and profitability gates still decide whether a call is allowed.">ⓘ</span></h2>
     <div class="cards">
       <div class="card"><div class="label">Active INR pairs</div><div class="value" id="crypto-universe-active">-</div></div>
       <div class="card"><div class="label">Scanned pairs</div><div class="value" id="crypto-universe-scanned">-</div></div>
@@ -754,10 +754,10 @@
   </section>
 
   <section>
-    <h2>Accuracy qualification <span class="info-ic" title="Configuration gate for live calls, not a claim that current performance has reached it.">ⓘ</span></h2>
+    <h2>Profitability qualification <span class="info-ic" title="Accuracy is descriptive only. Promotion is gated by after-cost expectancy, matched-random edge and sufficient forward evidence.">ⓘ</span></h2>
     <div class="cards">
-      <div class="card"><div class="label">Observed success required</div><div class="value" id="accuracy-min-win">-</div></div>
-      <div class="card"><div class="label">95% Wilson lower bound</div><div class="value" id="accuracy-min-lb">-</div></div>
+      <div class="card"><div class="label">Accuracy gate</div><div class="value" id="accuracy-min-win">-</div></div>
+      <div class="card"><div class="label">After-cost expectancy required</div><div class="value" id="accuracy-min-lb">-</div></div>
       <div class="card"><div class="label">Evidence required</div><div class="value" id="accuracy-evidence">-</div></div>
       <div class="card"><div class="label">Shadow-only detectors</div><div class="value" id="accuracy-shadow-count">-</div></div>
     </div>
@@ -962,6 +962,28 @@
     </div>
     <div class="muted" id="pre-takeoff-watch-detail"></div>
     <table id="pre-takeoff-watch-table" style="margin-top:10px;"></table>
+  </section>
+  <section>
+    <h2>M23 opening-impulse continuation <span class="info-ic" title="NSE/BSE forward-only research for a second leg after a strong opening move holds. It is separate from M20 compression evidence. Accuracy is descriptive; after-cost expectancy, its lower bound, profit factor and matched-random edge decide profitability review.">ⓘ</span></h2>
+    <div class="cards" style="margin-bottom:10px;">
+      <div class="card"><div class="label">M23 state</div><div class="value" id="impulse-m23-status">not collected</div></div>
+      <div class="card"><div class="label">Snapshot</div><div class="value" id="impulse-m23-snapshot">not available</div></div>
+      <div class="card"><div class="label">Collector health</div><div class="value" id="impulse-m23-health">not available</div></div>
+      <div class="card"><div class="label">Eligible candidates</div><div class="value" id="impulse-m23-candidates">0</div></div>
+      <div class="card"><div class="label">New-plan registration</div><div class="value" id="impulse-m23-registration">not available</div></div>
+      <div class="card"><div class="label">Active plans</div><div class="value" id="impulse-m23-active">0</div></div>
+      <div class="card"><div class="label">Resolved trades</div><div class="value" id="impulse-m23-resolved">0</div></div>
+      <div class="card"><div class="label">Mean after-cost expectancy</div><div class="value" id="impulse-m23-net-r">not available</div></div>
+      <div class="card"><div class="label">Expectancy 95% lower</div><div class="value" id="impulse-m23-lower-r">not available</div></div>
+      <div class="card"><div class="label">Profit factor</div><div class="value" id="impulse-m23-profit-factor">not available</div></div>
+      <div class="card"><div class="label">Accuracy (descriptive)</div><div class="value" id="impulse-m23-accuracy">not available</div></div>
+      <div class="card"><div class="label">Maximum drawdown</div><div class="value" id="impulse-m23-drawdown">not available</div></div>
+      <div class="card"><div class="label">Profitability review</div><div class="value" id="impulse-m23-qualification">COLLECTING</div></div>
+      <div class="card"><div class="label">Evidence progress</div><div class="value" id="impulse-m23-progress">0 / 0</div></div>
+      <div class="card"><div class="label">Live authority</div><div class="value neg" id="impulse-m23-authority">NONE — RESEARCH</div></div>
+    </div>
+    <div class="muted" id="impulse-m23-detail"></div>
+    <table id="impulse-m23-table" style="margin-top:10px;"></table>
   </section>
   <section>
     <h2>M21 momentum-ignition challenger <span class="info-ic" title="Crypto-only forward research challenger. It ranks the full universe on completed M15 ignition and shakeout-reclaim structures, registers up to the top three eligible plans independently of the top-12 display, and freezes an after-cost feasible target before a later bar may trigger. It has no live-call authority.">ⓘ</span></h2>
@@ -1468,7 +1490,7 @@ setInterval(loadAgentPerformanceStrip, 60000);
 // --------------------------------------------------------- top-right evaluated-call confidence
 // One confidence percentage per market across resolved calls observed during actual agent
 // runs. This includes executable, rejected and shadow evaluations, but excludes historical
-// backfill and research replay. It is descriptive; the live accuracy gate remains separate.
+// backfill and research replay. It is descriptive and never a promotion gate.
 async function loadAgentReliability() {
   for (const m of ['nse', 'crypto', 'bse']) $(`agent-reliability-${m}`).textContent = '-';
   try {
@@ -1487,7 +1509,7 @@ async function loadAgentReliability() {
 loadAgentReliability();
 setInterval(loadAgentReliability, 60000);
 
-// ---------------------------------------------------------------- Accuracy qualification
+// ------------------------------------------------------------- Profitability qualification
 async function loadAccuracyPolicy() {
   try {
     const [policyR, selectorR, raceR, geometryR, stabilityR, prospectiveR, monitorR, controlR, timingR] = await Promise.all([
@@ -1503,8 +1525,8 @@ async function loadAccuracyPolicy() {
     const monitor = await monitorR.json();
     const control = await controlR.json();
     const timing = await timingR.json();
-    $('accuracy-min-win').textContent = pct(p.min_win_rate);
-    $('accuracy-min-lb').textContent = pct(p.min_win_rate_wilson_lb);
+    $('accuracy-min-win').textContent = p.accuracy_gate_enabled ? pct(p.min_win_rate) : 'RETIRED';
+    $('accuracy-min-lb').textContent = `${Number(p.min_expectancy_r).toFixed(2)}R`;
     $('accuracy-evidence').innerHTML = `${p.min_trades} total<br><span class="muted" style="font-size:13px;">${p.min_oos_trades} OOS</span>`;
     $('accuracy-shadow-count').textContent = p.research_only.length;
     $('accuracy-shadow-list').textContent = p.research_only.length
@@ -2220,7 +2242,7 @@ $('research-market-select').addEventListener('change', loadResearch);
 // digging into another tab first) - reads the same /api/eod-learning endpoint.
 async function loadLearning() {
   const market = $('learning-market-select').value;
-  const [r, statusResponse, challengerResponse, timingResponse, comparisonResponse, leaderResponse, separabilityResponse, executionAlignedResponse, intradayContractResponse, selectionReadinessResponse, preTakeoffSelectorResponse, preTakeoffWatchResponse, momentumIgnitionResponse, momentumIgnitionM22Response] = await Promise.all([
+  const [r, statusResponse, challengerResponse, timingResponse, comparisonResponse, leaderResponse, separabilityResponse, executionAlignedResponse, intradayContractResponse, selectionReadinessResponse, preTakeoffSelectorResponse, preTakeoffWatchResponse, impulseM23Response, momentumIgnitionResponse, momentumIgnitionM22Response] = await Promise.all([
     fetch(`/api/eod-learning?market=${market}`),
     fetch(`/api/self-learning/status?market=${market}`),
     fetch(`/api/self-learning/challenger?market=${market}`),
@@ -2233,6 +2255,7 @@ async function loadLearning() {
     fetch(`/api/self-learning/selection-readiness?market=${market}`).catch(() => null),
     fetch(`/api/self-learning/pre-takeoff-selector?market=${market}`).catch(() => null),
     fetch(`/api/self-learning/pre-takeoff-watch?market=${market}`).catch(() => null),
+    fetch(`/api/self-learning/equity-impulse-continuation-m23?market=${market}`).catch(() => null),
     fetch(`/api/self-learning/momentum-ignition-watch?market=${market}`).catch(() => null),
     fetch(`/api/self-learning/momentum-ignition-watch-m22?market=${market}`).catch(() => null),
   ]);
@@ -2334,6 +2357,10 @@ async function loadLearning() {
     ? await preTakeoffWatchResponse.json()
     : {status: 'unavailable', candidates: [], detail: 'Forward pre-takeoff evidence could not be loaded — unavailable is not a pass.'};
   renderPreTakeoffWatch(preTakeoffWatch);
+  const impulseM23 = impulseM23Response && impulseM23Response.ok
+    ? await impulseM23Response.json()
+    : {status: 'unavailable', candidates: [], detail: 'M23 impulse evidence could not be loaded — unavailable is not a pass.'};
+  renderImpulseM23(impulseM23);
   const momentumIgnition = momentumIgnitionResponse && momentumIgnitionResponse.ok
     ? await momentumIgnitionResponse.json()
     : {status: 'unavailable', candidates: [], detail: 'M21 momentum-ignition evidence could not be loaded — unavailable is not a pass.'};
@@ -2665,6 +2692,64 @@ function renderPreTakeoffWatch(report) {
         return `<tr><td>${esc(value.symbol || value.scrip_code || '-')}</td><td>${esc(String(value.state || '-').replaceAll('_', ' '))}</td><td class="num">${features.last_close != null ? fmt(features.last_close, 4) : '-'}</td><td class="num">${value.trigger != null ? fmt(value.trigger, 4) : '-'}</td><td class="num">${value.stop != null ? fmt(value.stop, 4) : '-'}</td><td class="num">${value.quick_target_075r != null ? fmt(value.quick_target_075r, 4) : '-'}</td><td class="num">${value.pre_takeoff_score != null ? pct(value.pre_takeoff_score) : '-'}</td><td class="muted">${esc(blockers.map(item => String(item).replaceAll('_', ' ')).join(', ') || 'none')}</td></tr>`;
       })
       : ['<tr><td colspan="8" class="empty-note">no completed-bar pre-takeoff candidates — not a tradeable pass</td></tr>']);
+}
+function renderImpulseM23(report) {
+  const applicable = String(report.status || '') !== 'not_applicable';
+  const plans = report.watch_plans || {};
+  const evidence = plans.evidence || {};
+  const metrics = evidence.metrics || {};
+  const thresholds = evidence.thresholds || {};
+  const health = report.collector_health || {};
+  const candidates = Array.isArray(report.candidates) ? report.candidates : [];
+  const status = applicable ? String(report.status || 'not collected') : 'not applicable';
+  $('impulse-m23-status').textContent = status.replaceAll('_', ' ');
+  $('impulse-m23-status').className = `value ${applicable && candidates.length ? 'planned' : 'neg'}`;
+  $('impulse-m23-snapshot').textContent = applicable ? (report.observed_at || 'not available') : 'not applicable';
+  $('impulse-m23-health').textContent = applicable
+    ? String(health.status || 'not available').replaceAll('_', ' ') : 'not applicable';
+  $('impulse-m23-health').className = `value ${health.healthy ? 'pos' : 'neg'}`;
+  $('impulse-m23-candidates').textContent = applicable ? (report.valid_candidates ?? candidates.length) : 0;
+  const registrationOpen = report.new_plan_registration_open ?? plans.new_plan_registration_open;
+  $('impulse-m23-registration').textContent = applicable
+    ? (registrationOpen == null ? 'not available' : (registrationOpen ? 'OPEN' : 'CLOSED'))
+    : 'not applicable';
+  $('impulse-m23-registration').className = `value ${registrationOpen ? 'planned' : 'neg'}`;
+  $('impulse-m23-active').textContent = plans.active_plans ?? 0;
+  $('impulse-m23-resolved').textContent = metrics.resolved_trades ?? 0;
+  $('impulse-m23-net-r').textContent = metrics.mean_net_r != null
+    ? `${fmt(metrics.mean_net_r, 3)}R` : 'not available';
+  $('impulse-m23-lower-r').textContent = metrics.expectancy_95_lower_r != null
+    ? `${fmt(metrics.expectancy_95_lower_r, 3)}R` : 'not available';
+  $('impulse-m23-profit-factor').textContent = metrics.profit_factor != null
+    ? fmt(metrics.profit_factor, 2)
+    : (metrics.gross_profit_r > 0 && metrics.gross_loss_r === 0 ? '∞' : 'not available');
+  $('impulse-m23-accuracy').textContent = metrics.strict_accuracy != null
+    ? `${pct(metrics.strict_accuracy)} (${metrics.strict_successes ?? 0}/${metrics.resolved_trades ?? 0})`
+    : 'not available';
+  $('impulse-m23-drawdown').textContent = metrics.maximum_drawdown_r != null
+    ? `${fmt(metrics.maximum_drawdown_r, 3)}R` : 'not available';
+  const qualification = applicable ? String(evidence.status || 'collecting') : 'not_applicable';
+  $('impulse-m23-qualification').textContent = qualification.replaceAll('_', ' ');
+  $('impulse-m23-qualification').className = `value ${qualification === 'qualified_for_human_review' ? 'pos' : (qualification.startsWith('collecting') || qualification.endsWith('pending') ? 'planned' : 'neg')}`;
+  $('impulse-m23-progress').textContent = applicable
+    ? `${metrics.resolved_trades ?? 0}/${thresholds.resolved_trades ?? 0} calls · ${metrics.resolved_sessions ?? 0}/${thresholds.resolved_sessions ?? 0} sessions`
+    : 'not applicable';
+  $('impulse-m23-authority').textContent = applicable ? 'NONE — RESEARCH WATCH' : 'NOT APPLICABLE';
+  $('impulse-m23-authority').className = 'value neg';
+  const blockers = Array.isArray(evidence.blockers) && evidence.blockers.length
+    ? ` Profitability blockers: ${evidence.blockers.map(value => String(value).replaceAll('_', ' ')).join(' · ')}.` : '';
+  const states = Object.entries(plans.states || {}).map(([name, count]) =>
+    `${String(name).replaceAll('_', ' ')}: ${count}`).join(' · ');
+  const healthDetail = health.detail ? ` Collector: ${health.detail}` : '';
+  $('impulse-m23-detail').textContent = `${report.detail || 'No M23 evidence is available.'}${states ? ` Plan ledger: ${states}.` : ''}${blockers}${healthDetail} Accuracy is descriptive only; inspected examples and backfill are excluded.`;
+  rows($('impulse-m23-table'),
+    ['Symbol', 'State', 'Opening move', 'Opening volume', 'Current', 'Trigger', 'Stop', '+0.75R target', 'Score'],
+    candidates.length
+      ? candidates.map(value => {
+        const features = value.features || {};
+        return `<tr><td>${esc(value.symbol || value.scrip_code || '-')}</td><td>${esc(String(value.state || '-').replaceAll('_', ' '))}</td><td class="num">${features.opening_return != null ? pct(features.opening_return) : '-'}</td><td class="num">${features.opening_volume_ratio != null ? `${fmt(features.opening_volume_ratio, 2)}x` : '-'}</td><td class="num">${features.current_close != null ? fmt(features.current_close, 4) : '-'}</td><td class="num">${value.trigger != null ? fmt(value.trigger, 4) : '-'}</td><td class="num">${value.stop != null ? fmt(value.stop, 4) : '-'}</td><td class="num">${value.target != null ? fmt(value.target, 4) : '-'}</td><td class="num">${value.impulse_score != null ? pct(value.impulse_score) : '-'}</td></tr>`;
+      })
+      : ['<tr><td colspan="9" class="empty-note">no completed-bar opening-impulse continuation candidate — unavailable is not a pass</td></tr>']);
 }
 function renderMomentumIgnitionWatch(report, benchmarkReport, m22Report) {
   const status = String(report.status || 'not_collected');

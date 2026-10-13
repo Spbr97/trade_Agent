@@ -20,11 +20,11 @@ from tradedesk.random_timing_control import (
 )
 from tradedesk.random_timing_control import validate_random_timing_report
 
-CONTROL_VERSION = "promotion-control-v2"
+CONTROL_VERSION = "promotion-control-v3-profitability"
 
 _REQUIRED_HISTORICAL_GATES = (
     "sample_threshold_reached",
-    "primary_selector_policy_clears_accuracy_and_net_gate",
+    "primary_selector_policy_clears_profitability_gate",
     "matched_random_timing_margin_passed",
 )
 
@@ -154,13 +154,10 @@ def _validated_primary_selector(challenger: dict[str, Any]) -> tuple[dict[str, A
     score = operating_points.get(PRIMARY_SELECTOR_POLICY)
     if (
         not isinstance(score, dict)
-        or score.get("passes_final_accuracy_gate") is not True
         or int(score.get("selected") or 0) <= 0
-        or float(score.get("strict_accuracy") or 0.0) < 0.80
-        or float(score.get("wilson_95_low") or 0.0) < 0.70
-        or float(score.get("mean_net_r") or 0.0) <= 0.0
+        or float(score.get("mean_net_r") or 0.0) < 0.05
     ):
-        raise ValueError("prospective cohort primary selector evidence is incomplete")
+        raise ValueError("prospective cohort primary selector profitability is incomplete")
     return selector, primary
 
 
@@ -242,10 +239,10 @@ def seal_prospective_result(
     passed = bool(
         calls >= 100
         and int(metrics.get("sessions") or 0) >= 30
-        and accuracy >= 0.80
-        and wilson >= 0.70
-        and float(metrics.get("mean_net_r") or 0.0) > 0
+        and float(metrics.get("mean_net_r") or 0.0) >= 0.05
         and float(metrics.get("mean_after_tax_r") or 0.0) > 0
+        and float(metrics.get("expectancy_lcb_r") or 0.0) > 0
+        and float(metrics.get("profit_factor") or 0.0) >= 1.20
         and float(metrics.get("random_timing_margin_r") or 0.0) >= 0.10
         and metrics.get("integrity_passed") is True
     )

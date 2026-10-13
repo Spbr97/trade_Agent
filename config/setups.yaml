@@ -74,7 +74,7 @@ setups:
   r_adx_thrust_tsmom_up_trend_trail:
     enabled: true
     markets: [crypto]
-    research_only_markets: [crypto]  # 43.75% historical; shadow until 80%/70%-LB gate
+    research_only_markets: [crypto]  # 43.75% historical; shadow until profitability gates pass
   r_tsmom252_volume_confirm_trend_trail:
     enabled: true
     markets: [bse]
@@ -110,7 +110,8 @@ eligibility:
   min_score: 85            # SDD section 9: only A/A+ eligible for live consideration
   min_trades: 500          # SDD section 18 minimum evidence
   min_oos_trades: 100      # SDD section 18: out-of-sample, not just in-sample
-  min_win_rate: 0.80       # accuracy-first live target; lower-rate research stays shadow-only
-  min_win_rate_wilson_lb: 0.70  # 95% lower confidence bound; blocks lucky small samples
-  min_expectancy_r: 0.0    # must at least not lose money, after costs
+  accuracy_gate_enabled: false  # retired 2026-10-13; win rate remains descriptive only
+  min_win_rate: 0.80       # retained only to reproduce older sealed accuracy contracts
+  min_win_rate_wilson_lb: 0.70  # retained only to reproduce older sealed contracts
+  min_expectancy_r: 0.05   # profitability-first: positive after-cost edge with a buffer
   must_beat_random_by_r: 0.10
