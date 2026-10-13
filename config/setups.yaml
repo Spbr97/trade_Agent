@@ -75,6 +75,10 @@ setups:
     enabled: true
     markets: [crypto]
     research_only_markets: [crypto]  # 43.75% historical; shadow until 80%/70%-LB gate
+  r_tsmom252_volume_confirm_trend_trail:
+    enabled: true
+    markets: [bse]
+    research_only_markets: [bse]
 entry:
   confirm_timeframe_minutes: 15
   chased_atr_multiple: 1.0
