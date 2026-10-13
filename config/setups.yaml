@@ -79,6 +79,10 @@ setups:
     enabled: true
     markets: [bse]
     research_only_markets: [bse]
+  r_donchian55_any_trend_trail:
+    enabled: true
+    markets: [bse]
+    research_only_markets: [bse]
 entry:
   confirm_timeframe_minutes: 15
   chased_atr_multiple: 1.0
