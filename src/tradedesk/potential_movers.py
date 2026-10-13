@@ -389,6 +389,108 @@ def sessions_behind(market: str, latest: date, now: datetime) -> int:
     return behind
 
 
+ARCHETYPES = (
+    "new_listing", "results_day", "deep_reversal", "momentum_burst", "near_high_breakout", "other",
+)
+
+
+def classify_mover(prev: Mapping[str, Any]) -> str:
+    """What kind of move was it, judged only from the session BEFORE the move."""
+
+    if prev.get("age_bars", 999) < 260:
+        return "new_listing"
+    if prev.get("res_today", 0) > 0 or prev.get("res_next", 0) > 0:
+        return "results_day"
+    if prev["below50"] < -0.05 and prev["pos6m"] < 0.25:
+        return "deep_reversal"
+    if prev["ret1"] >= 0.08 or prev["d5"] >= 0.15:
+        return "momentum_burst"
+    if prev["dist_hi20"] > -0.01:
+        return "near_high_breakout"
+    return "other"
+
+
+def post_mortem(
+    panel: pd.DataFrame,
+    names: Mapping[str, str],
+    session: date,
+    entries: list[dict[str, Any]],
+    model: Any | None = None,
+) -> dict[str, Any] | None:
+    """Every liquid stock that closed >= +5% on `session`: what kind of move it was and
+    whether the list written BEFORE it (the ledger entry, never a recomputed one) had it."""
+
+    earlier = sorted(d for d in panel["date"].unique() if d < session)
+    if not earlier:
+        return None
+    before = earlier[-1]
+    movers = panel[(panel["date"] == session) & (panel["ret1"] >= MOVE)]
+    prev_rows = panel[panel["date"] == before].set_index("code")
+    entry = next((e for e in entries if e["as_of"] == before.isoformat()), None)
+    listed = {item["scrip_code"] for item in entry["list"]} if entry else set()
+    ranks: dict[str, float] = {}
+    if model is not None and not prev_rows.empty:
+        from tradedesk.potential_movers_model import score_rows
+
+        usable = prev_rows.reset_index().dropna(subset=["vol_rel", "ret1", "ret20", "gap"])
+        scored = score_rows(model, usable)
+        order = scored.rank(ascending=False, method="first")
+        ranks = {str(c): int(r) for c, r in zip(usable["code"], order, strict=True)}
+    rows = []
+    for _, mover in movers.iterrows():
+        code = str(mover["code"])
+        if code not in prev_rows.index:
+            continue
+        prev = prev_rows.loc[code]
+        rows.append(
+            {
+                "scrip_code": code,
+                "symbol": names.get(code, code),
+                "move_pct": round(float(mover["ret1"]) * 100, 1),
+                "gap_pct": round(float(mover["gap"]) * 100, 1),
+                "volume_vs_20d": round(float(mover["vol_rel"]), 1),
+                "archetype": classify_mover(prev),
+                "in_forward_list": (code in listed) if entry else None,
+                "hindsight_rank": ranks.get(code),
+            }
+        )
+    rows.sort(key=lambda r: -r["move_pct"])
+    by_type: dict[str, dict[str, int]] = {}
+    for row in rows:
+        kind = by_type.setdefault(row["archetype"], {"movers": 0, "caught": 0})
+        kind["movers"] += 1
+        kind["caught"] += int(bool(row["in_forward_list"]))
+    return {
+        "session": session.isoformat(),
+        "list_session": before.isoformat(),
+        "forward_list_recorded": entry is not None,
+        "universe_size": int(len(prev_rows)),
+        "movers": len(rows),
+        "caught": sum(int(bool(r["in_forward_list"])) for r in rows),
+        "by_archetype": by_type,
+        "movers_detail": rows[:60],
+    }
+
+
+def rolling_archetype_recall(root: Path, days: int = 20) -> dict[str, Any]:
+    """Where the agent keeps missing: caught/total by move type over recent recorded days."""
+
+    path = root / "post_mortem.jsonl"
+    if not path.exists():
+        return {}
+    records = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line]
+    records = [r for r in records if r.get("forward_list_recorded")][-days:]
+    totals: dict[str, dict[str, int]] = {}
+    for record in records:
+        for kind, counts in record["by_archetype"].items():
+            agg = totals.setdefault(kind, {"movers": 0, "caught": 0})
+            agg["movers"] += counts["movers"]
+            agg["caught"] += counts["caught"]
+    for agg in totals.values():
+        agg["recall"] = agg["caught"] / agg["movers"] if agg["movers"] else 0.0
+    return {"days": len(records), "by_archetype": totals}
+
+
 def _read_ledger(path: Path) -> list[dict[str, Any]]:
     if not path.exists():
         return []
@@ -460,6 +562,24 @@ def run_potential_movers(
     session = as_of or latest
     stats = tier_statistics(panel, session)
     root = output_root / market
+    ledger_entries = _read_ledger(root / "ledger.jsonl")
+    mortem = None
+    if as_of is None:
+        from tradedesk.potential_movers_model import MODEL_NAME
+
+        previous_model = None
+        if (root / MODEL_NAME).exists():
+            import joblib
+
+            previous_model = joblib.load(root / MODEL_NAME)
+        mortem = post_mortem(panel, names, session, ledger_entries, previous_model)
+        if mortem and write_ledger:
+            log = root / "post_mortem.jsonl"
+            seen = log.read_text(encoding="utf-8") if log.exists() else ""
+            if f'"session": "{mortem["session"]}"' not in seen:
+                root.mkdir(parents=True, exist_ok=True)
+                with log.open("a", encoding="utf-8") as handle:
+                    handle.write(json.dumps(mortem, sort_keys=True) + "\n")
     model, model_report = None, {"adopted": False, "reason": "preview: rules only (no look-ahead)"}
     if as_of is None:
         from tradedesk.potential_movers_model import load_or_train
@@ -514,6 +634,8 @@ def run_potential_movers(
         "recorded_as_forecast": bool(on_time),
         "sessions_behind": sessions_behind(market, latest, now),
         "data_stale": sessions_behind(market, latest, now) > 0,
+        "post_mortem": mortem,
+        "archetype_recall_20d": rolling_archetype_recall(root),
         "results_watch": results_watch(panel, names, session, results) if results else None,
         "latest_data_session": latest.isoformat(),
         "move_threshold": MOVE,

@@ -135,3 +135,48 @@ def test_results_features_are_causal_and_flag_the_event_days() -> None:
     assert nxt[19] == 1
     assert hist[21] != hist[21] or hist[21] == 0  # reaction (day 21) not known yet at day 21
     assert hist[22] > 0.07  # known from the row after the reaction day
+
+
+def _prev(**over: float) -> dict[str, float]:
+    base = {
+        "age_bars": 500.0, "res_today": 0.0, "res_next": 0.0, "below50": 0.0, "pos6m": 0.5,
+        "ret1": 0.0, "d5": 0.0, "dist_hi20": -0.1,
+    }  # fmt: skip
+    base.update(over)
+    return base
+
+
+def test_movers_are_classified_from_the_session_before_the_move() -> None:
+    from tradedesk.potential_movers import classify_mover
+
+    assert classify_mover(_prev(age_bars=56.0)) == "new_listing"
+    assert classify_mover(_prev(res_today=1.0)) == "results_day"
+    assert classify_mover(_prev(below50=-0.09, pos6m=0.2)) == "deep_reversal"
+    assert classify_mover(_prev(ret1=0.2)) == "momentum_burst"
+    assert classify_mover(_prev(dist_hi20=-0.002)) == "near_high_breakout"
+    assert classify_mover(_prev()) == "other"
+
+
+def test_post_mortem_counts_only_names_on_the_list_written_before_the_move() -> None:
+    from tradedesk.potential_movers import post_mortem
+
+    d0, d1 = date(2026, 10, 12), date(2026, 10, 13)
+    common = {
+        "age_bars": 500.0, "res_today": 0.0, "res_next": 0.0, "below50": -0.1, "pos6m": 0.1,
+        "d5": 0.0, "dist_hi20": -0.2, "gap": 0.0, "vol_rel": 1.0, "ret20": 0.0,
+    }  # fmt: skip
+    panel = pd.DataFrame(
+        [
+            {**common, "code": "A", "date": d0, "ret1": 0.0},
+            {**common, "code": "B", "date": d0, "ret1": 0.0},
+            {**common, "code": "A", "date": d1, "ret1": 0.07},
+            {**common, "code": "B", "date": d1, "ret1": 0.06},
+        ]
+    )
+    entry = {"as_of": d0.isoformat(), "list": [{"scrip_code": "A"}]}
+    out = post_mortem(panel, {"A": "AAA", "B": "BBB"}, d1, [entry])
+    assert out is not None and out["movers"] == 2 and out["caught"] == 1
+    assert out["by_archetype"]["deep_reversal"] == {"movers": 2, "caught": 1}
+    none_recorded = post_mortem(panel, {}, d1, [])
+    assert none_recorded is not None and none_recorded["caught"] == 0
+    assert none_recorded["forward_list_recorded"] is False

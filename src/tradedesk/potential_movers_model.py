@@ -30,7 +30,7 @@ PURGE_SESSIONS = 3
 VALIDATION_SESSIONS = 120
 LOCKED_SESSIONS = 120
 MIN_TRAIN_SESSIONS = 500
-RETRAIN_AFTER_DAYS = 7
+RETRAIN_AFTER_DAYS = 1  # the task runs once a day: learn from each new day's movers
 MODEL_NAME = "model.joblib"
 REPORT_NAME = "model_report.json"
 

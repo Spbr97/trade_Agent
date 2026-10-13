@@ -975,6 +975,10 @@
     </div>
     <div class="muted" id="movers-detail"></div>
     <table id="movers-table" style="margin-top:10px;"></table>
+    <h3 style="margin-top:14px;">Yesterday's winners: did the agent have them? <span class="info-ic" title="Every liquid stock that closed up 5% or more on the last session, tagged by the kind of move it was (judged only from the session before) and whether the list written BEFORE the move contained it. Hindsight rank is where the current model would have placed it.">ⓘ</span></h3>
+    <div class="muted" id="movers-pm-summary"></div>
+    <table id="movers-pm-types" style="margin-top:6px;"></table>
+    <table id="movers-pm-table" style="margin-top:6px;"></table>
     <h3 style="margin-top:14px;">Results due before the next session <span class="info-ic" title="Companies reporting results today (after the close) or by the next session. Results days move 5% or more far more often than ordinary days and the size is predictable from the stock's own history, but nothing here predicts the direction.">ⓘ</span></h3>
     <div class="muted" id="movers-results-detail"></div>
     <table id="movers-results-table" style="margin-top:6px;"></table>
@@ -2272,6 +2276,13 @@ async function loadPotentialMovers(market) {
   const f = r.forward_tracking || {};
   set('movers-forward', f.picks ? pct(f.up5_rate) + ' of ' + f.picks + ' picks' : 'not enough yet');
   set('movers-detail', (r.data_stale ? 'WARNING: price data is ' + r.sessions_behind + ' session(s) behind - this list is stale. ' : '') + (r.detail || ''));
+  const pm = r.post_mortem;
+  if (pm) {
+    set('movers-pm-summary', pm.session + ': ' + pm.movers + ' liquid stocks closed up 5%+; ' + (pm.forward_list_recorded ? pm.caught + ' were on the list written before the move.' : 'no forward list was recorded for the day before, so none can count as caught.'));
+    const roll = (r.archetype_recall_20d || {}).by_archetype || {};
+    document.getElementById('movers-pm-types').innerHTML = '<tr><th>Kind of move</th><th>Today: caught / movers</th><th>Last ' + ((r.archetype_recall_20d || {}).days || 0) + ' recorded days: recall</th></tr>' + Object.entries(pm.by_archetype).map(([k, v]) => `<tr><td>${k}</td><td>${v.caught} / ${v.movers}</td><td>${roll[k] ? pct(roll[k].recall) + ' of ' + roll[k].movers : 'n/a'}</td></tr>`).join('');
+    document.getElementById('movers-pm-table').innerHTML = '<tr><th>Stock</th><th>Move</th><th>Gap</th><th>Volume</th><th>Kind</th><th>On list?</th><th>Hindsight rank</th></tr>' + (pm.movers_detail || []).slice(0, 25).map(m => `<tr><td>${m.symbol}</td><td>+${m.move_pct}%</td><td>${m.gap_pct}%</td><td>${m.volume_vs_20d}x</td><td>${m.archetype}</td><td>${m.in_forward_list == null ? 'n/a' : (m.in_forward_list ? 'YES' : 'no')}</td><td>${m.hindsight_rank || ''}</td></tr>`).join('');
+  }
   const rw = r.results_watch;
   if (rw) {
     const h = rw.historical_rates || {};
