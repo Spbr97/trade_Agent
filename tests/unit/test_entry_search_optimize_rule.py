@@ -8,7 +8,19 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import duckdb
+import pytest
 from scripts.entry_search import RULES, optimize_rule
+
+
+@pytest.fixture(autouse=True)
+def _skip_if_store_locked() -> None:
+    """These run on the real NSE store; the always-on dashboard can hold it open."""
+    try:
+        duckdb.connect("data/tradedesk.duckdb", read_only=True).close()
+    except duckdb.IOException as exc:
+        pytest.skip(f"real NSE store is locked: {exc}")
+
 
 
 def test_optimize_rule_returns_a_well_formed_result(tmp_path: Path) -> None:
