@@ -1,0 +1,21 @@
+# Probation tier (explicit user decision, 2026-10-13): detectors that PASSED the backtest gauntlet
+# but have no forward record may send small, clearly labelled calls while one builds. This does
+# not change engine/scoring.py::eligibility() or turn any detector on for the live monitor; the
+# probation desk (src/tradedesk/probation.py) reads the signal tracker's log and keeps its own
+# ledger. The human places every order.
+#
+# The user's standard: if money lost exceeds money made, it ends. Suspensions are written to
+# data/m14_m18/probation/<market>/suspended.json and never lift themselves - a human edit does.
+probation:
+  enabled: true
+  started_on: 2026-10-13        # only signals armed on or after this date count
+  max_new_calls_per_day: 2
+  worst_allowed_grade: B        # A+/A/B only; the tracker's own price/regime filters still apply
+  setup_floor_r: -3.0           # suspend one detector at -3R net after costs
+  desk_floor_r: -5.0            # suspend everything at -5R net after costs
+  checkpoint_calls: 15          # after this many resolved calls net rupees must be positive
+  min_mean_net_r_after_checkpoint: 0.0
+  approvals:                    # each passed the gauntlet and one human approval (self-review)
+    - {setup: r_tsmom252_volume_confirm_trend_trail, market: bse}   # +0.21R net, 603 trades
+    - {setup: r_donchian55_any_trend_trail, market: bse}            # +0.13R net, 3,210 trades
+    - {setup: r_donchian20_strong_trend_trend_trail, market: bse}   # +0.20R net, 1,836 trades

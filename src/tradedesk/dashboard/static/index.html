@@ -274,6 +274,11 @@
         </div>
       </details>
       <section><h2><span id="bsetoday-calls-heading">Today's calls (BSE)</span> <span class="info-ic" title="full-universe live session, same as NSE's Calls tab; triggers are journaled but there's no BSE paper book to grade them yet">ⓘ</span></h2><table id="bsetoday-calls"></table></section>
+      <section id="probation-section"><h2>Probation calls (BSE) <span class="info-ic" title="Small, capped calls from detectors that passed the backtest gauntlet but have no forward record yet. Risk 0.25% of the pot per call, at most 2 a day. The desk stops itself at -3R per detector, -5R overall, or after 15 resolved calls if net money is not positive. You place every order.">ⓘ</span></h2>
+        <div class="muted" id="probation-summary">not run yet</div>
+        <table id="probation-calls" style="margin-top:6px;"></table>
+        <table id="probation-resolved" style="margin-top:6px;"></table>
+      </section>
       <section><h2>Open positions (BSE)</h2><table id="bsetoday-positions"></table></section>
     </div>
 
@@ -1401,6 +1406,28 @@ function updateCallsHeadings() {
 }
 updateCallsHeadings();
 setInterval(updateCallsHeadings, 60000);
+
+async function loadProbation() {
+  const el = (id) => document.getElementById(id);
+  if (!el('probation-summary')) return;
+  let r;
+  try { r = await (await fetch('/api/probation?market=bse')).json(); } catch (e) { return; }
+  if (!r || r.state === 'not_run' || r.error) { el('probation-summary').textContent = 'not run yet'; return; }
+  const money = (v) => 'Rs ' + Number(v || 0).toLocaleString('en-IN', {maximumFractionDigits: 0});
+  const L = r.ledger || {};
+  const sus = r.suspended || {};
+  el('probation-summary').textContent = (r.state === 'disabled' ? 'disabled' : r.state.toUpperCase())
+    + (sus.desk ? ' - ' + sus.desk.reason : '')
+    + ' | resolved ' + (L.resolved_calls || 0) + ', net ' + money(L.net_rupees) + ' (' + (L.net_r || 0) + 'R) after costs'
+    + ' | ' + (L.rule || '');
+  const calls = (r.calls_today || []).concat(r.open_calls || []);
+  const seen = new Set();
+  const rows = calls.filter(c => !seen.has(c.signal_id) && seen.add(c.signal_id)).map(c => `<tr><td>${c.symbol}</td><td>BUY above ${c.entry}</td><td>stop ${c.stop}</td><td>T1 ${c.t1}</td><td>T2 ${c.t2}</td><td>qty ${c.qty}</td><td>risk ${money(c.risk_rupees)}</td><td>${c.setup}</td><td>${c.issued_on}</td></tr>`).join('');
+  el('probation-calls').innerHTML = '<tr><th>Stock</th><th>Entry</th><th>Stop</th><th>T1</th><th>T2</th><th>Qty</th><th>Risk</th><th>Detector</th><th>Issued</th></tr>' + rows;
+  el('probation-resolved').innerHTML = '<tr><th>Resolved</th><th>Outcome</th><th>Net</th><th>Net R</th></tr>' + (r.resolved_recent || []).map(c => `<tr><td>${c.symbol} (${c.issued_on})</td><td>${c.outcome}</td><td>${money(c.net_rupees)}</td><td>${c.net_r}</td></tr>`).join('');
+}
+loadProbation();
+setInterval(loadProbation, 60000);
 function showCallsMarket(market) {
   $('tab-today-inner').hidden = market !== 'nse';
   $('tab-bse').hidden = market !== 'bse';

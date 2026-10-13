@@ -2080,6 +2080,16 @@ def create_app(
         report = await asyncio.to_thread(load_pre_takeoff_watch, market)
         return JSONResponse(report)
 
+    @app.get("/api/probation")
+    async def api_probation(market: str = "bse") -> JSONResponse:
+        """Read the capped probation desk's calls and ledger; never computes in HTTP."""
+
+        from tradedesk.probation import load_probation
+
+        if market not in {"nse", "bse"}:
+            return JSONResponse({"error": "invalid market"}, status_code=400)
+        return JSONResponse(await asyncio.to_thread(load_probation, market))
+
     @app.get("/api/self-learning/potential-movers")
     async def api_self_learning_potential_movers(
         market: str = "nse",
