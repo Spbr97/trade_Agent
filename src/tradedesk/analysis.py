@@ -105,8 +105,13 @@ def analyze_symbol(
             vix = store.index_code(settings.universe.volatility_index)
         # last_closed_ts, not last_ts: crypto's feed continuously updates the currently-
         # forming UTC day's bar rather than only publishing it once closed - see
-        # CandleStore.last_closed_ts's own docstring. No-op for NSE/BSE.
-        last = store.last_closed_ts(code, Interval.D1)
+        # CandleStore.last_closed_ts's own docstring. NOT a no-op for NSE/BSE (a daily bar
+        # counts as closed 24h after its timestamp), so equity uses last_ts - see cli.scan.
+        last = (
+            store.last_closed_ts(code, Interval.D1)
+            if market == "crypto"
+            else store.last_ts(code, Interval.D1)
+        )
         if last is None:
             return {"error": f"no daily candles for {code}", "market": market}
         day: date = datetime.strptime(on, "%Y-%m-%d").date() if on else last.date()
