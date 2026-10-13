@@ -9,6 +9,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+import duckdb
+
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "src"))
@@ -50,8 +52,14 @@ def main(*, command: str, market: str) -> None:
     else:
         markets = ("nse", "bse") if market == "equity" else (market,)
         lock_path = COLLECTION_HEALTH_OUTPUT / "equity.pipeline.lock"
-        with _pipeline_lock(lock_path):
-            result = asyncio.run(_collect_equities(markets))
+        try:
+            with _pipeline_lock(lock_path):
+                result = asyncio.run(_collect_equities(markets))
+        except duckdb.IOException as exc:
+            # The live session holds the store while it rebuilds; this slot is skipped, the
+            # next 15-minute slot collects. Anything other than a lock still fails loudly.
+            print(f"pre-takeoff watch skipped this slot: candle store busy ({exc})")
+            return
     print(json.dumps(result, indent=2, sort_keys=True, default=str))
 
 

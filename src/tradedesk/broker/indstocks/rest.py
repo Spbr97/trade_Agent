@@ -226,9 +226,15 @@ class IndstocksClient:
         scrip_codes: Sequence[str],
         start: datetime,
         end: datetime,
+        *,
+        skip_invalid: bool = False,
     ) -> dict[str, list[Candle]]:
         """Any number of codes and any span: batches of 5, paging backwards from `end`
-        in windows of the interval's maximum, de-duplicated by open time, sorted ascending."""
+        in windows of the interval's maximum, de-duplicated by open time, sorted ascending.
+
+        `skip_invalid` bisects a batch the API rejects as "Invalid scrip codes" and returns
+        no candles for the lone rejected code instead of failing every healthy neighbour.
+        Off by default: the history loader needs that error to track dead scrips."""
         if start.tzinfo is None:
             start = start.replace(tzinfo=IST)
         if end.tzinfo is None:
@@ -247,7 +253,12 @@ class IndstocksClient:
                     # "now"). Extra rows this pulls in are harmless: still filtered to
                     # ts in [start, end) below.
                     win_start = max(win_end - window, min(win_start, win_end - MIN_WINDOW_PAD))
-                got = await self.candles(interval, batch, win_start, win_end)
+                if skip_invalid:
+                    got = await self._candles_skipping_invalid(
+                        interval, batch, win_start, win_end
+                    )
+                else:
+                    got = await self.candles(interval, batch, win_start, win_end)
                 for code, candles in got.items():
                     bucket = result[code]
                     for c in candles:
@@ -255,6 +266,21 @@ class IndstocksClient:
                             bucket[c.ts] = c
                 win_end = win_start
         return {code: [b[k] for k in sorted(b)] for code, b in result.items()}
+
+    async def _candles_skipping_invalid(
+        self, interval: Interval, batch: Sequence[str], start: datetime, end: datetime
+    ) -> dict[str, list[Candle]]:
+        try:
+            return await self.candles(interval, batch, start, end)
+        except ApiError as exc:
+            if "invalid scrip" not in str(exc).lower():
+                raise
+            if len(batch) == 1:
+                return {batch[0]: []}
+            mid = len(batch) // 2
+            left = await self._candles_skipping_invalid(interval, batch[:mid], start, end)
+            right = await self._candles_skipping_invalid(interval, batch[mid:], start, end)
+            return {**left, **right}
 
     # -------------------------------------------------------------------- quotes
 

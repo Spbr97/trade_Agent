@@ -794,6 +794,7 @@ async def collect_equity_pre_takeoff_watch(
         codes,
         start=now - timedelta(days=Interval.M15.max_window_days),
         end=now,
+        skip_invalid=True,
     )
     latest_bar = _latest_completed_bar(candles, now)
     registration_open = _equity_registration_open(now, latest_bar)

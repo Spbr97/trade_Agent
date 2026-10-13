@@ -27,6 +27,7 @@ import hashlib
 import json
 import math
 import os
+import time
 from collections import Counter, defaultdict
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import asdict, dataclass
@@ -370,6 +371,18 @@ def extract_causal_universe(
     return frame, source
 
 
+def _connect_read_only(db_path: Path, *, retries: int = 40, delay_s: float = 15.0) -> Any:
+    """Open the store read-only, waiting out a writer (the live session re-opens it each poll)."""
+    for attempt in range(retries + 1):
+        try:
+            return duckdb.connect(str(db_path), read_only=True)
+        except duckdb.IOException:
+            if attempt == retries:
+                raise
+            time.sleep(delay_s)
+    raise AssertionError("unreachable")
+
+
 def extract_decision_universe(
     db_path: Path,
     market: str,
@@ -385,7 +398,7 @@ def extract_decision_universe(
 
     spec = spec_for(market)
     observed_at = now or datetime.now(IST)
-    connection = duckdb.connect(str(db_path), read_only=True)
+    connection = _connect_read_only(db_path)
     try:
         latest_ts = _latest_source_timestamp(connection, spec, observed_at)
         history_start = latest_ts - int(timedelta(days=520).total_seconds())

@@ -357,7 +357,7 @@ class _FakeEquityClient:
         self.frame = frame
         self.requests: list[tuple[object, list[str], datetime, datetime]] = []
 
-    async def candles_history(self, interval, codes, start, end):
+    async def candles_history(self, interval, codes, start, end, **_kwargs):
         self.requests.append((interval, list(codes), start, end))
         return {code: self.frame.copy() for code in codes}
 
