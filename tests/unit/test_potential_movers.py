@@ -112,3 +112,26 @@ def test_forward_resolution_compares_against_same_day_universe() -> None:
     out = resolve_forward(panel, [entry], {"2026-01-05": 0.25})
     assert out["picks"] == 2 and out["up5_rate"] == 0.5
     assert out["lift_over_universe"] == 2.0
+
+
+def test_stale_data_is_counted_in_missing_weekdays() -> None:
+    from tradedesk.potential_movers import sessions_behind
+
+    friday = date(2026, 10, 9)
+    assert sessions_behind("nse", friday, datetime(2026, 10, 9, 18, 0, tzinfo=IST)) == 0
+    assert sessions_behind("nse", friday, datetime(2026, 10, 12, 8, 0, tzinfo=IST)) == 0
+    assert sessions_behind("nse", friday, datetime(2026, 10, 13, 12, 0, tzinfo=IST)) == 1
+    assert sessions_behind("nse", friday, datetime(2026, 10, 13, 18, 0, tzinfo=IST)) == 2
+
+
+def test_results_features_are_causal_and_flag_the_event_days() -> None:
+    from tradedesk.potential_movers import _results_features
+
+    days = [date(2026, 1, 1) + timedelta(days=i) for i in range(40)]
+    close = np.array([100.0] * 20 + [100.0, 108.0] + [108.0] * 18)  # +8% on the day after day 20
+    event = days[20]
+    today, nxt, hist = _results_features(days, close, [event])
+    assert today[20] == 1 and today[19] == 0
+    assert nxt[19] == 1
+    assert hist[21] != hist[21] or hist[21] == 0  # reaction (day 21) not known yet at day 21
+    assert hist[22] > 0.07  # known from the row after the reaction day

@@ -51,3 +51,70 @@ def sessions_until(event: date | None, today: date, calendar: list[date]) -> int
     if event is None:
         return None
     return sum(1 for d in calendar if today < d <= event)
+
+
+NSE_BOARD_MEETINGS_URL = "https://www.nseindia.com/api/corporate-board-meetings"
+_NSE_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"
+    ),
+    "Accept": "application/json,text/plain,*/*",
+    "Referer": "https://www.nseindia.com/companies-listing/corporate-filings-board-meetings",
+}
+
+
+def parse_nse_board_meetings_json(rows: list[dict[str, str]]) -> list[ResultsEvent]:
+    """Results-related meetings from NSE's public board-meetings API.
+
+    Intimation rows carry the purpose "Board Meeting Intimation" and only say "financial
+    results" in their description, so those are normalised to "Financial Results" (the
+    results_events key is symbol + date + purpose, which keeps re-fetches idempotent)."""
+
+    events: dict[tuple[str, date], ResultsEvent] = {}
+    for row in rows:
+        symbol = (row.get("bm_symbol") or "").strip()
+        when = parse_nse_date(row.get("bm_date") or "")
+        purpose = (row.get("bm_purpose") or "").strip()
+        description = row.get("bm_desc") or ""
+        if not symbol or when is None:
+            continue
+        if not (is_results_purpose(purpose) or "financial result" in description.lower()):
+            continue
+        if purpose == "Board Meeting Intimation":
+            purpose = "Financial Results"
+        events.setdefault(
+            (symbol, when),
+            ResultsEvent(symbol=symbol, event_date=when, purpose=purpose, source="nse-api"),
+        )
+    return list(events.values())
+
+
+def fetch_nse_board_meetings(
+    start: date, end: date, *, client: object | None = None
+) -> list[ResultsEvent]:
+    """Fetch NSE board meetings between two dates (public API; needs a cookie from the home
+    page and browser-like headers). Raises on any non-200 response or non-list body."""
+
+    import httpx
+
+    def get(c: httpx.Client) -> list[ResultsEvent]:
+        c.get("https://www.nseindia.com/")  # sets the cookies the API requires
+        response = c.get(
+            NSE_BOARD_MEETINGS_URL,
+            params={
+                "index": "equities",
+                "from_date": start.strftime("%d-%m-%Y"),
+                "to_date": end.strftime("%d-%m-%Y"),
+            },
+        )
+        response.raise_for_status()
+        body = response.json()
+        if not isinstance(body, list):
+            raise ValueError(f"unexpected NSE board-meetings response: {str(body)[:120]}")
+        return parse_nse_board_meetings_json(body)
+
+    if client is not None:
+        return get(client)  # type: ignore[arg-type]
+    with httpx.Client(headers=_NSE_HEADERS, timeout=60, follow_redirects=True) as c:
+        return get(c)

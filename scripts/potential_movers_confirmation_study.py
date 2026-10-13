@@ -1,15 +1,20 @@
+# ruff: noqa: E501, E702
 """Research study: does confirming a potential-movers pick after the open give an edge?
 
 Usage: python scripts/potential_movers_confirmation_study.py <nse|bse> <output_dir>
 Result (2026-10-13): no. See docs/potential-movers.md."""
-import sys, time, json
+import sys
+
 sys.path.insert(0, 'src')
-import duckdb, pandas as pd, numpy as np
-from datetime import date, timedelta
-from tradedesk.potential_movers import _read_daily, build_panel, LIST_SIZE
-from tradedesk.potential_movers_model import _fit, FEATURES
-from tradedesk.leader_discovery import _connect_read_only
+from datetime import timedelta
 from pathlib import Path
+
+import numpy as np
+import pandas as pd
+
+from tradedesk.leader_discovery import _connect_read_only
+from tradedesk.potential_movers import LIST_SIZE, _read_daily, build_panel
+from tradedesk.potential_movers_model import FEATURES, _fit
 
 market = sys.argv[1]
 db = Path({'nse': 'data/tradedesk.duckdb', 'bse': 'data/bse.duckdb'}[market])

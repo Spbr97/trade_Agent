@@ -969,6 +969,29 @@ def data_import_actions(
         typer.echo(f"  CHECK {a.symbol} {a.ex_date}: {a.purpose}")
 
 
+@data_app.command("refresh-results")
+def data_refresh_results(
+    db: Path = DB_OPTION,
+    back_days: int = typer.Option(7, help="Re-fetch this many days back (late corrections)."),
+    ahead_days: int = typer.Option(60, help="Fetch announced meetings this far ahead."),
+) -> None:
+    """Fetch NSE's board-meeting calendar (results dates) into the store; safe to re-run."""
+    from tradedesk.broker.indstocks.models import IST
+    from tradedesk.data.results_calendar import fetch_nse_board_meetings
+
+    today = datetime.now(IST).date()
+    events = fetch_nse_board_meetings(
+        today - timedelta(days=back_days), today + timedelta(days=ahead_days)
+    )
+    if not events:
+        typer.echo("NSE returned no results meetings; calendar left unchanged", err=True)
+        raise typer.Exit(code=1)
+    with _store(db) as store:
+        n = store.upsert_results_events(events)
+    first, last = today - timedelta(days=back_days), today + timedelta(days=ahead_days)
+    typer.echo(f"{n} results events stored ({first} to {last})")
+
+
 @data_app.command("import-results")
 def data_import_results(
     csv_file: Path = typer.Argument(..., exists=True), db: Path = DB_OPTION

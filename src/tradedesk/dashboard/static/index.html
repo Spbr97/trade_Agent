@@ -975,6 +975,9 @@
     </div>
     <div class="muted" id="movers-detail"></div>
     <table id="movers-table" style="margin-top:10px;"></table>
+    <h3 style="margin-top:14px;">Results due before the next session <span class="info-ic" title="Companies reporting results today (after the close) or by the next session. Results days move 5% or more far more often than ordinary days and the size is predictable from the stock's own history, but nothing here predicts the direction.">ⓘ</span></h3>
+    <div class="muted" id="movers-results-detail"></div>
+    <table id="movers-results-table" style="margin-top:6px;"></table>
   </section>
   <section>
     <h2>M23 opening-impulse continuation <span class="info-ic" title="NSE/BSE forward-only research for a second leg after a strong opening move holds. It is separate from M20 compression evidence. Accuracy is descriptive; after-cost expectancy, its lower bound, profit factor and matched-random edge decide profitability review.">ⓘ</span></h2>
@@ -2268,7 +2271,13 @@ async function loadPotentialMovers(market) {
   set('movers-base', m.universe_up5_rate != null ? pct(m.universe_up5_rate) : 'n/a');
   const f = r.forward_tracking || {};
   set('movers-forward', f.picks ? pct(f.up5_rate) + ' of ' + f.picks + ' picks' : 'not enough yet');
-  set('movers-detail', r.detail || '');
+  set('movers-detail', (r.data_stale ? 'WARNING: price data is ' + r.sessions_behind + ' session(s) behind - this list is stale. ' : '') + (r.detail || ''));
+  const rw = r.results_watch;
+  if (rw) {
+    const h = rw.historical_rates || {};
+    set('movers-results-detail', (rw.calendar_current ? '' : 'WARNING: results calendar ends ' + rw.calendar_covers_to + ' - refresh it. ') + 'Past results days moved 5%+ ' + pct(h.p_move5_any) + ' of the time (' + pct(h.p_move5_if_usually_big) + ' for stocks that usually move 4%+ on results, ' + pct(h.p_move5_if_usually_small) + ' otherwise). Direction unknown.');
+    document.getElementById('movers-results-table').innerHTML = '<tr><th>Stock</th><th>Results date</th><th>Usual results move</th><th>Close</th></tr>' + (rw.candidates || []).map(c => `<tr><td>${c.symbol}</td><td>${c.results_date}</td><td>${c.usual_results_move_pct}%</td><td>${c.close}</td></tr>`).join('');
+  }
   const rows = (r.candidates || []).map(c => `<tr><td>${c.symbol}</td><td>${c.model_probability != null ? pct(c.model_probability) : (c.tier || '')}</td><td>${c.close}</td><td>${c.below_ema50_pct}%</td><td>${c.five_session_change_pct}%</td><td>${c.volume_vs_20d}x</td></tr>`).join('');
   document.getElementById('movers-table').innerHTML = '<tr><th>Stock</th><th>Chance of +5%</th><th>Close</th><th>vs EMA50</th><th>5-session</th><th>Volume vs 20d</th></tr>' + rows;
 }

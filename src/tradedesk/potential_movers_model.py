@@ -25,6 +25,7 @@ FEATURES = [
     "below50", "pos6m", "d5", "ret1", "ret20", "gap", "close_loc", "atr_pct",
     "dist_hi20", "rng_rel", "vol_rel",
 ]  # fmt: skip
+EVENT_FEATURES = ["res_today", "res_next", "hist_res_move"]
 PURGE_SESSIONS = 3
 VALIDATION_SESSIONS = 120
 LOCKED_SESSIONS = 120
@@ -83,7 +84,7 @@ def score_picks(picks: pd.DataFrame, universe: pd.DataFrame) -> dict[str, Any]:
     }
 
 
-def _fit(train: pd.DataFrame) -> Any:
+def _fit(train: pd.DataFrame, features: list[str] | None = None) -> Any:
     from sklearn.ensemble import HistGradientBoostingClassifier
 
     model = HistGradientBoostingClassifier(
@@ -94,7 +95,8 @@ def _fit(train: pd.DataFrame) -> Any:
         l2_regularization=1.0,
         random_state=0,
     )
-    model.fit(train[FEATURES], (train["next_ret"] >= MOVE).astype(int))
+    columns = features or FEATURES
+    model.fit(train[columns], (train["next_ret"] >= MOVE).astype(int))
     return model
 
 
@@ -104,15 +106,35 @@ def train_and_evaluate(panel: pd.DataFrame) -> dict[str, Any]:
     if splits is None:
         return {"adopted": False, "reason": "not enough sessions for train/validation/locked"}
     blocks = {name: known[known["date"].isin(set(days))] for name, days in splits.items()}
-    model = _fit(blocks["train"])
+    # A/B: the price-only model against the same model plus results-calendar features.
+    has_events = bool(known["res_today"].sum() + known["res_next"].sum())
+    candidates = {"price_only": FEATURES}
+    if has_events:
+        candidates["price_and_results"] = FEATURES + EVENT_FEATURES
+    fitted = {name: _fit(blocks["train"], cols) for name, cols in candidates.items()}
+    val = blocks["validation"]
+    val_rate = {
+        name: score_picks(
+            top_k_by_session(
+                val, pd.Series(m.predict_proba(val[candidates[name]])[:, 1], index=val.index)
+            ),
+            val,
+        )["up5_rate"]
+        for name, m in fitted.items()
+    }
+    chosen = max(val_rate, key=lambda name: val_rate[name])  # chosen on validation only
+    model = fitted[chosen]
+    features = candidates[chosen]
     report: dict[str, Any] = {
+        "feature_set": chosen,
+        "validation_up5_by_feature_set": val_rate,
         "splits": {k: [v[0].isoformat(), v[-1].isoformat(), len(v)] for k, v in splits.items()},
-        "features": FEATURES,
+        "features": features,
         "trained_at": datetime.now().isoformat(),
     }
     for name in ("validation", "locked"):
         block = blocks[name]
-        proba = pd.Series(model.predict_proba(block[FEATURES])[:, 1], index=block.index)
+        proba = pd.Series(model.predict_proba(block[features])[:, 1], index=block.index)
         report[name] = {
             "model": score_picks(top_k_by_session(block, proba), block),
             "rules": score_picks(
@@ -130,7 +152,7 @@ def train_and_evaluate(panel: pd.DataFrame) -> dict[str, Any]:
     report["reason"] = (
         "beats the rules on validation and the locked block" if not reasons else "; ".join(reasons)
     )
-    report["_model"] = _fit(known) if report["adopted"] else None
+    report["_model"] = _fit(known, features) if report["adopted"] else None
     return report
 
 
@@ -156,4 +178,5 @@ def load_or_train(
 
 
 def score_rows(model: Any, rows: pd.DataFrame) -> pd.Series:
-    return pd.Series(model.predict_proba(rows[FEATURES])[:, 1], index=rows.index)
+    columns = list(model.feature_names_in_)
+    return pd.Series(model.predict_proba(rows[columns])[:, 1], index=rows.index)

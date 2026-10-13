@@ -70,7 +70,74 @@ def _read_daily(market: str, db_path: Path | None) -> tuple[pd.DataFrame, dict[s
     return frame, names
 
 
-def build_panel(frame: pd.DataFrame, market: str) -> pd.DataFrame:
+def read_results_dates(market: str, db_path: Path | None = None) -> dict[str, list[date]]:
+    """scrip_code -> sorted results-announcement dates (equities only; empty for crypto)."""
+
+    if market == "crypto":
+        return {}
+    import duckdb
+
+    from tradedesk.leader_discovery import _connect_read_only
+
+    connection = _connect_read_only(db_path or DB_PATHS[market])
+    try:
+        rows = connection.execute(
+            "SELECT i.scrip_code, r.event_date FROM results_events r "
+            "JOIN instruments i ON i.trading_symbol = r.symbol "
+            "WHERE r.purpose ILIKE '%result%'"
+        ).fetchall()
+    except duckdb.Error:
+        return {}
+    finally:
+        connection.close()
+    out: dict[str, set[date]] = {}
+    for code, when in rows:
+        out.setdefault(str(code), set()).add(pd.Timestamp(when).date())
+    return {code: sorted(days) for code, days in out.items()}
+
+
+def _next_business_day(day: date) -> date:
+    nxt = day + timedelta(days=1)
+    while nxt.weekday() >= 5:
+        nxt += timedelta(days=1)
+    return nxt
+
+
+def _results_features(
+    dates: list[date], close: np.ndarray, events: list[date]
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """results due today / by the next session, and the stock's own past reaction size.
+
+    The reaction of an event is its larger absolute close move over the event day and the
+    next session; it is only used for rows after that reaction is complete (no look-ahead)."""
+
+    index = {d: i for i, d in enumerate(dates)}
+    event_set = set(events)
+    today = np.array([float(d in event_set) for d in dates])
+    nxt = np.array([float(_next_business_day(d) in event_set) for d in dates])
+    reactions: list[tuple[int, float]] = []  # (row index when it becomes known, |move|)
+    for event in events:
+        i = index.get(event)
+        if i is None or i < 1 or i + 1 >= len(dates):
+            continue
+        move = max(abs(close[i] / close[i - 1] - 1), abs(close[i + 1] / close[i] - 1))
+        reactions.append((i + 2, float(move)))
+    reactions.sort()
+    hist = np.full(len(dates), np.nan)
+    total, count, k = 0.0, 0, 0
+    for row in range(len(dates)):
+        while k < len(reactions) and reactions[k][0] <= row:
+            total += reactions[k][1]
+            count += 1
+            k += 1
+        if count:
+            hist[row] = total / count
+    return today, nxt, hist
+
+
+def build_panel(
+    frame: pd.DataFrame, market: str, results: dict[str, list[date]] | None = None
+) -> pd.DataFrame:
     """One row per (stock, session) with causal features and the realised next session."""
 
     parts: list[pd.DataFrame] = []
@@ -81,9 +148,18 @@ def build_panel(frame: pd.DataFrame, market: str) -> pd.DataFrame:
         close = g["close"].astype(float)
         rng = (g["high"] - g["low"]).astype(float) / close
         high6, low6 = close.rolling(126).max(), close.rolling(126).min()
+        row_dates = (
+            pd.to_datetime(g["ts"], unit="s", utc=True).dt.tz_convert("Asia/Kolkata").dt.date
+        )
+        res_today, res_next, hist_res = _results_features(
+            list(row_dates), close.to_numpy(), (results or {}).get(str(code), [])
+        )
         part = pd.DataFrame(
             {
                 "code": code,
+                "res_today": res_today,
+                "res_next": res_next,
+                "hist_res_move": hist_res,
                 "date": pd.to_datetime(g["ts"], unit="s", utc=True)
                 .dt.tz_convert("Asia/Kolkata")
                 .dt.date,
@@ -109,6 +185,7 @@ def build_panel(frame: pd.DataFrame, market: str) -> pd.DataFrame:
     if not parts:
         return pd.DataFrame()
     panel = pd.concat(parts, ignore_index=True)
+    panel["hist_res_move"] = panel["hist_res_move"].fillna(0.0)
     panel = panel.replace([np.inf, -np.inf], np.nan)
     panel = panel.dropna(subset=["below50", "pos6m", "d5", "rng_rel", "notional"])
     panel = panel[panel["notional"] >= MIN_NOTIONAL[market]]
@@ -248,6 +325,68 @@ def drop_incomplete(panel: pd.DataFrame, market: str, now: datetime) -> pd.DataF
     return panel[panel["date"] < latest] if now < candle_end(market, latest) else panel
 
 
+def results_watch(
+    panel: pd.DataFrame, names: Mapping[str, str], session: date, results: Mapping[str, list[date]]
+) -> dict[str, Any]:
+    """Stocks reporting results today (after the close) or by the next session.
+
+    Such days move a lot - and the size is predictable from the stock's own history - but
+    nothing here predicts direction, so these are names to watch, never calls."""
+
+    nxt = _next_business_day(session)
+    today = panel[panel["date"] == session]
+    due = today[(today["res_today"] > 0) | (today["res_next"] > 0)].copy()
+    # how often a results day actually produced a >=5% move, by the stock's own history
+    past = panel[
+        (panel["res_today"] > 0) & panel["next_ret"].notna() & (panel["date"] < session)
+    ]
+    move = np.maximum(past["ret1"].abs(), past["next_ret"].abs())
+    big = past["hist_res_move"] >= 0.04
+    stats = {
+        "events": int(len(past)),
+        "p_move5_any": float((move >= MOVE).mean()) if len(past) else None,
+        "p_move5_if_usually_big": float((move[big] >= MOVE).mean()) if big.any() else None,
+        "p_move5_if_usually_small": float((move[~big] >= MOVE).mean()) if (~big).any() else None,
+    }
+    due = due.sort_values("hist_res_move", ascending=False)
+    rows = []
+    for _, r in due.head(LIST_SIZE).iterrows():
+        code = str(r["code"])
+        upcoming = [d for d in results.get(code, []) if d >= session]
+        rows.append(
+            {
+                "scrip_code": code,
+                "symbol": names.get(code, code),
+                "results_date": (upcoming[0] if upcoming else nxt).isoformat(),
+                "usual_results_move_pct": round(float(r["hist_res_move"]) * 100, 1),
+                "close": round(float(r["close"]), 2),
+            }
+        )
+    covers = max((d for days in results.values() for d in days), default=None)
+    return {
+        "calendar_covers_to": covers.isoformat() if covers else None,
+        "calendar_current": bool(covers and covers >= session),
+        "historical_rates": stats,
+        "candidates": rows,
+    }
+
+
+def sessions_behind(market: str, latest: date, now: datetime) -> int:
+    """Weekdays between the newest stored session and the one that should exist by now."""
+
+    if market == "crypto":
+        return max(0, (now.date() - latest).days - 1)
+    closed_today = now >= candle_end(market, now.date())
+    expected = now.date() if closed_today else now.date() - timedelta(days=1)
+    while expected.weekday() >= 5:
+        expected -= timedelta(days=1)
+    behind, day = 0, latest
+    while day < expected:
+        day += timedelta(days=1)
+        behind += day.weekday() < 5
+    return behind
+
+
 def _read_ledger(path: Path) -> list[dict[str, Any]]:
     if not path.exists():
         return []
@@ -311,7 +450,8 @@ def run_potential_movers(
     if market not in MIN_NOTIONAL:
         raise ValueError(f"unsupported market {market!r}")
     frame, names = _read_daily(market, db_path)
-    panel = drop_incomplete(build_panel(frame, market), market, datetime.now(IST))
+    results = read_results_dates(market, db_path)
+    panel = drop_incomplete(build_panel(frame, market, results), market, datetime.now(IST))
     if panel.empty:
         return {"market": market, "status": "no_data", "version": VERSION}
     latest = max(panel["date"])
@@ -370,6 +510,9 @@ def run_potential_movers(
         ),
         "as_of": session.isoformat(),
         "recorded_as_forecast": bool(on_time),
+        "sessions_behind": sessions_behind(market, latest, now),
+        "data_stale": sessions_behind(market, latest, now) > 0,
+        "results_watch": results_watch(panel, names, session, results) if results else None,
         "latest_data_session": latest.isoformat(),
         "move_threshold": MOVE,
         "rank_method": "model" if model is not None else "tier_rules",
