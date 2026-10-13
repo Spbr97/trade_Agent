@@ -3,6 +3,9 @@ from __future__ import annotations
 import json
 from datetime import date, timedelta
 
+import duckdb
+import pytest
+
 from tradedesk.challenger_workflow import (
     drift_snapshot,
     performance_snapshot,
@@ -10,6 +13,19 @@ from tradedesk.challenger_workflow import (
 )
 from tradedesk.learning_dataset import LearningDataset
 from tradedesk.random_timing_control import CONTROL_VERSION
+
+
+@pytest.fixture(autouse=True)
+def _isolated_candle_database(tmp_path, monkeypatch):  # type: ignore[no-untyped-def]
+    """Use an empty candle store, never the live one the dashboard keeps locked."""
+    path = tmp_path / "empty.duckdb"
+    con = duckdb.connect(str(path))
+    con.execute(
+        "CREATE TABLE candles (scrip_code VARCHAR, interval VARCHAR, ts BIGINT, "
+        "open DOUBLE, high DOUBLE, low DOUBLE, close DOUBLE, volume DOUBLE)"
+    )
+    con.close()
+    monkeypatch.setattr("tradedesk.random_timing_control._database_path", lambda market: path)
 
 
 def _dataset(n: int = 24, *, qualified: bool = True) -> LearningDataset:
