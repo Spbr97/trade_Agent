@@ -10,6 +10,7 @@ import pandas as pd
 from tradedesk.broker.indstocks.models import IST
 from tradedesk.potential_movers import (
     build_panel,
+    drop_incomplete,
     forward_valid,
     resolve_forward,
     tier_statistics,
@@ -80,9 +81,23 @@ def test_top_k_is_per_session() -> None:
 
 def test_late_lists_are_not_forward_evidence() -> None:
     friday = date(2026, 10, 9)
+    assert forward_valid("nse", friday, datetime(2026, 10, 9, 17, 0, tzinfo=IST))
     assert forward_valid("nse", friday, datetime(2026, 10, 12, 8, 0, tzinfo=IST))
     assert not forward_valid("nse", friday, datetime(2026, 10, 12, 9, 30, tzinfo=IST))
-    assert not forward_valid("nse", friday, datetime(2026, 10, 13, 8, 0, tzinfo=IST))
+    assert not forward_valid("nse", friday, datetime(2026, 10, 9, 12, 0, tzinfo=IST))  # forming
+
+
+def test_crypto_list_must_follow_the_candle_close_closely() -> None:
+    day = date(2026, 10, 12)
+    assert not forward_valid("crypto", day, datetime(2026, 10, 13, 5, 0, tzinfo=IST))
+    assert forward_valid("crypto", day, datetime(2026, 10, 13, 6, 0, tzinfo=IST))
+    assert not forward_valid("crypto", day, datetime(2026, 10, 13, 12, 0, tzinfo=IST))
+
+
+def test_the_candle_still_forming_is_dropped() -> None:
+    panel = pd.DataFrame({"date": [date(2026, 10, 12), date(2026, 10, 13)], "x": [1, 2]})
+    out = drop_incomplete(panel, "crypto", datetime(2026, 10, 13, 12, 0, tzinfo=IST))
+    assert out["date"].tolist() == [date(2026, 10, 12)]
 
 
 def test_forward_resolution_compares_against_same_day_universe() -> None:

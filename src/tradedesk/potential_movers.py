@@ -214,15 +214,38 @@ def current_list(
     return rows
 
 
-def forward_valid(market: str, session: date, now: datetime) -> bool:
-    """A list only counts as a forecast if it was written before the next session opened."""
+CRYPTO_LIST_WINDOW = timedelta(hours=2)  # the target candle opens when the last one closes
 
+
+def candle_end(market: str, session: date) -> datetime:
+    """When the daily candle dated `session` is complete."""
+
+    if market == "crypto":
+        return datetime.combine(session + timedelta(days=1), time(5, 30), tzinfo=IST)
+    return datetime.combine(session, time(15, 30), tzinfo=IST)
+
+
+def forward_valid(market: str, session: date, now: datetime) -> bool:
+    """A list only counts as a forecast if the session is complete and the next one has not
+    (equities: written before the next open; crypto: within two hours of the new candle)."""
+
+    if now < candle_end(market, session):
+        return False
+    if market == "crypto":
+        return now < candle_end(market, session) + CRYPTO_LIST_WINDOW
     nxt = session + timedelta(days=1)
-    if market != "crypto":
-        while nxt.weekday() >= 5:
-            nxt += timedelta(days=1)
-    opens = time(5, 30) if market == "crypto" else time(9, 15)
-    return now < datetime.combine(nxt, opens, tzinfo=IST)
+    while nxt.weekday() >= 5:
+        nxt += timedelta(days=1)
+    return now < datetime.combine(nxt, time(9, 15), tzinfo=IST)
+
+
+def drop_incomplete(panel: pd.DataFrame, market: str, now: datetime) -> pd.DataFrame:
+    """Never describe a stock with a candle that is still forming."""
+
+    if panel.empty:
+        return panel
+    latest = max(panel["date"])
+    return panel[panel["date"] < latest] if now < candle_end(market, latest) else panel
 
 
 def _read_ledger(path: Path) -> list[dict[str, Any]]:
@@ -288,7 +311,7 @@ def run_potential_movers(
     if market not in MIN_NOTIONAL:
         raise ValueError(f"unsupported market {market!r}")
     frame, names = _read_daily(market, db_path)
-    panel = build_panel(frame, market)
+    panel = drop_incomplete(build_panel(frame, market), market, datetime.now(IST))
     if panel.empty:
         return {"market": market, "status": "no_data", "version": VERSION}
     latest = max(panel["date"])
