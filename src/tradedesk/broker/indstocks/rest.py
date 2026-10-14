@@ -22,7 +22,9 @@ from __future__ import annotations
 import asyncio
 import random
 from collections.abc import Awaitable, Callable, Iterable, Sequence
+from dataclasses import dataclass
 from datetime import datetime, timedelta
+from time import perf_counter
 from typing import Any
 
 import httpx
@@ -91,6 +93,21 @@ def _chunks(items: Sequence[str], size: int) -> Iterable[Sequence[str]]:
         yield items[i : i + size]
 
 
+@dataclass
+class TransportStats:
+    """Cumulative counters for diagnostics only; nothing in the client reads them back, so
+    they can never change what is sent or retried. Where a slow run spends its time:
+    waiting on the rate limiter, fetching a token, in HTTP itself, or in retry backoff."""
+
+    requests: int = 0  # HTTP attempts, retries included
+    retries: int = 0  # attempts repeated after a retryable error or a token refresh
+    api_errors: int = 0  # ApiErrors raised: HTTP rejections and 200 replies marked failed
+    limiter_wait_seconds: float = 0.0
+    token_seconds: float = 0.0
+    http_seconds: float = 0.0
+    backoff_seconds: float = 0.0
+
+
 class IndstocksClient:
     def __init__(
         self,
@@ -105,6 +122,7 @@ class IndstocksClient:
         self.limiter = limiter or RateLimiter()
         self._sleep = sleep
         self._max_attempts = max_attempts
+        self.stats = TransportStats()
 
     async def aclose(self) -> None:
         await self.http.aclose()
@@ -120,12 +138,23 @@ class IndstocksClient:
         params: dict[str, Any] | None = None,
     ) -> httpx.Response:
         refreshed = False
+        stats = self.stats
         for attempt in range(1, self._max_attempts + 1):
+            if attempt > 1:
+                stats.retries += 1
+            t0 = perf_counter()
             await self.limiter.acquire(category)
+            t1 = perf_counter()
             token = await self.tokens.get_token()
+            t2 = perf_counter()
             resp = await self.http.request(
                 method, path, params=params, headers={"Authorization": token}
             )
+            t3 = perf_counter()
+            stats.requests += 1
+            stats.limiter_wait_seconds += t1 - t0
+            stats.token_seconds += t2 - t1
+            stats.http_seconds += t3 - t2
             status = resp.status_code
             if status // 100 == 2:
                 return resp
@@ -133,14 +162,18 @@ class IndstocksClient:
 
             if status in (401, 403) and not refreshed:
                 # TokenException: regenerate once, then retry the same request.
+                t4 = perf_counter()
                 await self.tokens.refresh(rejected_token=token)
+                stats.token_seconds += perf_counter() - t4
                 refreshed = True
                 continue
             retryable = status == 429 or status >= 500 or error_type in _RETRYABLE_TYPES
             if retryable and attempt < self._max_attempts:
                 delay = min(BACKOFF_CAP_SECONDS, BACKOFF_BASE_SECONDS * 2 ** (attempt - 1))
+                stats.backoff_seconds += delay
                 await self._sleep(delay + random.uniform(0, 0.25))
                 continue
+            stats.api_errors += 1
             raise ApiError(status, message, error_type)
         raise ApiError(0, "retry loop exhausted")  # pragma: no cover
 
@@ -150,12 +183,14 @@ class IndstocksClient:
         resp = await self._request("GET", path, category=category, params=params)
         body = resp.json()
         if not isinstance(body, dict):
+            self.stats.api_errors += 1
             raise ApiError(resp.status_code, f"unexpected body: {str(body)[:200]}")
         # Two envelopes exist: {"status": "success", ...} and {"success": true, ...}.
         ok = body.get("success", None)
         if ok is None:
             ok = body.get("status") == "success"
         if not ok:
+            self.stats.api_errors += 1
             message, error_type = _error_details(resp)
             raise ApiError(resp.status_code, message, error_type)
         return body

@@ -249,3 +249,31 @@ async def test_history_padding_does_not_change_later_windows(
     widths = [(e - s) / 86_400_000 for s, e in seen]
     assert widths == [7, 7, 6]
     assert seen[-1][0] == int(start.timestamp() * 1000)
+
+
+@respx.mock
+async def test_transport_stats_count_requests_retries_and_errors(
+    client: IndstocksClient,
+) -> None:
+    respx.get(f"{BASE_URL}/market/quotes/ltp").mock(
+        side_effect=[
+            httpx.Response(429, json={"error": "Rate limit exceeded", "success": False}),
+            httpx.Response(200, json={"status": "success", "data": {"NSE_1": {"live_price": 2}}}),
+        ]
+    )
+    await client.quotes_ltp(["NSE_1"])
+    assert client.stats.requests == 2
+    assert client.stats.retries == 1
+    assert client.stats.api_errors == 0
+    assert client.stats.backoff_seconds > 0
+    assert client.stats.http_seconds >= 0 and client.stats.limiter_wait_seconds >= 0
+
+    respx.get(f"{HIST}/1day").mock(
+        return_value=httpx.Response(400, json={"debug_info": "Invalid scrip codes."})
+    )
+    t = datetime(2026, 9, 10, tzinfo=IST)
+    with pytest.raises(ApiError):
+        await client.candles(Interval.D1, ["NSE_1"], t, t + timedelta(days=1))
+    assert client.stats.requests == 3
+    assert client.stats.retries == 1  # a 400 is not retried
+    assert client.stats.api_errors == 1

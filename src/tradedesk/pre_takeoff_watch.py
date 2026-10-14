@@ -11,8 +11,10 @@ import json
 import math
 from collections import Counter
 from collections.abc import Mapping, Sequence
+from dataclasses import asdict, is_dataclass
 from datetime import datetime, time, timedelta
 from pathlib import Path
+from time import perf_counter
 from typing import Any, Literal
 
 import joblib
@@ -216,6 +218,19 @@ def _load_opportunity_shortlist(
     }
 
 
+def _invalid_reason(fetched_bars: int, completed_bars: int) -> dict[str, Any]:
+    """Why `_intraday_features` returned None, mirroring its own checks. The reason names
+    stay stable so runs can be compared; `bars` is what was available."""
+
+    if fetched_bars == 0:
+        reason = "no_candles_returned"
+    elif completed_bars < 32:
+        reason = "too_few_completed_bars"
+    else:
+        reason = "failed_sanity_check"
+    return {"reason": reason, "fetched_bars": fetched_bars, "completed_bars": completed_bars}
+
+
 def _candidate_state(features: Mapping[str, Any], market: str) -> tuple[str, list[str]]:
     extended_limit = 0.05 if market == "crypto" else 0.03
     blockers: list[str] = []
@@ -269,8 +284,12 @@ def build_pre_takeoff_watch(
     frames: Mapping[str, Sequence[Candle] | pd.DataFrame],
     *,
     observed_at: datetime,
+    invalid_detail: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    """Rank completed-bar pre-break snapshots without inventing a trade."""
+    """Rank completed-bar pre-break snapshots without inventing a trade.
+
+    `invalid_detail`, when given, is filled with why each excluded code was excluded. It is
+    diagnostics only: nothing from it enters the returned report or its hash."""
 
     rows: list[dict[str, Any]] = []
     invalid = 0
@@ -281,6 +300,8 @@ def build_pre_takeoff_watch(
         features = _intraday_features(frame)
         if features is None:
             invalid += 1
+            if invalid_detail is not None:
+                invalid_detail[code] = _invalid_reason(len(source), len(frame))
             continue
         state, blockers = _candidate_state(features, market)
         if market == "crypto" and code in NON_DIRECTIONAL_CRYPTO_CODES:
@@ -768,6 +789,61 @@ def _equity_registration_open(
     return latest_completed_bar.astimezone(IST).date() == local.date()
 
 
+def _transport_snapshot(client: object) -> dict[str, float] | None:
+    stats = getattr(client, "stats", None)
+    return asdict(stats) if is_dataclass(stats) and not isinstance(stats, type) else None
+
+
+def _transport_delta(
+    before: dict[str, float] | None, after: dict[str, float] | None
+) -> dict[str, float] | None:
+    if before is None or after is None:
+        return None
+    return {name: round(after[name] - before[name], 3) for name in after}
+
+
+def _write_collection_diagnostics(
+    output_root: Path,
+    market: str,
+    *,
+    observed_at: datetime,
+    requested_codes: int,
+    codes_with_candles: int,
+    seconds: Mapping[str, float],
+    transport: dict[str, float] | None,
+    invalid_detail: Mapping[str, Mapping[str, Any]],
+) -> None:
+    """Where a collection slot's time went and why codes were excluded.
+
+    Written beside, never into, the watch report: it is not part of the evidence record or
+    its hash, and a failure here is reported but can never fail or alter a collection.
+    `diagnostics.jsonl` keeps one compact line per slot; `diagnostics_latest.json` also
+    names every excluded code so the cause can be inspected."""
+
+    try:
+        by_reason = Counter(str(value["reason"]) for value in invalid_detail.values())
+        summary = {
+            "observed_at": observed_at.isoformat(),
+            "market": market,
+            "requested_codes": requested_codes,
+            "codes_with_candles": codes_with_candles,
+            "seconds": {name: round(value, 2) for name, value in seconds.items()},
+            "transport": transport,
+            "invalid_rows": len(invalid_detail),
+            "invalid_by_reason": dict(sorted(by_reason.items())),
+        }
+        directory = output_root / market
+        directory.mkdir(parents=True, exist_ok=True)
+        with (directory / "diagnostics.jsonl").open("a", encoding="utf-8") as stream:
+            stream.write(json.dumps(summary, sort_keys=True) + "\n")
+        _atomic_json(
+            directory / "diagnostics_latest.json",
+            {**summary, "invalid_codes": dict(sorted(invalid_detail.items()))},
+        )
+    except Exception as exc:  # diagnostics must never take a collection slot down
+        print(f"pre-takeoff diagnostics not written for {market}: {exc!r}")
+
+
 async def collect_equity_pre_takeoff_watch(
     market: str,
     *,
@@ -782,6 +858,7 @@ async def collect_equity_pre_takeoff_watch(
     if market not in {"nse", "bse"}:
         raise ValueError("equity pre-takeoff collection requires market nse or bse")
     now = observed_at or datetime.now(IST)
+    t_start = perf_counter()
     ranked, source = _load_opportunity_shortlist(
         market,
         db_path=db_path or DB_PATHS[market],
@@ -789,6 +866,8 @@ async def collect_equity_pre_takeoff_watch(
         limit=100_000,
     )
     codes = [str(value) for value in ranked["scrip_code"].tolist()]
+    t_shortlist = perf_counter()
+    transport_before = _transport_snapshot(client)
     candles = await client.candles_history(
         Interval.M15,
         codes,
@@ -796,9 +875,14 @@ async def collect_equity_pre_takeoff_watch(
         end=now,
         skip_invalid=True,
     )
+    t_fetch = perf_counter()
+    transport_after = _transport_snapshot(client)
     latest_bar = _latest_completed_bar(candles, now)
     registration_open = _equity_registration_open(now, latest_bar)
-    report = build_pre_takeoff_watch(market, ranked, candles, observed_at=now)
+    invalid_detail: dict[str, dict[str, Any]] = {}
+    report = build_pre_takeoff_watch(
+        market, ranked, candles, observed_at=now, invalid_detail=invalid_detail
+    )
     report.update(
         {
             "source": source,
@@ -825,6 +909,7 @@ async def collect_equity_pre_takeoff_watch(
     report.pop("snapshot_sha256", None)
     report["snapshot_sha256"] = canonical_sha256(report)
     _persist_watch(report, output_root)
+    t_plans = perf_counter()
 
     # M23 is deliberately a separate contract, ledger and denominator.  It reuses the
     # expensive full-universe fetch only; it cannot modify an M20 plan or outcome.
@@ -848,6 +933,23 @@ async def collect_equity_pre_takeoff_watch(
         candles,
         observed_at=now,
         output_root=m23_root,
+    )
+    t_end = perf_counter()
+    _write_collection_diagnostics(
+        output_root,
+        market,
+        observed_at=now,
+        requested_codes=len(codes),
+        codes_with_candles=sum(1 for value in candles.values() if len(value) > 0),
+        seconds={
+            "shortlist": t_shortlist - t_start,
+            "fetch": t_fetch - t_shortlist,
+            "plans": t_plans - t_fetch,
+            "m23": t_end - t_plans,
+            "total": t_end - t_start,
+        },
+        transport=_transport_delta(transport_before, transport_after),
+        invalid_detail=invalid_detail,
     )
     return report
 

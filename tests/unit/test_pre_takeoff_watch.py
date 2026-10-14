@@ -14,6 +14,7 @@ import pytest
 
 import tradedesk.pre_takeoff_watch as pre_takeoff_watch
 from tradedesk.broker.indstocks.models import IST
+from tradedesk.broker.indstocks.rest import TransportStats
 from tradedesk.pre_takeoff_watch import (
     _append_plan_event,
     _candidate_state,
@@ -543,6 +544,127 @@ def test_equity_collector_never_arms_retrospectively_when_market_is_closed(
     assert report["watch_plans"]["new_plans_registered"] == 0
     assert report["watch_plans"]["total_plans"] == 0
     assert not (tmp_path / "nse" / "plans.jsonl").exists()
+
+
+def test_invalid_detail_explains_exclusions_without_touching_the_report() -> None:
+    observed_at = datetime(2026, 10, 10, 12, 0, tzinfo=IST)
+    frame = _compression_frame()
+    frames = {
+        "NSE_1": frame,
+        "NSE_2": frame.tail(10),  # too few completed bars
+        "NSE_3": [],  # what candles_history returns for a code with no data
+    }
+    shortlist = pd.concat(
+        [
+            _equity_shortlist(),
+            pd.DataFrame(
+                [
+                    {
+                        "scrip_code": "NSE_3",
+                        "symbol": "THREE",
+                        "opportunity_rank": 3,
+                        "opportunity_probability": 0.6,
+                    }
+                ]
+            ),
+        ],
+        ignore_index=True,
+    )
+    detail: dict[str, dict[str, object]] = {}
+    with_detail = build_pre_takeoff_watch(
+        "nse", shortlist, frames, observed_at=observed_at, invalid_detail=detail
+    )
+    without_detail = build_pre_takeoff_watch("nse", shortlist, frames, observed_at=observed_at)
+
+    assert with_detail == without_detail  # diagnostics never leak into the evidence report
+    assert with_detail["intraday_invalid_rows"] == 2
+    assert detail["NSE_2"]["reason"] == "too_few_completed_bars"
+    assert detail["NSE_2"]["fetched_bars"] == 10
+    assert detail["NSE_3"]["reason"] == "no_candles_returned"
+    assert "NSE_1" not in detail
+
+
+def test_equity_collector_writes_timing_and_exclusion_diagnostics(
+    tmp_path, monkeypatch
+) -> None:
+    frame = _compression_frame()
+    frame.index = pd.date_range("2026-10-09 00:00", periods=40, freq="15min", tz=IST)
+    observed_at = datetime(2026, 10, 9, 10, 1, tzinfo=IST)
+    shortlist = _equity_shortlist()
+    monkeypatch.setattr(
+        pre_takeoff_watch,
+        "_load_opportunity_shortlist",
+        lambda *args, **kwargs: (
+            shortlist,
+            {"full_universe_rows": len(shortlist), "shortlist_rows": len(shortlist)},
+        ),
+    )
+
+    class _CountingClient(_FakeEquityClient):
+        def __init__(self, frame: pd.DataFrame) -> None:
+            super().__init__(frame)
+            self.stats = TransportStats()
+
+        async def candles_history(self, interval, codes, start, end, **kwargs):
+            self.stats.requests += 3
+            self.stats.api_errors += 1
+            result = await super().candles_history(interval, codes, start, end, **kwargs)
+            result["NSE_2"] = []  # one shortlisted code returns nothing
+            return result
+
+    report = asyncio.run(
+        collect_equity_pre_takeoff_watch(
+            "nse", client=_CountingClient(frame), output_root=tmp_path, observed_at=observed_at
+        )
+    )
+
+    lines = (tmp_path / "nse" / "diagnostics.jsonl").read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 1
+    summary = json.loads(lines[0])
+    assert summary["market"] == "nse"
+    assert summary["requested_codes"] == 2 and summary["codes_with_candles"] == 1
+    assert summary["transport"]["requests"] == 3 and summary["transport"]["api_errors"] == 1
+    assert summary["invalid_rows"] == 1
+    assert summary["invalid_by_reason"] == {"no_candles_returned": 1}
+    assert set(summary["seconds"]) == {"shortlist", "fetch", "plans", "m23", "total"}
+    latest = json.loads((tmp_path / "nse" / "diagnostics_latest.json").read_text("utf-8"))
+    assert latest["invalid_codes"]["NSE_2"]["reason"] == "no_candles_returned"
+    assert "invalid_codes" not in summary
+    # The evidence report itself carries none of it.
+    assert "seconds" not in report and "transport" not in report
+
+
+def test_equity_collector_diagnostics_failure_never_fails_the_slot(
+    tmp_path, monkeypatch
+) -> None:
+    frame = _compression_frame()
+    frame.index = pd.date_range("2026-10-09 00:00", periods=40, freq="15min", tz=IST)
+    shortlist = _equity_shortlist()
+    monkeypatch.setattr(
+        pre_takeoff_watch,
+        "_load_opportunity_shortlist",
+        lambda *args, **kwargs: (shortlist, {"full_universe_rows": 2, "shortlist_rows": 2}),
+    )
+    real_atomic = pre_takeoff_watch._atomic_json
+
+    def selective(path, value):
+        if path.name == "diagnostics_latest.json":
+            raise OSError("disk full")
+        real_atomic(path, value)
+
+    monkeypatch.setattr(pre_takeoff_watch, "_atomic_json", selective)
+
+    report = asyncio.run(
+        collect_equity_pre_takeoff_watch(
+            "nse",
+            client=_FakeEquityClient(frame),
+            output_root=tmp_path,
+            observed_at=datetime(2026, 10, 9, 10, 1, tzinfo=IST),
+        )
+    )
+
+    assert report["watch_plans"]["new_plans_registered"] == 2
+    assert (tmp_path / "nse" / "latest.json").exists()
 
 
 def test_standalone_collector_script_can_import_shared_pipeline_lock(tmp_path) -> None:
