@@ -84,6 +84,23 @@
   .banner-summary::before { content:'▸'; font-size:11px; color:var(--dim); }
   #status-banner[open] .banner-summary::before { content:'▾'; }
   #status-banner .banner-full { margin-top:8px; padding-top:8px; border-top:1px solid var(--line); }
+  /* ---- folding: brief by default, detail one tap away (state remembered per browser) ---- */
+  section { overflow-x:auto; }
+  main, .subtab { grid-template-columns: minmax(0, 1fr); }  /* let wide tables scroll inside their card instead of widening the page */
+  .scroll-box { max-height:65vh; overflow:auto; }
+  section.fold > h2 { cursor:pointer; justify-content:flex-start; }
+  section.fold > h2::before { content:'\25BE'; font-size:10px; color:var(--dim); }
+  section.fold.folded > h2::before { content:'\25B8'; }
+  section.fold.folded { min-height:0; }
+  section.fold.folded > h2 { margin-bottom:0; }
+  section.fold.folded > h2 ~ * { display:none !important; }  /* everything after the title line, including a second heading */
+  section h2 .headline-inline { margin-left:auto; text-transform:none; letter-spacing:normal; font-weight:400; color:var(--fg); font-size:13px; white-space:normal; text-align:right; }
+  section h2 select { margin-left:auto; text-transform:none; letter-spacing:normal; background:#0c0e12; color:var(--fg); border:1px solid var(--line); border-radius:5px; padding:2px 6px; font:inherit; font-size:12px; }
+  .headline { color:var(--fg); font-size:14px; }
+  .scoreline { margin-top:8px; color:var(--dim); }
+  .scoreline b { color:var(--fg); }
+  details.inline { margin-top:8px; }
+  details.inline summary { padding:6px 10px; }
 </style>
 </head>
 <body>
@@ -100,7 +117,8 @@
 </header>
 
 <nav class="tabs">
-  <button class="tab-btn active" data-tab="calls">Calls</button>
+  <button class="tab-btn active" data-tab="calls">Today</button>
+  <button class="tab-btn" data-tab="movers">Movers</button>
   <button class="tab-btn" data-tab="crypto">Crypto</button>
   <button class="tab-btn" data-tab="reportresearch">Report</button>
   <button class="tab-btn" data-tab="learningreview">Learning<span id="review-badge" class="badge" hidden></span></button>
@@ -109,6 +127,11 @@
 <details id="status-banner" class="banner">
   <summary class="banner-summary">Profitability-qualified alerts: <b>off</b> - no setup has proven an after-cost edge <span class="muted" style="margin-left:auto; text-transform:none;">details</span></summary>
   <div class="banner-full">The 80% accuracy gate was retired on 13 October 2026. Win rate remains visible but cannot pass or fail a setup. Live review requires sufficient total and out-of-sample evidence, at least <b>+0.05R mean after-cost expectancy</b>, and at least <b>+0.10R versus matched random timing</b>. Existing losing setups remain blocked by those profitability tests.</div>
+</details>
+
+<details id="health-banner" class="banner" hidden style="background:#3a1d22; border-color:#6b2b33;">
+  <summary class="banner-summary"><span id="health-summary" style="color:var(--fg);"></span> <span class="muted" style="margin-left:auto; text-transform:none;">details</span></summary>
+  <div class="banner-full" id="health-list"></div>
 </details>
 
 <div class="perf-strip" id="perf-strip">
@@ -120,43 +143,11 @@
 </div>
 
 <main id="tab-calls">
-  <section id="my-picks-section">
-    <h2>My picks <span class="info-ic" title="Log a stock you expect to move BEFORE it moves. The server stamps the time and nothing can edit it later. Each pick is priced from the first 15-minute bar that starts after you log it, and compared with every other liquid stock bought at that same bar. One pick per stock per direction per session. About 30 picks are needed before the score means anything. Advisory only - nothing here places or suggests an order.">ⓘ</span></h2>
+  <section class="fold folded" id="personal-calls-section">
+    <h2>Qualified personal calls <span class="muted headline-inline" id="personal-calls-headline">checking...</span></h2>
     <div class="perf-controls">
       <div class="group">
-        <label for="my-picks-market">Market</label>
-        <select id="my-picks-market">
-          <option value="nse" selected>NSE</option>
-          <option value="bse">BSE</option>
-        </select>
-      </div>
-      <div class="group" style="flex:1; min-width:140px;">
-        <label for="my-picks-symbol">Symbol</label>
-        <input list="my-picks-options" id="my-picks-symbol" placeholder="e.g. TARIL" autocomplete="off" style="width:100%; background:#0c0e12; color:var(--fg); border:1px solid var(--line); border-radius:5px; padding:4px 8px; font:inherit;">
-        <datalist id="my-picks-options"></datalist>
-      </div>
-      <div class="group" style="flex:2; min-width:160px;">
-        <label for="my-picks-note">Why (optional)</label>
-        <input id="my-picks-note" maxlength="280" placeholder="e.g. results beat, volume building" style="width:100%; background:#0c0e12; color:var(--fg); border:1px solid var(--line); border-radius:5px; padding:4px 8px; font:inherit;">
-      </div>
-      <button id="my-picks-up" style="background:var(--accent); color:#08111f; border:none; padding:6px 16px; font:inherit; font-weight:600; cursor:pointer; border-radius:6px;">Up</button>
-      <button id="my-picks-down" style="background:#3a1d22; color:var(--fg); border:1px solid var(--line); padding:6px 16px; font:inherit; font-weight:600; cursor:pointer; border-radius:6px;">Down</button>
-    </div>
-    <div class="muted" id="my-picks-message" style="margin-top:6px;"></div>
-    <div class="cards" style="margin-top:10px;">
-      <div class="card"><div class="label">Scored picks</div><div class="value" id="my-picks-count">0</div></div>
-      <div class="card"><div class="label">Avg move your way (same day)</div><div class="value" id="my-picks-mean">-</div></div>
-      <div class="card"><div class="label">Random stock, same moment</div><div class="value" id="my-picks-random">-</div></div>
-      <div class="card"><div class="label">Right direction</div><div class="value" id="my-picks-right">-</div></div>
-      <div class="card"><div class="label">Avg rank vs random (50 = chance)</div><div class="value" id="my-picks-pct">-</div></div>
-    </div>
-    <div class="muted" id="my-picks-verdict" style="margin-top:8px;"></div>
-    <table id="my-picks-table" style="margin-top:10px;"></table>
-  </section>
-  <section>
-    <div class="perf-controls">
-      <div class="group">
-        <label for="personal-calls-market">Qualified personal calls</label>
+        <label for="personal-calls-market">Market</label>
         <select id="personal-calls-market">
           <option value="nse" selected>NSE</option>
           <option value="bse">BSE</option>
@@ -177,7 +168,10 @@
     <div class="muted" id="personal-calls-blockers" style="margin-top:8px;"></div>
     <table id="personal-calls-table" style="margin-top:10px;"></table>
   </section>
-  <section class="perf-controls">
+
+  <section class="fold folded" id="lookup-section">
+    <h2>Analyze a symbol</h2>
+    <div class="perf-controls">
     <div class="group">
       <label>Market</label>
       <div class="seg" id="lookup-market">
@@ -192,8 +186,9 @@
       <datalist id="lookup-options"></datalist>
     </div>
     <button class="seg" id="lookup-go" style="background:var(--accent); color:#08111f; border:none; padding:6px 16px; font:inherit; font-weight:600; cursor:pointer; border-radius:6px;">Analyze</button>
+  </div>
+    <div id="lookup-result" style="margin-top:8px;"><div class="empty-note">pick a symbol and hit Analyze</div></div>
   </section>
-  <section id="lookup-result"><div class="empty-note">pick a symbol and hit Analyze</div></section>
 
   <section class="perf-controls">
     <div class="group">
@@ -240,7 +235,7 @@
         </div>
       </div>
     </details>
-    <section><h2><span id="today-calls-heading">Today's calls (NSE)</span></h2><table id="calls"></table></section>
+    <section><h2><span id="today-calls-heading">Today's calls (NSE)</span></h2><div class="scroll-box"><table id="calls"></table></div></section>
     <section><h2>Open positions</h2><table id="positions"></table></section>
   </div>
 
@@ -255,7 +250,7 @@
       </div>
     </section>
 
-    <section>
+    <section class="fold folded">
       <h2>BSE accuracy · B1 quick-profit <span class="info-ic" title="Prospective BSE evidence only. Historical transport diagnostics are shown separately and cannot qualify or promote a rule.">ⓘ</span></h2>
       <div class="cards">
         <div class="card"><div class="label">B1 status</div><div class="value" id="bse-b1-status">-</div></div>
@@ -306,7 +301,7 @@
           </div>
         </div>
       </details>
-      <section><h2><span id="bsetoday-calls-heading">Today's calls (BSE)</span> <span class="info-ic" title="full-universe live session, same as NSE's Calls tab; triggers are journaled but there's no BSE paper book to grade them yet">ⓘ</span></h2><table id="bsetoday-calls"></table></section>
+      <section><h2><span id="bsetoday-calls-heading">Today's calls (BSE)</span> <span class="info-ic" title="full-universe live session, same as NSE's Calls tab; triggers are journaled but there's no BSE paper book to grade them yet">ⓘ</span></h2><div class="scroll-box"><table id="bsetoday-calls"></table></div></section>
       <section id="probation-section"><h2>Probation calls (BSE) <span class="info-ic" title="Small, capped calls from detectors that passed the backtest gauntlet but have no forward record yet. Risk 0.25% of the pot per call, at most 2 a day. The desk stops itself at -3R per detector, -5R overall, or after 15 resolved calls if net money is not positive. You place every order.">ⓘ</span></h2>
         <div class="muted" id="probation-summary">not run yet</div>
         <table id="probation-calls" style="margin-top:6px;"></table>
@@ -452,6 +447,62 @@
     </div>
   </div>
 </main>
+
+<main id="tab-movers" hidden>
+  <section id="mover-study-section">
+    <h2>What moved last session <span class="info-ic" title="Nightly mover study: every liquid stock that closed +5% or more, how much of its move was already in the opening gap (uncatchable once seen) versus open-to-close (catchable at the open), and any filing behind it. The agent searches weekly for conditions that preceded profitable moves and only trusts them after tracking them forward.">&#9432;</span>
+      <select id="mover-study-market"><option value="nse" selected>NSE</option><option value="bse">BSE</option><option value="crypto">Crypto</option></select>
+    </h2>
+    <div class="headline" id="mover-study-summary">not run yet</div>
+    <div class="muted" id="mover-study-learning" style="margin-top:6px;"></div>
+    <details class="filters inline"><summary>Movers <span class="muted" id="mover-study-count"></span></summary>
+      <table id="mover-study-table"></table>
+    </details>
+  </section>
+  <section id="filings-section">
+    <h2>Exchange filings since last close <span class="info-ic" title="Results, order wins, acquisitions and exchange clarifications filed with NSE since the previous 15:30 close, newest first, refreshed every 15 minutes from 07:30 to 21:30. Information to watch, never a call.">&#9432;</span>
+      <span class="muted headline-inline" id="filings-meta"></span></h2>
+    <table id="filings-top"></table>
+    <details class="filters inline"><summary>All material filings</summary>
+      <table id="filings-table"></table>
+    </details>
+  </section>
+  <section id="news-trial-section" class="fold folded">
+    <h2>News source trial <span class="info-ic" title="Candidate news feeds are compared side by side before any is chosen. Each stays off until you have read that publisher's terms and enabled it in config/news_sources.yaml. Enabled sources are scored nightly on how many of the day's +5% movers they mentioned before the open. Information only - never a call.">&#9432;</span>
+      <span class="muted headline-inline" id="news-trial-headline"></span></h2>
+    <table id="news-trial-table"></table>
+  </section>
+  <section id="my-picks-section">
+    <h2>My picks <span class="info-ic" title="Log a stock you expect to move BEFORE it moves. The server stamps the time and nothing can edit it later. Each pick is priced from the first 15-minute bar that starts after you log it, and compared with every other liquid stock bought at that same bar. One pick per stock per direction per session. About 30 picks are needed before the score means anything. Advisory only - nothing here places or suggests an order.">&#9432;</span></h2>
+    <div class="perf-controls">
+      <div class="group">
+        <label for="my-picks-market">Market</label>
+        <select id="my-picks-market">
+          <option value="nse" selected>NSE</option>
+          <option value="bse">BSE</option>
+        </select>
+      </div>
+      <div class="group" style="flex:1; min-width:140px;">
+        <label for="my-picks-symbol">Symbol</label>
+        <input list="my-picks-options" id="my-picks-symbol" placeholder="e.g. TARIL" autocomplete="off" style="width:100%; background:#0c0e12; color:var(--fg); border:1px solid var(--line); border-radius:5px; padding:4px 8px; font:inherit;">
+        <datalist id="my-picks-options"></datalist>
+      </div>
+      <div class="group" style="flex:2; min-width:160px;">
+        <label for="my-picks-note">Why</label>
+        <input id="my-picks-note" maxlength="280" placeholder="optional, e.g. results beat" style="width:100%; background:#0c0e12; color:var(--fg); border:1px solid var(--line); border-radius:5px; padding:4px 8px; font:inherit;">
+      </div>
+      <button id="my-picks-up" style="background:var(--accent); color:#08111f; border:none; padding:6px 16px; font:inherit; font-weight:600; cursor:pointer; border-radius:6px;">Up</button>
+      <button id="my-picks-down" style="background:#3a1d22; color:var(--fg); border:1px solid var(--line); padding:6px 16px; font:inherit; font-weight:600; cursor:pointer; border-radius:6px;">Down</button>
+    </div>
+    <div class="muted" id="my-picks-message" style="margin-top:6px;"></div>
+    <div class="scoreline">Scored <b id="my-picks-count">0</b> &middot; your way <b id="my-picks-mean">-</b> &middot; random stock, same moment <b id="my-picks-random">-</b> &middot; right direction <b id="my-picks-right">-</b> &middot; rank vs random <b id="my-picks-pct">-</b> (50 = chance)</div>
+    <div class="muted" id="my-picks-verdict" style="margin-top:4px;"></div>
+    <details class="filters inline"><summary>Your picks</summary>
+      <table id="my-picks-table"></table>
+    </details>
+  </section>
+</main>
+
 
 <main id="tab-crypto" hidden>
   <section>
@@ -1314,11 +1365,15 @@ async function loadPersonalCalls() {
     $('personal-calls-wilson').textContent = evidenceMetrics.wilson_95_low != null ? pct(evidenceMetrics.wilson_95_low) : 'not available';
     $('personal-calls-authority').textContent = report.promotion_authorized ? 'YES' : 'NO';
     $('personal-calls-blockers').textContent = (report.blockers || []).join(' · ');
+    $('personal-calls-headline').textContent = calls.length
+      ? `${calls.length} qualified call${calls.length > 1 ? 's' : ''} today`
+      : `none today (${(report.blockers || []).length} blocker${(report.blockers || []).length === 1 ? '' : 's'})`;
     rows($('personal-calls-table'), ['Symbol','Setup','Entry','#Stop','Targets','#Risk %','#Qty','#Confidence','Why qualified'],
       calls.map(call => `<tr><td>${call.symbol}</td><td>${call.setup}</td><td>${(call.entry_range || []).map(x => fmt(x)).join('–')}</td><td class="num">${fmt(call.stop)}</td><td>${(call.targets || []).map(x => fmt(x)).join(' / ')}</td><td class="num">${call.risk_pct != null ? pct(call.risk_pct) : '-'}</td><td class="num">${call.quantity ?? '-'}</td><td class="num">${call.confidence != null ? pct(call.confidence) : '-'}</td><td>${(call.qualification_reasons || []).join('; ')}</td></tr>`));
   } catch (e) {
     $('personal-calls-status').textContent = 'NO QUALIFIED PERSONAL CALL TODAY';
     $('personal-calls-blockers').textContent = 'personal-call evidence endpoint unavailable — never treated as a pass';
+    $('personal-calls-headline').textContent = 'unavailable (never treated as a pass)';
   }
 }
 $('personal-calls-market').addEventListener('change', loadPersonalCalls);
@@ -1378,6 +1433,131 @@ $('my-picks-up').addEventListener('click', () => submitMyPick('up'));
 $('my-picks-down').addEventListener('click', () => submitMyPick('down'));
 loadMyPicks();
 setInterval(loadMyPicks, 60000);
+
+// ------------------------------------------------------ Filings + mover study
+async function loadFilings() {
+  let report;
+  try { const r = await fetch('/api/filings'); report = r.ok ? await r.json() : null; } catch (e) { report = null; }
+  if (!report) { $('filings-meta').textContent = 'filings unavailable'; return; }
+  const rowsIn = report.material || [];
+  $('filings-meta').textContent = `${rowsIn.length} material of ${report.total_filings} since ${String(report.since).slice(5, 16).replace('T', ' ')}`;
+  const short = t => { const x = String(t || ''); return x.length > 80 ? x.slice(0, 77) + '...' : x; };
+  const filingRow = (f, brief) => `<tr><td>${esc(String(f.filed_at).slice(11, 16))}</td><td>${esc(f.symbol)}</td>`
+    + `<td>${esc(String(f.category).replace('_', ' '))}</td><td style="white-space:normal">${esc(brief ? short(f.desc || f.text) : (f.text || f.desc))}</td></tr>`;
+  rows($('filings-top'), ['Time', 'Stock', 'Type', 'What'], rowsIn.slice(0, 8).map(f => filingRow(f, true)));
+  rows($('filings-table'), ['Time', 'Stock', 'Type', 'What'], rowsIn.slice(0, 200).map(f => filingRow(f, false)));
+}
+function intradayLine(r) {
+  const o = r.latest_observation || {};
+  const s = r.last_search || {};
+  const parts = [];
+  if (o.status === 'observed') {
+    parts.push(`${o.session}: ${o.movers_up_2pct_by_10_15} of ${o.movers} movers were already up 2%+ by 10:15; from a 10:30 entry the median mover still made ${signedPct(o.median_rest_of_day_movers_from_10_30)} (all stocks ${signedPct(o.median_rest_of_day_all_from_10_30)})`);
+  }
+  parts.push(`search ${s.searched_at ? String(s.searched_at).slice(0, 10) : 'not run'}: ${(s.survivors || []).length} survived of ${s.tested ?? '-'} tested`);
+  const active = r.active_candidates || [];
+  parts.push(active.length ? `tracking ${active.length} forward` : 'nothing tracked forward yet');
+  return parts.join('; ') + '.';
+}
+async function loadMoverStudy() {
+  const market = $('mover-study-market').value;
+  let report;
+  try { const r = await fetch(`/api/mover-study?market=${market}`); report = r.ok ? await r.json() : null; } catch (e) { report = null; }
+  const obs = (report || {}).latest_observation || {};
+  const s = obs.summary;
+  if (!s) { $('mover-study-summary').textContent = 'not run yet'; $('mover-study-table').innerHTML = ''; $('mover-study-count').textContent = ''; return; }
+  $('mover-study-count').textContent = `${(obs.movers || []).length} shown`;
+  const share = s.median_share_of_move_in_gap == null ? '-' : Math.round(s.median_share_of_move_in_gap * 100) + '%';
+  $('mover-study-summary').textContent = `${obs.session}: ${s.movers} of ${s.liquid_names} liquid names closed +5% or more (${s.fallers} fell 5%+). `
+    + `Typically ${share} of a mover's gain was already in the opening gap; ${s.catchable_after_open} still made 2%+ after the open. `
+    + `${s.with_results} had results, ${s.with_material_filing} had a material filing (${s.filings_intraday} during market hours).`;
+  const active = report.active_candidates || [];
+  const search = report.last_search || {};
+  const fwd = (report.forward || []).map(f => `${f.candidate} (${f.forward_days}d, net ${signedPct(f.mean_net)})`);
+  $('mover-study-learning').textContent = market === 'crypto'
+    ? 'Learning loop: crypto is observed nightly; its search starts once an intraday entry is defined.'
+    : `Learning loop (daily data): last search ${search.searched_at ? esc(String(search.searched_at).slice(0, 10)) : 'not run'} - tested ${search.tested ?? '-'}, `
+      + `${(search.survivors || []).length} survived. Tracking forward: ${active.length ? fwd.join('; ') || active.join('; ') : 'none yet'}.`
+      + (report.intraday ? ` Intraday (first hour): ${esc(intradayLine(report.intraday))}` : '');
+  rows($('mover-study-table'), ['Stock', '#Move', '#In gap', '#Open→close', '#Open→high', 'Behind it'],
+    (obs.movers || []).slice(0, 40).map(m => `<tr><td>${esc(m.symbol)}</td><td class="num">${signedPct(m.move)}</td>`
+      + `<td class="num">${signedPct(m.gap_part)}</td><td class="num">${signedPct(m.open_to_close)}</td><td class="num">${signedPct(m.open_to_high)}</td>`
+      + `<td>${esc([...(m.filings_overnight || []).map(c => c + ' (overnight)'), ...(m.filings_intraday || []).map(x => x.category + ' at ' + x.at), m.results_due ? 'results day' : ''].filter(Boolean).join(', '))}</td></tr>`));
+}
+$('mover-study-market').addEventListener('change', loadMoverStudy);
+loadFilings();
+loadMoverStudy();
+setInterval(loadFilings, 120000);
+async function loadNewsTrial() {
+  let r;
+  try { const res = await fetch('/api/news-trial'); r = res.ok ? await res.json() : null; } catch (e) { r = null; }
+  if (!r) { $('news-trial-headline').textContent = 'unavailable'; return; }
+  const enabled = r.enabled || [];
+  $('news-trial-headline').textContent = enabled.length
+    ? `${enabled.length} of ${(r.candidates || []).length} sources on trial`
+    : `${(r.candidates || []).length} candidates, none enabled yet`;
+  const scored = ((r.summary || {}).sources || []);
+  const status = ((r.fetch_status || {}).sources || {});
+  rows($('news-trial-table'), ['Source', 'State', '#Sessions', '#Movers seen pre-open', '#By close', '#Non-mover matches/day'],
+    (r.candidates || []).map(name => {
+      const sc = scored.find(x => x.source === name) || {};
+      const st = status[name];
+      const state = !enabled.includes(name) ? 'off' : (st && !st.ok ? 'fetch failing' : 'on');
+      return `<tr><td>${esc(name)}</td><td>${esc(state)}</td><td class="num">${sc.sessions ?? '-'}</td>`
+        + `<td class="num">${sc.pre_open_coverage == null ? '-' : pct(sc.pre_open_coverage)}</td>`
+        + `<td class="num">${sc.by_close_coverage == null ? '-' : pct(sc.by_close_coverage)}</td>`
+        + `<td class="num">${sc.non_mover_matches_per_session == null ? '-' : fmt(sc.non_mover_matches_per_session, 1)}</td></tr>`;
+    }));
+}
+loadNewsTrial();
+setInterval(loadNewsTrial, 600000);
+setInterval(loadMoverStudy, 300000);
+
+// ------------------------------------------------------ folding (brief by default)
+// Research and evidence sections show only their title line until tapped; the open/closed
+// choice is remembered in this browser only. Sections people act on stay open.
+const FOLD_STORE = 'tradedeskFolds';
+const KEEP_OPEN = new Set(['Pending review', 'Decided', 'Ongoing',
+  'Pass/Fail', 'Resolved calls', 'Closed calls this day', 'Calls']);
+function foldTitle(h) { return (h.childNodes[0] ? h.childNodes[0].textContent : h.textContent).trim(); }
+function readFolds() { try { return JSON.parse(localStorage.getItem(FOLD_STORE) || '{}'); } catch (e) { return {}; } }
+function setupFolds() {
+  document.querySelectorAll('#tab-learningreview section, #tab-crypto > section, #tab-research > section, #tab-performance > section')
+    .forEach(sec => {
+      const h = sec.querySelector(':scope > h2');
+      if (!h || sec.classList.contains('fold')) return;
+      sec.classList.add('fold');
+      if (!KEEP_OPEN.has(foldTitle(h))) sec.classList.add('folded');
+    });
+  const saved = readFolds();
+  document.querySelectorAll('section.fold').forEach(sec => {
+    const h = sec.querySelector(':scope > h2');
+    if (!h) return;
+    const key = sec.id || foldTitle(h);
+    if (key in saved) sec.classList.toggle('folded', !!saved[key]);
+    h.addEventListener('click', (e) => {
+      if (e.target.closest('select, input, button, label, a, .info-ic')) return;
+      sec.classList.toggle('folded');
+      const state = readFolds();
+      state[key] = sec.classList.contains('folded');
+      try { localStorage.setItem(FOLD_STORE, JSON.stringify(state)); } catch (err) { /* memory only */ }
+    });
+  });
+}
+setupFolds();
+
+// ------------------------------------------------------ health banner (task_health.py)
+async function loadHealth() {
+  let r;
+  try { const res = await fetch('/api/health'); r = res.ok ? await res.json() : null; } catch (e) { r = null; }
+  const failing = (r && r.failing) || [];
+  $('health-banner').hidden = failing.length === 0;
+  if (!failing.length) return;
+  $('health-summary').textContent = `${failing.length} scheduled job${failing.length > 1 ? 's' : ''} failing - checked ${String(r.checked_at || '').slice(11, 16)}`;
+  $('health-list').innerHTML = failing.map(p => `<div><b>${esc(p.what)}</b>: ${esc(p.detail)}</div>`).join('');
+}
+loadHealth();
+setInterval(loadHealth, 120000);
 
 // ------------------------------------------------------ Calls tabs (SSE) - NSE + BSE
 // NSE uses ids 'today-*'/'calls'/'positions' (unchanged, predates BSE parity); BSE
@@ -1491,7 +1671,7 @@ fetch('/api/state/bse').then(r => r.ok ? r.json() : null).then(s => { if (s) { r
 // with the two original tab bodies inside it as .subtab divs, toggled by a "View"/"Show"
 // dropdown instead of top-level nav buttons - deliberately keeping every inner id, render
 // function and filter untouched so "same UI" holds exactly, not just approximately.
-const TAB_IDS = ['calls', 'crypto', 'reportresearch', 'learningreview'];
+const TAB_IDS = ['calls', 'movers', 'crypto', 'reportresearch', 'learningreview'];
 // Which perf-strip card(s), if any, belong to the current view - keyed by the active
 // top-level tab PLUS, for the two merged tabs, whichever sub-view is currently selected
 // within it (a dropdown change can switch this without a tab click). Per standing feedback,
@@ -1603,6 +1783,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     const target = btn.dataset.tab;
     TAB_IDS.forEach(id => { $('tab-' + id).hidden = target !== id; });
     if (target === 'calls') showCallsMarket($('calls-market-select').value);
+    if (target === 'movers') { loadMoverStudy(); loadFilings(); loadMyPicks(); }
     if (target === 'crypto') { showLiveView('crypto', $('crypto-live-view-select').value); loadBackfillPnl('crypto'); loadSymbolConfidence('crypto'); }
     if (target === 'reportresearch') showReportResearchView($('reportresearch-view-select').value);
     if (target === 'learningreview') showLearningReviewView($('learningreview-view-select').value);
@@ -1611,6 +1792,12 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
 });
 showCallsMarket('nse');  // the default active tab on page load
 loadPersonalCalls();
+// ?tab=movers (or crypto/reportresearch/learningreview) opens that tab - handy as a bookmark.
+(() => {
+  const wanted = new URLSearchParams(location.search).get('tab');
+  const btn = wanted && document.querySelector(`.tab-btn[data-tab="${CSS.escape(wanted)}"]`);
+  if (btn) btn.click();
+})();
 
 // ---------------------------------------------------------------- status banner
 // Collapsed by default (native <details>/<summary>, no JS needed to toggle) - the summary

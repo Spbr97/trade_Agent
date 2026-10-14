@@ -1689,6 +1689,66 @@ def create_app(
         chosen = market if market in MARKETS else None
         return JSONResponse(await asyncio.to_thread(picks_report, market=chosen))
 
+    @app.get("/api/health")
+    async def api_health() -> JSONResponse:
+        """The hourly task/pipeline health check (task_health.py); the page shows a banner
+        only when something is failing."""
+
+        def load() -> dict[str, Any]:
+            path = Path("data/reports/health.json")
+            if not path.exists():
+                return {"status": "not_checked_yet", "failing": []}
+            return json.loads(path.read_text(encoding="utf-8"))
+
+        return JSONResponse(await asyncio.to_thread(load))
+
+    @app.get("/api/news-trial")
+    async def api_news_trial() -> JSONResponse:
+        """The news-source trial: which sources are candidates, which the user has enabled,
+        and each enabled source's mover coverage so far (tradedesk_lab/news_trial.py)."""
+
+        def load() -> dict[str, Any]:
+            import yaml
+
+            config = Path("config/news_sources.yaml")
+            sources = (yaml.safe_load(config.read_text("utf-8")) or {}).get("sources", []) if config.exists() else []  # noqa: E501
+            root = Path("data/m14_m18/news_trial")
+            latest = root / "latest.json"
+            status = root / "fetch_status.json"
+            return {
+                "candidates": [s.get("name") for s in sources],
+                "enabled": [s.get("name") for s in sources if s.get("enabled") is True],
+                "summary": json.loads(latest.read_text("utf-8")) if latest.exists() else None,
+                "fetch_status": json.loads(status.read_text("utf-8")) if status.exists() else None,
+            }
+
+        return JSONResponse(await asyncio.to_thread(load))
+
+    @app.get("/api/filings")
+    async def api_filings() -> JSONResponse:
+        """Material NSE exchange filings since the last session close (filings.py). Watch
+        only - a filing is information, never a call."""
+        from tradedesk.filings import since_last_close
+
+        return JSONResponse(await asyncio.to_thread(since_last_close))
+
+    @app.get("/api/mover-study")
+    async def api_mover_study(market: Literal["nse", "bse", "crypto"] = "nse") -> JSONResponse:
+        """The nightly mover study (tradedesk_lab/mover_study.py): what moved, how much of it
+        was catchable after the open, and the forward record of any candidate it found."""
+
+        def load() -> dict[str, Any]:
+            path = Path("data/m14_m18/mover_study") / market / "latest.json"
+            if not path.exists():
+                return {"market": market, "status": "not_run_yet"}
+            report: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
+            intraday = Path("data/m14_m18/intraday_mover_study") / market / "latest.json"
+            if intraday.exists():
+                report["intraday"] = json.loads(intraday.read_text(encoding="utf-8"))
+            return report
+
+        return JSONResponse(await asyncio.to_thread(load))
+
     @app.post("/api/my-picks")
     async def api_my_picks_add(payload: Annotated[dict[str, Any], Body()]) -> JSONResponse:
         """Log one pick. The time stamp is the server's clock; nothing in the request can
