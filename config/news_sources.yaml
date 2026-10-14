@@ -1,0 +1,42 @@
+# News-source trial (approved 2026-10-14: compare several sources before choosing one).
+# Every source starts DISABLED. Before enabling one, the user reads that publisher's RSS /
+# terms-of-use page and confirms personal use of the feed is allowed; record who checked
+# and when. Enabled sources are polled hourly, headlines are stored with their timestamps
+# and matched to company names, and each source is scored nightly against the day's real
+# movers (tradedesk_lab/news_trial.py). Headlines are information only - no language model
+# reads them and nothing here can create a signal (CLAUDE.md).
+# The URLs below are candidate feed addresses, not yet verified; each fetch's success or
+# failure is recorded per source, so a wrong address shows up in the trial report.
+sources:
+  - name: economic_times_markets
+    url: https://economictimes.indiatimes.com/markets/rssfeeds/1977021501.cms
+    enabled: false
+    terms_checked: null   # e.g. "2026-10-20 by user: personal use allowed"
+  - name: economic_times_stocks
+    url: https://economictimes.indiatimes.com/markets/stocks/rssfeeds/2146842.cms
+    enabled: false
+    terms_checked: null
+  - name: moneycontrol_business
+    url: https://www.moneycontrol.com/rss/business.xml
+    enabled: false
+    terms_checked: null
+  - name: moneycontrol_markets
+    url: https://www.moneycontrol.com/rss/marketreports.xml
+    enabled: false
+    terms_checked: null
+  - name: livemint_markets
+    url: https://www.livemint.com/rss/markets
+    enabled: false
+    terms_checked: null
+  - name: livemint_companies
+    url: https://www.livemint.com/rss/companies
+    enabled: false
+    terms_checked: null
+  - name: business_standard_markets
+    url: https://www.business-standard.com/rss/markets-106.rss
+    enabled: false
+    terms_checked: null
+  - name: hindu_businessline_markets
+    url: https://www.thehindubusinessline.com/markets/feeder/default.rss
+    enabled: false
+    terms_checked: null

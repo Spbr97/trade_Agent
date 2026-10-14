@@ -711,6 +711,82 @@ def test_equity_collector_keeps_session_bars_for_my_picks_and_survives_failure(
     assert report["tradeable_calls"] == 0
 
 
+def test_production_collector_offers_bars_to_the_intraday_study_and_survives_failure(
+    tmp_path, monkeypatch
+) -> None:
+    import tradedesk_lab.intraday_mover_study as ims
+
+    frame = _compression_frame()
+    frame.index = pd.date_range("2026-10-09 00:00", periods=40, freq="15min", tz=IST)
+    shortlist = _equity_shortlist()
+    monkeypatch.setattr(
+        pre_takeoff_watch,
+        "_load_opportunity_shortlist",
+        lambda *args, **kwargs: (shortlist, {"full_universe_rows": 2, "shortlist_rows": 2}),
+    )
+    monkeypatch.setattr(pre_takeoff_watch, "DEFAULT_OUTPUT_ROOT", tmp_path)
+    calls = []
+    monkeypatch.setattr(ims, "register_live", lambda market, candles, **kw: calls.append(market))
+    observed_at = datetime(2026, 10, 9, 10, 16, tzinfo=IST)
+
+    def collect(root):
+        return asyncio.run(
+            collect_equity_pre_takeoff_watch(
+                "nse", client=_FakeEquityClient(frame), output_root=root, observed_at=observed_at
+            )
+        )
+
+    collect(tmp_path)
+    collect(tmp_path / "isolated")  # a non-production output root never touches the study
+    assert calls == ["nse"]
+
+    def boom(*_args, **_kwargs):
+        raise RuntimeError("study broke")
+
+    monkeypatch.setattr(ims, "register_live", boom)
+    assert collect(tmp_path)["tradeable_calls"] == 0
+
+
+def test_production_crypto_collector_offers_exact_volume_bars_to_the_intraday_study(
+    tmp_path, monkeypatch
+) -> None:
+    import tradedesk_lab.intraday_mover_study as ims
+    from tradedesk_lab.intraday_history import Bar
+
+    from tradedesk.broker import coindcx
+    from tradedesk.markets import crypto_universe
+
+    frame = _compression_frame()
+    frame["volume"] += 0.4  # fractional, as CoinDCX reports base-asset volume
+    observed_at = frame.index[-1].to_pydatetime() + timedelta(minutes=15)
+    monkeypatch.setattr(coindcx, "CoinDcxClient", lambda: _FakeCoinDcxClient(frame))
+    monkeypatch.setattr(crypto_universe, "active_crypto_codes", lambda i: {"CDX_TESTINR"})
+    monkeypatch.setattr(
+        pre_takeoff_watch,
+        "_load_opportunity_shortlist",
+        lambda *a, **k: (_shortlist(), {"full_universe_rows": 1, "shortlist_rows": 1}),
+    )
+    monkeypatch.setattr(pre_takeoff_watch, "DEFAULT_OUTPUT_ROOT", tmp_path)
+    seen = {}
+
+    def capture(market, candles, **kw):
+        seen["market"], seen["candles"] = market, candles
+
+    monkeypatch.setattr(ims, "register_live", capture)
+    asyncio.run(
+        collect_crypto_pre_takeoff_watch(
+            output_root=tmp_path,
+            momentum_output_root=tmp_path / "m21",
+            momentum_m22_output_root=tmp_path / "m22",
+            observed_at=observed_at,
+        )
+    )
+    assert seen["market"] == "crypto"
+    bars = seen["candles"]["CDX_TESTINR"]
+    assert bars and all(isinstance(b, Bar) for b in bars)
+    assert any(b.volume != int(b.volume) for b in bars)  # exact volume, not rounded
+
+
 def test_standalone_collector_script_can_import_shared_pipeline_lock(tmp_path) -> None:
     script = Path(__file__).parents[2] / "scripts" / "pre_takeoff_watch.py"
     completed = subprocess.run(

@@ -959,6 +959,16 @@ async def collect_equity_pre_takeoff_watch(
         write_intraday_bars(market, candles, observed_at=now, output_root=output_root)
     except Exception as exc:
         print(f"intraday bars for my picks not written for {market}: {exc!r}")
+    # The intraday mover study's forward picks are registered from this same fetch, inside
+    # their decision window only (tradedesk_lab/intraday_mover_study.py). A no-op until a
+    # candidate has survived its search; never allowed to fail the slot.
+    if market == "nse" and output_root == DEFAULT_OUTPUT_ROOT:
+        try:
+            from tradedesk_lab.intraday_mover_study import register_live
+
+            register_live(market, candles, now=now)
+        except Exception as exc:
+            print(f"intraday mover study registration skipped for {market}: {exc!r}")
     return report
 
 
@@ -1054,6 +1064,22 @@ async def collect_crypto_pre_takeoff_watch(
     report.pop("snapshot_sha256", None)
     report["snapshot_sha256"] = canonical_sha256(report)
     _persist_watch(report, output_root)
+
+    # The intraday mover study's crypto forward picks come from this same exact-volume
+    # fetch, inside their decision window only. A no-op until a candidate has survived its
+    # search; never allowed to fail the slot (tradedesk_lab/intraday_mover_study.py).
+    if output_root == DEFAULT_OUTPUT_ROOT:
+        try:
+            from tradedesk_lab.intraday_history import bars_from_rows
+            from tradedesk_lab.intraday_mover_study import register_live
+
+            register_live(
+                "crypto",
+                {code: bars_from_rows(rows) for code, rows in precise_rows.items()},
+                now=now,
+            )
+        except Exception as exc:
+            print(f"intraday mover study registration skipped for crypto: {exc!r}")
 
     # M21 is a separate forward experiment with its own ledgers and qualification
     # denominator. Reusing this already-fetched full-universe frame keeps the scheduled
