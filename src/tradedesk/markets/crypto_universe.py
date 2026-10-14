@@ -30,6 +30,31 @@ def active_crypto_codes(instruments: Iterable[Instrument]) -> list[str]:
     )
 
 
+MIN_DROP_ALLOWANCE = 3
+MAX_DROP_SHARE = 0.02
+
+
+def session_coverage(
+    universe: Iterable[str], has_session_bar: Iterable[str]
+) -> tuple[list[str], str | None]:
+    """(pairs dropped for this session, failure or None).
+
+    A pair the exchange lists as active can still have no bar for the closed session - a
+    brand-new listing with no history yet (CDX_ACNINR, 14 Oct 2026) or a pair that has
+    stopped trading. A few such pairs simply drop out of that session's coverage (approved
+    2026-10-14). More than max(3, 2% of the universe) still fails closed: that many gaps
+    look like a data outage, not a listing event.
+    """
+
+    codes = list(universe)
+    covered = set(has_session_bar)
+    dropped = sorted(code for code in codes if code not in covered)
+    allowance = max(MIN_DROP_ALLOWANCE, int(MAX_DROP_SHARE * len(codes)))
+    if len(dropped) > allowance:
+        return dropped, f"closed-session coverage: {len(codes) - len(dropped)}/{len(codes)}"
+    return dropped, None
+
+
 def stored_crypto_codes(store: CandleStore) -> list[str]:
     """Offline equivalent used by historical backfills after instruments were synced."""
     return store.instrument_codes(kind="equity", exch="CDX", series="INR")

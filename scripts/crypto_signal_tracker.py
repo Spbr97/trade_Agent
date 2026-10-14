@@ -42,6 +42,7 @@ from tradedesk.markets import crypto_market
 from tradedesk.markets.crypto_universe import (
     active_crypto_codes,
     crypto_codes_needing_daily_refresh,
+    session_coverage,
     stored_crypto_codes,
 )
 from tradedesk.scan import build_watchlist, scan_config
@@ -144,12 +145,14 @@ def main(*, strict_accuracy_refresh: bool = False) -> None:
         md = prepare_market(store, scan_codes, reference, cfg)
         wl = build_watchlist(md, cfg, settings, day, market=market)
 
-        closed_on_day = sum(
-            1
+        with_session = [
+            code
             for code in universe
             if (closed := store.last_closed_ts(code, Interval.D1)) is not None
             and closed.date() == day
-        )
+        ]
+        closed_on_day = len(with_session)
+        dropped_pairs, coverage_failure = session_coverage(universe, with_session)
         UNIVERSE_REPORT.parent.mkdir(parents=True, exist_ok=True)
         UNIVERSE_REPORT.write_text(
             json.dumps(
@@ -165,6 +168,7 @@ def main(*, strict_accuracy_refresh: bool = False) -> None:
                     "universe_history_error": universe_history_error,
                     "scanned_pairs": len(scan_codes),
                     "pairs_with_closed_session": closed_on_day,
+                    "dropped_without_session_bar": dropped_pairs,
                     "configured_exclusions": sorted(market.universe_rules.exclude_codes),
                     "tracker_refreshed_pairs": refreshed_pairs,
                     "fetch_errors": fetch_errors,
@@ -209,10 +213,13 @@ def main(*, strict_accuracy_refresh: bool = False) -> None:
             accuracy_failures.append(f"universe history: {universe_history_error}")
         if fetch_errors:
             accuracy_failures.append(f"daily candle refresh errors: {fetch_errors}")
-        if closed_on_day != len(universe):
-            accuracy_failures.append(
-                f"closed-session coverage: {closed_on_day}/{len(universe)}"
+        if dropped_pairs:
+            print(
+                "dropped for this session (no closed-session bar - new listing, halt or "
+                f"delisting): {', '.join(dropped_pairs)}"
             )
+        if coverage_failure:
+            accuracy_failures.append(coverage_failure)
 
     try:
         from tradedesk.leader_discovery import run_missed_leader_audit
