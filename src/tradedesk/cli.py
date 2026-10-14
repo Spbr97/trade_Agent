@@ -1205,6 +1205,20 @@ def alerts_test(root: Path = ROOT_OPTION) -> None:
     )
 
 
+@app.command("dashboard-token")
+def dashboard_token(
+    rotate: bool = typer.Option(
+        False, "--rotate", help="Replace the token; anything using the old one must re-enter it"
+    ),
+) -> None:
+    """Show (creating it if needed) the token that lets the dashboard accept changes made from
+    outside this PC - e.g. logging a pick from your phone through the Cloudflare link. Kept in
+    the OS keyring only. Changes made in a browser on this PC never need it."""
+    from tradedesk.dashboard.write_guard import create_token
+
+    typer.echo(create_token(rotate=rotate))
+
+
 @app.command()
 def dashboard(
     watchlist: Path | None = typer.Option(None, "--watchlist"),

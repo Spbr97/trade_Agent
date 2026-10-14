@@ -10,9 +10,9 @@ from collections import Counter
 from collections.abc import AsyncIterator, Mapping
 from datetime import UTC, date, datetime
 from pathlib import Path
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
-from fastapi import FastAPI, Query
+from fastapi import Body, FastAPI, Query
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
 
 from tradedesk.dashboard.state import DashboardState
@@ -227,6 +227,11 @@ def create_app(
     resolved-calls log while NSE gets a live view too. Optional and additive: omitting it
     makes `/api/state/bse`/`/events/bse` 404, every existing caller unaffected."""
     app = FastAPI(title="tradedesk", docs_url=None, redoc_url=None)
+    # The Cloudflare tunnel exposes this app beyond the PC: writes from outside need the
+    # keyring-held dashboard token (dashboard/write_guard.py). Covers the /lab mount too.
+    from tradedesk.dashboard.write_guard import install as install_write_guard
+
+    install_write_guard(app)
 
     @app.get("/", response_class=HTMLResponse)
     async def index() -> str:
@@ -1674,6 +1679,33 @@ def create_app(
         settings = load_config(".")
         result = await asyncio.to_thread(analyze_symbol, settings, market, code, on)
         return JSONResponse(json.loads(json.dumps(result, default=str)))
+
+    @app.get("/api/my-picks")
+    async def api_my_picks(market: str = "all") -> JSONResponse:
+        """The user's own logged picks, each scored against every other liquid stock bought
+        at the same 15-minute bar (my_picks.py). Advisory only."""
+        from tradedesk.my_picks import MARKETS, picks_report
+
+        chosen = market if market in MARKETS else None
+        return JSONResponse(await asyncio.to_thread(picks_report, market=chosen))
+
+    @app.post("/api/my-picks")
+    async def api_my_picks_add(payload: Annotated[dict[str, Any], Body()]) -> JSONResponse:
+        """Log one pick. The time stamp is the server's clock; nothing in the request can
+        set or change it, and an existing pick can never be edited."""
+        from tradedesk.my_picks import PickError, add_pick
+
+        try:
+            record = await asyncio.to_thread(
+                add_pick,
+                str(payload.get("market") or ""),
+                str(payload.get("symbol") or ""),
+                str(payload.get("direction") or ""),
+                str(payload.get("note") or ""),
+            )
+        except PickError as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400)
+        return JSONResponse(record)
 
     @app.get("/api/potential-calls/summary")
     async def api_potential_calls_summary() -> JSONResponse:

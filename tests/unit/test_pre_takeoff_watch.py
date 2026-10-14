@@ -667,6 +667,50 @@ def test_equity_collector_diagnostics_failure_never_fails_the_slot(
     assert (tmp_path / "nse" / "latest.json").exists()
 
 
+def test_equity_collector_keeps_session_bars_for_my_picks_and_survives_failure(
+    tmp_path, monkeypatch
+) -> None:
+    import tradedesk.my_picks as my_picks
+
+    frame = _compression_frame()
+    frame.index = pd.date_range("2026-10-09 00:00", periods=40, freq="15min", tz=IST)
+    shortlist = _equity_shortlist()
+    monkeypatch.setattr(
+        pre_takeoff_watch,
+        "_load_opportunity_shortlist",
+        lambda *args, **kwargs: (shortlist, {"full_universe_rows": 2, "shortlist_rows": 2}),
+    )
+    calls = []
+    monkeypatch.setattr(
+        my_picks,
+        "write_intraday_bars",
+        lambda market, candles, **kw: calls.append((market, sorted(candles), kw)),
+    )
+    observed_at = datetime(2026, 10, 9, 10, 1, tzinfo=IST)
+    asyncio.run(
+        collect_equity_pre_takeoff_watch(
+            "nse", client=_FakeEquityClient(frame), output_root=tmp_path, observed_at=observed_at
+        )
+    )
+    assert calls == [
+        ("nse", ["NSE_1", "NSE_2"], {"observed_at": observed_at, "output_root": tmp_path})
+    ]
+
+    def boom(*_args, **_kwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(my_picks, "write_intraday_bars", boom)
+    report = asyncio.run(
+        collect_equity_pre_takeoff_watch(
+            "nse",
+            client=_FakeEquityClient(frame),
+            output_root=tmp_path / "again",
+            observed_at=observed_at,
+        )
+    )
+    assert report["tradeable_calls"] == 0
+
+
 def test_standalone_collector_script_can_import_shared_pipeline_lock(tmp_path) -> None:
     script = Path(__file__).parents[2] / "scripts" / "pre_takeoff_watch.py"
     completed = subprocess.run(

@@ -951,6 +951,14 @@ async def collect_equity_pre_takeoff_watch(
         transport=_transport_delta(transport_before, transport_after),
         invalid_detail=invalid_detail,
     )
+    # The same fetch prices the user's own picks (my_picks.py): keep this session's bars.
+    # Outside the report and its hash, and never allowed to fail the slot.
+    try:
+        from tradedesk.my_picks import write_intraday_bars
+
+        write_intraday_bars(market, candles, observed_at=now, output_root=output_root)
+    except Exception as exc:
+        print(f"intraday bars for my picks not written for {market}: {exc!r}")
     return report
 
 

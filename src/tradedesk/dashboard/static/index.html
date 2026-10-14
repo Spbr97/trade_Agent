@@ -120,6 +120,39 @@
 </div>
 
 <main id="tab-calls">
+  <section id="my-picks-section">
+    <h2>My picks <span class="info-ic" title="Log a stock you expect to move BEFORE it moves. The server stamps the time and nothing can edit it later. Each pick is priced from the first 15-minute bar that starts after you log it, and compared with every other liquid stock bought at that same bar. One pick per stock per direction per session. About 30 picks are needed before the score means anything. Advisory only - nothing here places or suggests an order.">ⓘ</span></h2>
+    <div class="perf-controls">
+      <div class="group">
+        <label for="my-picks-market">Market</label>
+        <select id="my-picks-market">
+          <option value="nse" selected>NSE</option>
+          <option value="bse">BSE</option>
+        </select>
+      </div>
+      <div class="group" style="flex:1; min-width:140px;">
+        <label for="my-picks-symbol">Symbol</label>
+        <input list="my-picks-options" id="my-picks-symbol" placeholder="e.g. TARIL" autocomplete="off" style="width:100%; background:#0c0e12; color:var(--fg); border:1px solid var(--line); border-radius:5px; padding:4px 8px; font:inherit;">
+        <datalist id="my-picks-options"></datalist>
+      </div>
+      <div class="group" style="flex:2; min-width:160px;">
+        <label for="my-picks-note">Why (optional)</label>
+        <input id="my-picks-note" maxlength="280" placeholder="e.g. results beat, volume building" style="width:100%; background:#0c0e12; color:var(--fg); border:1px solid var(--line); border-radius:5px; padding:4px 8px; font:inherit;">
+      </div>
+      <button id="my-picks-up" style="background:var(--accent); color:#08111f; border:none; padding:6px 16px; font:inherit; font-weight:600; cursor:pointer; border-radius:6px;">Up</button>
+      <button id="my-picks-down" style="background:#3a1d22; color:var(--fg); border:1px solid var(--line); padding:6px 16px; font:inherit; font-weight:600; cursor:pointer; border-radius:6px;">Down</button>
+    </div>
+    <div class="muted" id="my-picks-message" style="margin-top:6px;"></div>
+    <div class="cards" style="margin-top:10px;">
+      <div class="card"><div class="label">Scored picks</div><div class="value" id="my-picks-count">0</div></div>
+      <div class="card"><div class="label">Avg move your way (same day)</div><div class="value" id="my-picks-mean">-</div></div>
+      <div class="card"><div class="label">Random stock, same moment</div><div class="value" id="my-picks-random">-</div></div>
+      <div class="card"><div class="label">Right direction</div><div class="value" id="my-picks-right">-</div></div>
+      <div class="card"><div class="label">Avg rank vs random (50 = chance)</div><div class="value" id="my-picks-pct">-</div></div>
+    </div>
+    <div class="muted" id="my-picks-verdict" style="margin-top:8px;"></div>
+    <table id="my-picks-table" style="margin-top:10px;"></table>
+  </section>
   <section>
     <div class="perf-controls">
       <div class="group">
@@ -1222,6 +1255,37 @@
 
 <script>
 const $ = (id) => document.getElementById(id);
+
+// Changes sent through the Cloudflare link need the dashboard token (write_guard.py); a
+// browser on the PC itself never does. Asked for once, then kept in this browser only.
+const DASHBOARD_TOKEN_KEY = 'tradedeskDashboardToken';
+let dashboardTokenInMemory = null;
+const rawFetch = window.fetch.bind(window);
+window.fetch = async (input, init = {}) => {
+  const method = String((init && init.method) || 'GET').toUpperCase();
+  if (method === 'GET' || method === 'HEAD') return rawFetch(input, init);
+  const send = () => {
+    const headers = new Headers((init && init.headers) || {});
+    let token = dashboardTokenInMemory;
+    try { token = localStorage.getItem(DASHBOARD_TOKEN_KEY) || token; } catch (e) { /* storage blocked */ }
+    if (token) headers.set('X-Dashboard-Token', token);
+    return rawFetch(input, { ...init, headers });
+  };
+  let response = await send();
+  if (response.status === 401) {
+    let body = {};
+    try { body = await response.clone().json(); } catch (e) { body = {}; }
+    if (body.token_required) {
+      const entered = window.prompt('Changes from outside the PC need the dashboard token.\nOn the PC run: tradedesk dashboard-token\n\nToken:');
+      if (entered && entered.trim()) {
+        dashboardTokenInMemory = entered.trim();
+        try { localStorage.setItem(DASHBOARD_TOKEN_KEY, dashboardTokenInMemory); } catch (e) { /* memory only */ }
+        response = await send();
+      }
+    }
+  }
+  return response;
+};
 const esc = (value) => String(value ?? '')
   .replaceAll('&', '&amp;')
   .replaceAll('<', '&lt;')
@@ -1258,6 +1322,62 @@ async function loadPersonalCalls() {
   }
 }
 $('personal-calls-market').addEventListener('change', loadPersonalCalls);
+
+// ------------------------------------------------------ My picks (my_picks.py)
+const signedPct = (x) => (x === null || x === undefined) ? '-' : (x >= 0 ? '+' : '') + (Number(x) * 100).toFixed(2) + '%';
+async function loadMyPicks() {
+  let report;
+  try {
+    const response = await fetch('/api/my-picks');
+    report = response.ok ? await response.json() : null;
+  } catch (e) { report = null; }
+  if (!report) { $('my-picks-verdict').textContent = 'my picks unavailable'; return; }
+  const s = report.summary || {};
+  $('my-picks-count').textContent = s.scored || 0;
+  $('my-picks-mean').textContent = signedPct(s.mean_return_your_direction);
+  $('my-picks-random').textContent = signedPct(s.random_stock_mean_same_moment);
+  $('my-picks-right').textContent = s.right_direction_rate == null ? '-'
+    : `${(s.right_direction_rate * 100).toFixed(0)}% (random ${s.random_right_direction_rate == null ? '-' : (s.random_right_direction_rate * 100).toFixed(0) + '%'})`;
+  $('my-picks-pct').textContent = s.mean_percentile == null ? '-' : (s.mean_percentile * 100).toFixed(0);
+  $('my-picks-verdict').textContent = (s.verdict || '')
+    + (report.chain_intact === false ? ' · WARNING: the pick log failed its integrity check' : '');
+  rows($('my-picks-table'), ['Logged', 'Stock', 'Call', 'Priced from', '#Same day', '#Next day', '#Rank vs random', 'Status', 'Why'],
+    (report.picks || []).slice(0, 60).map(p => `<tr><td>${esc(String(p.logged_at || '').slice(5, 16).replace('T', ' '))}</td>`
+      + `<td>${esc(p.symbol)} <span class="muted">${esc(String(p.market || '').toUpperCase())}</span></td><td>${esc(p.direction)}</td>`
+      + `<td>${p.reference_bar ? esc(`${p.session} ${p.reference_bar} @ ${fmt(p.reference_price)}`) : '-'}</td>`
+      + `<td class="num">${signedPct(p.same_day_return)}</td><td class="num">${signedPct(p.next_day_return)}</td>`
+      + `<td class="num">${p.percentile == null ? '-' : Math.round(p.percentile * 100)}</td>`
+      + `<td>${esc(p.status)}${p.detail ? ' <span class="muted">' + esc(p.detail) + '</span>' : ''}</td><td>${esc(p.note)}</td></tr>`));
+}
+async function submitMyPick(direction) {
+  const message = $('my-picks-message');
+  const body = { market: $('my-picks-market').value, symbol: $('my-picks-symbol').value.trim(), direction, note: $('my-picks-note').value };
+  if (!body.symbol) { message.textContent = 'type a symbol first'; return; }
+  message.textContent = 'logging...';
+  try {
+    const response = await fetch('/api/my-picks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const out = await response.json();
+    if (!response.ok) { message.textContent = out.error || 'not logged'; return; }
+    message.textContent = `logged ${out.symbol} ${out.direction} at ${String(out.logged_at).slice(11, 16)} - priced from the next 15-minute bar`;
+    $('my-picks-symbol').value = '';
+    $('my-picks-note').value = '';
+    loadMyPicks();
+  } catch (e) { message.textContent = 'not logged: dashboard unreachable'; }
+}
+let myPicksSearchTimer = null;
+$('my-picks-symbol').addEventListener('input', () => {
+  clearTimeout(myPicksSearchTimer);
+  const q = $('my-picks-symbol').value;
+  myPicksSearchTimer = setTimeout(async () => {
+    const r = await fetch(`/api/symbols?market=${$('my-picks-market').value}&q=${encodeURIComponent(q)}`);
+    const opts = r.ok ? await r.json() : [];
+    $('my-picks-options').innerHTML = opts.map(o => `<option value="${esc(o.symbol)}" label="${esc(o.code)}">`).join('');
+  }, 200);
+});
+$('my-picks-up').addEventListener('click', () => submitMyPick('up'));
+$('my-picks-down').addEventListener('click', () => submitMyPick('down'));
+loadMyPicks();
+setInterval(loadMyPicks, 60000);
 
 // ------------------------------------------------------ Calls tabs (SSE) - NSE + BSE
 // NSE uses ids 'today-*'/'calls'/'positions' (unchanged, predates BSE parity); BSE
