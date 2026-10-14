@@ -1,10 +1,37 @@
-# Sessions whose recorded source watchlist can no longer be verified. Human-approved only;
-# the M9 integrity check waives the source-watchlist hash for these sessions and nothing else.
-# Quarantined rows must also stay out of any evidence count used to judge a detector.
+# Human-approved evidence quarantines. Each entry names the M9 integrity checks it waives for
+# that armed session (`waives`; an entry without it waives the source-watchlist hash only),
+# and nothing else. Allowed checks: source_watchlist_hash, late_watchlist_registration.
+# A late-registration waiver can never admit a late prediction: for a session whose rows
+# still count as evidence, the monitor applies it only when the hash-chained audit proves
+# every counted row was registered (same prediction hash) before the score deadline.
 quarantined_sessions:
   - session: "2026-10-05"
     approved_on: "2026-10-14"
+    waives: [source_watchlist_hash, late_watchlist_registration]
     reason: >-
-      data/watchlists/2026-10-05.json was regenerated on 2026-10-06 16:04 IST after the
-      2026-10-05 signals were recorded, so its hash no longer matches the 22 trend_pullback
-      rows registered against it. The original file was not preserved.
+      data/watchlists/2026-10-05.json was regenerated on 2026-10-06 16:04 IST by the
+      after-close scan bug, after the 2026-10-05 signals were recorded, so its hash no longer
+      matches the 22 trend_pullback rows and its generated_at reads late. The original file
+      was not preserved. The predictions themselves were registered on time: their audit
+      events were recorded 2026-10-05 17:08 UTC (22:38 IST), before the 2026-10-06 09:15 IST
+      deadline. Rows stay as evidence (user decision 2026-10-14).
+  - session: "2026-10-06"
+    approved_on: "2026-10-14"
+    waives: [late_watchlist_registration]
+    reason: &late_scan_bug >-
+      Watchlist written after its score deadline by the after-close scan bug (scan --date
+      today used last_closed_ts, so the 16:00 run evaluated and re-labelled the previous
+      session). Fixed in c1af56b and confirmed by the 2026-10-14 runs. Every M8 row of this
+      session is already prospective-ineligible, so no late prediction enters the record.
+  - session: "2026-10-07"
+    approved_on: "2026-10-14"
+    waives: [late_watchlist_registration]
+    reason: *late_scan_bug
+  - session: "2026-10-08"
+    approved_on: "2026-10-14"
+    waives: [late_watchlist_registration]
+    reason: *late_scan_bug
+  - session: "2026-10-12"
+    approved_on: "2026-10-14"
+    waives: [late_watchlist_registration]
+    reason: *late_scan_bug

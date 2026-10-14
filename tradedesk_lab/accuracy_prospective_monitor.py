@@ -402,10 +402,15 @@ def _stress_summary(root: Path, state: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _quarantined_sessions(root: Path) -> dict[str, str]:
-    """Armed sessions whose source watchlist is known to be irrecoverable (human-approved).
+QUARANTINE_WAIVABLE = frozenset({"source_watchlist_hash", "late_watchlist_registration"})
 
-    Only the source-watchlist hash check is waived for these; every other check stays strict.
+
+def _quarantined_sessions(root: Path) -> dict[str, frozenset[str]]:
+    """Armed sessions with a human-approved quarantine -> the integrity checks waived for them.
+
+    An entry names its checks in `waives`; without it, it keeps the original meaning (the
+    source-watchlist hash only). Every other check stays strict, and a check outside
+    QUARANTINE_WAIVABLE can never be waived - an unknown name fails loudly.
     """
 
     path = root / "config" / "evidence_quarantine.yaml"
@@ -414,19 +419,65 @@ def _quarantined_sessions(root: Path) -> dict[str, str]:
     import yaml
 
     raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-    return {
-        str(item["session"]): str(item.get("reason", ""))
-        for item in raw.get("quarantined_sessions") or []
-    }
+    sessions: dict[str, frozenset[str]] = {}
+    for item in raw.get("quarantined_sessions") or []:
+        waives = frozenset(item.get("waives") or ["source_watchlist_hash"])
+        unknown = waives - QUARANTINE_WAIVABLE
+        if unknown:
+            raise ValueError(f"evidence quarantine cannot waive {sorted(unknown)}")
+        sessions[str(item["session"])] = waives
+    return sessions
 
 
-def _canonical(value: Any) -> str:
-    """Stable text form so a stored JSON summary and a freshly computed one compare equal."""
+def _registered_on_time(row: dict[str, Any], audit: dict[str, dict[str, Any]]) -> bool:
+    """True when the hash-chained audit holds this exact prediction (same prediction hash),
+    recorded before its session's score deadline - independent proof that it was registered
+    on time even if its source watchlist file was rewritten later."""
 
-    return json.dumps(value, sort_keys=True, default=str)
+    event = audit.get(f"prediction:{row.get('signal_id')}")
+    if not event or (event.get("payload") or {}).get("prediction_sha256") != row.get(
+        "prediction_sha256"
+    ):
+        return False
+    try:
+        recorded = datetime.fromisoformat(str(event["recorded_at"]))
+        deadline = _score_deadline(date.fromisoformat(str(row["armed_on"])))
+    except (KeyError, TypeError, ValueError):
+        return False
+    if recorded.tzinfo is None:
+        return False
+    return recorded < deadline
 
 
-def _integrity_checks(root: Path, state: dict[str, Any]) -> dict[str, Any]:
+def _waived_late_sessions(
+    late: list[str],
+    quarantined: dict[str, frozenset[str]],
+    records: list[dict[str, Any]],
+    audit_events: list[dict[str, Any]] | None = None,
+) -> list[str]:
+    """Late sessions whose flag a human-approved quarantine clears. A waiver can clear the
+    flag but can never let a late-registered prediction into the record: a session whose rows
+    still count as evidence is waived only if the audit chain proves every one of those rows
+    was registered before the score deadline (`_registered_on_time`)."""
+
+    audit = {str(event.get("event_id")): event for event in audit_events or []}
+    waived = []
+    for day in late:
+        if "late_watchlist_registration" not in quarantined.get(day, frozenset()):
+            continue
+        counted = [
+            row
+            for row in records
+            if str(row.get("armed_on")) == day and row.get("prospective_eligible") is True
+        ]
+        if all(_registered_on_time(row, audit) for row in counted):
+            waived.append(day)
+    return waived
+
+
+def _integrity_checks(
+    root: Path, state: dict[str, Any], audit_events: list[dict[str, Any]] | None = None
+) -> dict[str, Any]:
     quarantined = _quarantined_sessions(root)
     activation = state["activation"]
     records = state.get("records", [])
@@ -449,7 +500,8 @@ def _integrity_checks(root: Path, state: dict[str, Any]) -> dict[str, Any]:
         if row.get("prediction_sha256") != _prediction_hash(row):
             failures.append(f"prediction_hash:{signal_id}")
         source = root / "data/watchlists" / str(row.get("source_watchlist", ""))
-        if row.get("armed_on") not in quarantined and (
+        waived = quarantined.get(str(row.get("armed_on")), frozenset())
+        if "source_watchlist_hash" not in waived and (
             not source.is_file() or digest(source) != row.get("source_sha256")
         ):
             failures.append(f"source_watchlist_hash:{signal_id}")
@@ -469,7 +521,10 @@ def _integrity_checks(root: Path, state: dict[str, Any]) -> dict[str, Any]:
     availability = _watchlist_availability(root, state)
     if availability["missing_watchlist_sessions"]:
         failures.append("missing_watchlist_session")
-    if availability["late_watchlist_sessions"]:
+    waived_late = _waived_late_sessions(
+        availability["late_watchlist_sessions"], quarantined, records, audit_events
+    )
+    if set(availability["late_watchlist_sessions"]) - set(waived_late):
         failures.append("late_watchlist_registration")
     if availability["missing_collection_sessions"]:
         failures.append("uncollected_watchlist_session")
@@ -478,6 +533,7 @@ def _integrity_checks(root: Path, state: dict[str, Any]) -> dict[str, Any]:
         "passed": not failures,
         "failures": failures,
         "checks": 9,
+        "waived_late_watchlist_sessions": waived_late,
     }
 
 
@@ -493,7 +549,7 @@ def run_monitor(
         state = json.loads(state_path.read_text(encoding="utf-8"))
         audit_path = output / "audit.jsonl"
         events = _append_events(audit_path, _audit_additions(state))
-        integrity = _integrity_checks(root, state)
+        integrity = _integrity_checks(root, state, events)
         availability = _watchlist_availability(root, state)
         stress = _stress_summary(root, state)
         records = state.get("records", [])

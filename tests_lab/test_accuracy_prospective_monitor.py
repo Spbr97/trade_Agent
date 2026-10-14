@@ -200,4 +200,108 @@ def test_quarantine_file_lists_sessions_and_defaults_to_none(tmp_path) -> None:
         "quarantined_sessions:\n  - session: '2026-10-05'\n    reason: lost original\n",
         encoding="utf-8",
     )
-    assert _quarantined_sessions(tmp_path) == {"2026-10-05": "lost original"}
+    assert _quarantined_sessions(tmp_path) == {
+        "2026-10-05": frozenset({"source_watchlist_hash"})
+    }
+
+
+def test_quarantine_names_the_checks_it_waives_and_refuses_unknown_ones(tmp_path) -> None:
+    from tradedesk_lab.accuracy_prospective_monitor import _quarantined_sessions
+
+    (tmp_path / "config").mkdir()
+    path = tmp_path / "config" / "evidence_quarantine.yaml"
+    path.write_text(
+        "quarantined_sessions:\n"
+        "  - session: '2026-10-06'\n    waives: [late_watchlist_registration]\n",
+        encoding="utf-8",
+    )
+    assert _quarantined_sessions(tmp_path) == {
+        "2026-10-06": frozenset({"late_watchlist_registration"})
+    }
+    path.write_text(
+        "quarantined_sessions:\n  - session: '2026-10-06'\n    waives: [prediction_hash]\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="cannot waive"):
+        _quarantined_sessions(tmp_path)
+
+
+def _prediction_event(signal_id: str, sha: str, recorded_at: str) -> dict:
+    return {
+        "event_id": f"prediction:{signal_id}",
+        "kind": "prediction",
+        "recorded_at": recorded_at,
+        "payload": {"signal_id": signal_id, "prediction_sha256": sha},
+    }
+
+
+def test_late_waiver_never_admits_a_prediction_registered_after_the_deadline() -> None:
+    from tradedesk_lab.accuracy_prospective_monitor import _waived_late_sessions
+
+    waive = frozenset({"late_watchlist_registration"})
+    quarantined = {
+        "2026-10-05": waive,  # counted rows, audit proves on-time registration -> waived
+        "2026-10-06": waive,  # no counted rows -> waived
+        "2026-10-07": waive,  # counted row with no audit event -> refused
+        "2026-10-08": frozenset({"source_watchlist_hash"}),  # a different waiver -> refused
+        "2026-10-12": waive,  # counted row, audit recorded after the deadline -> refused
+        "2026-10-13": waive,  # counted row, audit holds a different prediction -> refused
+    }
+    records = [
+        {"armed_on": "2026-10-05", "prospective_eligible": True, "signal_id": "a",
+         "prediction_sha256": "h-a"},
+        {"armed_on": "2026-10-06", "prospective_eligible": False, "signal_id": "b"},
+        {"armed_on": "2026-10-07", "prospective_eligible": True, "signal_id": "c",
+         "prediction_sha256": "h-c"},
+        {"armed_on": "2026-10-08", "prospective_eligible": False, "signal_id": "d"},
+        {"armed_on": "2026-10-12", "prospective_eligible": True, "signal_id": "e",
+         "prediction_sha256": "h-e"},
+        {"armed_on": "2026-10-13", "prospective_eligible": True, "signal_id": "f",
+         "prediction_sha256": "h-f"},
+    ]  # fmt: skip
+    events = [
+        _prediction_event("a", "h-a", "2026-10-05T17:08:28+00:00"),  # 22:38 IST, before 09:15
+        _prediction_event("e", "h-e", "2026-10-13T04:00:00+00:00"),  # 09:30 IST, after 09:15
+        _prediction_event("f", "h-other", "2026-10-13T12:00:00+00:00"),
+    ]
+    late = ["2026-10-05", "2026-10-06", "2026-10-07", "2026-10-08", "2026-10-12", "2026-10-13"]
+    assert _waived_late_sessions(late, quarantined, records, events) == [
+        "2026-10-05",
+        "2026-10-06",
+    ]
+    assert _waived_late_sessions(late, quarantined, records) == ["2026-10-06"]  # no audit
+
+
+def test_repository_quarantine_config_is_valid_and_only_waives_known_checks() -> None:
+    from pathlib import Path
+
+    from tradedesk_lab.accuracy_prospective_monitor import _quarantined_sessions
+
+    root = Path(monitor_module.__file__).resolve().parents[1]
+    sessions = _quarantined_sessions(root)
+    assert sessions["2026-10-05"] == frozenset(
+        {"source_watchlist_hash", "late_watchlist_registration"}
+    )
+    for day in ("2026-10-06", "2026-10-07", "2026-10-08", "2026-10-12"):
+        assert sessions[day] == frozenset({"late_watchlist_registration"})
+
+
+def test_audit_hash_keeps_the_compact_form_the_stored_chain_was_written_with():
+    """Regression (2026-10-14): a second module-level `_canonical` with default separators
+    silently replaced the first, so `_sha` stopped matching every stored audit link and the
+    NSE pipeline failed at M9 with "audit chain link 1 has an invalid hash"."""
+    import ast
+    import hashlib
+    from pathlib import Path
+
+    event = {"b": 1, "a": [1, 2], "flag": np.bool_(True)}
+    expected = hashlib.sha256(b'{"a":[1,2],"b":1,"flag":"True"}').hexdigest()
+    assert monitor_module._sha(event) == expected
+
+    source = Path(monitor_module.__file__).read_text(encoding="utf-8")
+    names = [
+        node.name
+        for node in ast.parse(source).body
+        if isinstance(node, ast.FunctionDef) and node.name in {"_canonical", "_sha"}
+    ]
+    assert sorted(names) == ["_canonical", "_sha"]  # each defined exactly once
