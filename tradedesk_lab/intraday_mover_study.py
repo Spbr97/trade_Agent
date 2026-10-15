@@ -533,6 +533,61 @@ def forward_scores(
     return out
 
 
+def pick_record(
+    root: Path, frames: Mapping[str, pd.DataFrame], costs: Mapping[str, float]
+) -> dict[str, Any]:
+    """Winners out of picks, stock by stock: the consensus top 3 and the per-rule picks
+    (each stock counted once per session and checkpoint), overall and for the latest
+    session. A win is a pick that made money after costs; "beat market" is a pick that did
+    better than the average stock entered at the same bar, so a falling market cannot flatter
+    a short on its own. Descriptive only."""
+
+    rows, _ = daily.read_chain(root / "forward_picks.jsonl")
+    Pick = dict[tuple[str, str, str], tuple[float, float]]
+    seen: dict[str, Pick] = {"consensus": {}, "rules": {}}
+    for row in rows:
+        if row.get("event") != "picks_registered" or not row["codes"]:
+            continue
+        if datetime.fromisoformat(row["registered_at"]) >= datetime.fromisoformat(row["deadline"]):
+            continue
+        frame = frames.get(row["checkpoint"])
+        if frame is None:
+            continue
+        target = row["target"]
+        day = frame[frame["date"] == date.fromisoformat(row["decision_session"])].set_index("code")
+        if day.empty or day[target].dropna().empty:
+            continue
+        mean = float(day[target].mean())
+        group = "consensus" if str(row["candidate"]).startswith("consensus") else "rules"
+        for code, value in day.reindex(row["codes"])[target].dropna().items():
+            key = (row["decision_session"], row["checkpoint"], str(code))
+            seen[group].setdefault(key, (float(value) - costs[target], float(value) - mean))
+
+    def tally(items: list[tuple[float, float]]) -> dict[str, Any]:
+        n = len(items)
+        wins = sum(1 for net, _ in items if net > 0)
+        beat = sum(1 for _, excess in items if excess > 0)
+        return {
+            "picks": n,
+            "winners": wins,
+            "win_rate": wins / n if n else None,
+            "beat_market": beat,
+            "beat_market_rate": beat / n if n else None,
+        }
+
+    out: dict[str, Any] = {}
+    for group, picks in seen.items():
+        sessions = sorted({k[0] for k in picks})
+        latest = sessions[-1] if sessions else None
+        out[group] = {
+            "all": tally(list(picks.values())),
+            "latest_session": latest,
+            "latest": tally([v for k, v in picks.items() if k[0] == latest]),
+            "sessions": len(sessions),
+        }
+    return out
+
+
 # ----------------------------------------------------------------------- observation
 
 
@@ -591,6 +646,7 @@ def nightly(market: str, *, root: Path | None = None, update_days: int = 5) -> d
         "history_update": {k: update.get(k) for k in ("wanted", "todo", "stored")},
         "latest_observation": observe_movers(frames, latest) if latest else None,
         "forward": scores,
+        "pick_record": pick_record(root, frames, costs),
         "review_items_added": daily.flag_cleared(root, market, scores),
         "active_candidates": [
             f"{c['name']} / {c['target']}" for c in daily.active_candidates(root)

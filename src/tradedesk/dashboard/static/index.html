@@ -455,6 +455,7 @@
     </h2>
     <div class="headline" id="mover-study-summary">not run yet</div>
     <div class="muted" id="mover-study-learning" style="margin-top:6px;"></div>
+    <div id="mover-study-record" style="margin-top:8px;"></div>
     <details class="filters inline"><summary>Movers <span class="muted" id="mover-study-count"></span></summary>
       <table id="mover-study-table"></table>
     </details>
@@ -1479,6 +1480,12 @@ async function loadMoverStudy() {
     : `Learning loop (daily data): last search ${search.searched_at ? esc(String(search.searched_at).slice(0, 10)) : 'not run'} - tested ${search.tested ?? '-'}, `
       + `${(search.survivors || []).length} survived. Tracking forward: ${active.length ? fwd.join('; ') || active.join('; ') : 'none yet'}.`
       + (report.intraday ? ` Intraday (first hour): ${esc(intradayLine(report.intraday))}` : '');
+  const rec = ((report.intraday || {}).pick_record) || null;
+  const recLine = (label, g) => g && g.all && g.all.picks
+    ? `<div><b>${label}</b>: ${g.all.winners} of ${g.all.picks} picks made money after costs (${pct(g.all.win_rate)}) and ${g.all.beat_market} beat the average stock (${pct(g.all.beat_market_rate)}) over ${g.sessions} session${g.sessions === 1 ? '' : 's'}; latest session ${esc(String(g.latest_session))}: ${g.latest.winners} of ${g.latest.picks} (${pct(g.latest.win_rate)}).</div>`
+    : `<div><b>${label}</b>: no scored picks yet.</div>`;
+  $('mover-study-record').innerHTML = `<div class="muted">The goal is any stock that makes money, over any hold. These intraday short picks are one narrow experiment toward that, not the aim. Research only; a falling market flatters shorts, so the beat-the-average figure matters more than raw wins.</div>`
+    + (rec ? recLine('Consensus top 3', rec.consensus) + recLine('All rule picks (each stock once per checkpoint)', rec.rules) : '');
   rows($('mover-study-table'), ['Stock', '#Move', '#In gap', '#Open→close', '#Open→high', 'Behind it'],
     (obs.movers || []).slice(0, 40).map(m => `<tr><td>${esc(m.symbol)}</td><td class="num">${signedPct(m.move)}</td>`
       + `<td class="num">${signedPct(m.gap_part)}</td><td class="num">${signedPct(m.open_to_close)}</td><td class="num">${signedPct(m.open_to_high)}</td>`

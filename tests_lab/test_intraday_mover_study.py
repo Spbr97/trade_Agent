@@ -338,3 +338,35 @@ def test_consensus_registers_the_stocks_most_short_rules_agree_on(tmp_path) -> N
     assert votes == sorted(votes, reverse=True)
     again = ims.register_live("nse", candles, now=at, root=tmp_path, refs=refs)
     assert again["consensus_registered"] == 0  # one registration per session and checkpoint
+
+
+def test_pick_record_counts_winners_after_costs_and_against_the_average(tmp_path) -> None:
+    day = SESSIONS[-1]
+    frame = pd.DataFrame(
+        {
+            "date": [day] * 4,
+            "code": ["A", "B", "C", "D"],
+            "short_rest_of_day": [0.02, 0.001, -0.01, 0.0],  # mean 0.0027
+        }
+    )
+    base = {
+        "event": "picks_registered", "target": "short_rest_of_day", "checkpoint": "opening_bar",
+        "decision_session": day.isoformat(), "registered_at": "2026-10-15T09:31:00+05:30",
+        "deadline": "2026-10-15T09:45:00+05:30",
+    }  # fmt: skip
+    chain = tmp_path / "forward_picks.jsonl"
+    daily.append_chain(
+        chain, {**base, "candidate": "consensus_top3:opening_bar", "codes": ["A", "B", "C"]}
+    )
+    daily.append_chain(chain,
+                       {**base, "candidate": "opening_bar:x", "codes": ["A", "C"]})
+    daily.append_chain(chain,
+                       {**base, "candidate": "opening_bar:y", "codes": ["A", "D"]})
+    record = ims.pick_record(
+        tmp_path, {"opening_bar": frame}, {"short_rest_of_day": 0.0016}
+    )
+    consensus = record["consensus"]["all"]
+    # A wins and beats the average; B (0.001 gross) loses after costs; C loses
+    assert (consensus["picks"], consensus["winners"], consensus["beat_market"]) == (3, 1, 1)
+    rules = record["rules"]["all"]
+    assert rules["picks"] == 3  # A is counted once even though two rules picked it
