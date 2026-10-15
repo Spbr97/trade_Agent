@@ -962,7 +962,7 @@ async def collect_equity_pre_takeoff_watch(
     # The intraday mover study's forward picks are registered from this same fetch, inside
     # their decision window only (tradedesk_lab/intraday_mover_study.py). A no-op until a
     # candidate has survived its search; never allowed to fail the slot.
-    if market == "nse" and output_root == DEFAULT_OUTPUT_ROOT:
+    if market in {"nse", "bse"} and output_root == DEFAULT_OUTPUT_ROOT:
         try:
             from tradedesk_lab.intraday_mover_study import register_live
 

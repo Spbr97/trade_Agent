@@ -61,6 +61,12 @@ $jobs = @(
     @{ Name = 'tradedesk-intraday-study-crypto-search'; Minutes = 180
        Triggers = @(New-ScheduledTaskTrigger -Weekly -WeeksInterval 1 -DaysOfWeek Saturday -At '14:00')
        Args = 'intraday-study-crypto-search scripts/intraday_mover_study.py search --market crypto' },
+    @{ Name = 'tradedesk-intraday-study-bse-nightly'; Minutes = 90
+       Triggers = @(New-ScheduledTaskTrigger -Weekly -WeeksInterval 1 -DaysOfWeek $weekdays -At '20:45')
+       Args = 'intraday-study-bse-nightly scripts/intraday_mover_study.py nightly --market bse' },
+    @{ Name = 'tradedesk-intraday-study-bse-search'; Minutes = 180
+       Triggers = @(New-ScheduledTaskTrigger -Weekly -WeeksInterval 1 -DaysOfWeek Saturday -At '13:00')
+       Args = 'intraday-study-bse-search scripts/intraday_mover_study.py search --market bse' },
     @{ Name = 'tradedesk-news-trial-fetch'; Minutes = 10; Triggers = @($newsTrigger)
        Args = 'news-trial scripts/news_trial.py fetch' },
     @{ Name = 'tradedesk-news-trial-score'; Minutes = 15

@@ -618,7 +618,7 @@ def nightly(market: str, *, root: Path | None = None, update_days: int = 5) -> d
 def main(argv: Sequence[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="python -m tradedesk_lab.intraday_mover_study")
     parser.add_argument("command", choices=["search", "nightly", "observe-history"])
-    parser.add_argument("--market", choices=["nse", "crypto"], default="nse")
+    parser.add_argument("--market", choices=["nse", "bse", "crypto"], default="nse")
     args = parser.parse_args(argv)
     if args.command == "search":
         result = run_search(args.market)
