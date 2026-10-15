@@ -80,6 +80,8 @@ CLOCKS = {
 }
 LIQUID_NOTIONAL = {"nse": 2e7, "bse": 2e7, "crypto": 5e5}  # avg daily traded value, INR
 SHORTABLE = frozenset({"nse", "bse"})  # CoinDCX spot cannot be shorted
+CONSENSUS_TARGET = "short_rest_of_day"
+CONSENSUS_N = 3  # per checkpoint; top 3 held up best on days the ranking had not seen
 
 
 def targets_for(market: str) -> dict[str, TradeType]:
@@ -395,7 +397,7 @@ def register_live(
     session = now.astimezone(CLOCKS[market].tz).date()
     path = root / "forward_picks.jsonl"
     done = {(r["candidate"], r["target"], r["decision_session"]) for r in daily.read_chain(path)[0]}
-    registered = 0
+    registered = consensus = 0
     for name, k in CHECKPOINTS.items():
         opens, entry_at = bar_start(session, k, market), bar_start(session, k + 1, market)
         mine = [c for c in candidates if c.get("checkpoint") == name]
@@ -428,7 +430,56 @@ def register_live(
                 },
             )
             registered += 1
-    return {"status": "checked", "registered": registered}
+        consensus += _register_consensus(path, done, mine, ranked, name, session, now, entry_at)
+    return {"status": "checked", "registered": registered, "consensus_registered": consensus}
+
+
+def _register_consensus(
+    path: Path,
+    done: set[tuple[str, str, str]],
+    mine: Sequence[Mapping[str, Any]],
+    ranked: pd.DataFrame,
+    checkpoint: str,
+    session: date,
+    now: datetime,
+    entry_at: datetime,
+) -> int:
+    """The few stocks the most active short rules agree on. Overnight research (15 Oct 2026)
+    found the individual rules flag ~500 of ~1,000 stocks a day, so most of their edge was
+    market drift; ranking by agreement was the part that held up on days it had not seen."""
+
+    shorts = [c for c in mine if c["target"] == CONSENSUS_TARGET]
+    name = f"consensus_top{CONSENSUS_N}:{checkpoint}"
+    if not shorts or (name, CONSENSUS_TARGET, session.isoformat()) in done:
+        return 0
+    votes = pd.Series(0, index=ranked.index)
+    for candidate in shorts:
+        condition = tuple(daily.Clause(**c) for c in candidate["clauses"])
+        votes += daily.mask_for(ranked, condition).astype(int)
+    pool = ranked.assign(votes=votes)
+    pool = pool[pool["votes"] > 0].sort_values(
+        ["votes", "notional_ref", "code"], ascending=[False, False, True]
+    )
+    top = pool.head(CONSENSUS_N)
+    if top.empty:
+        return 0
+    daily.append_chain(
+        path,
+        {
+            "event": "picks_registered",
+            "candidate": name,
+            "target": CONSENSUS_TARGET,
+            "checkpoint": checkpoint,
+            "decision_session": session.isoformat(),
+            "registered_at": now.isoformat(),
+            "deadline": entry_at.isoformat(),
+            "entry_bar": entry_at.astimezone(IST).strftime("%H:%M"),
+            "codes": [str(c) for c in top["code"]],
+            "votes": {str(c): int(v) for c, v in zip(top["code"], top["votes"], strict=True)},
+            "rules_voting": len(shorts),
+        },
+    )
+    return 1
 
 
 def forward_scores(

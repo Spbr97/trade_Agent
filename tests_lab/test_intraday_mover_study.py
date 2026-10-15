@@ -300,3 +300,41 @@ def test_references_are_computed_once_per_session_and_reused(tmp_path, monkeypat
     pd.testing.assert_frame_equal(first, again, check_dtype=False)
     ims.cached_reference_values("nse", SESSIONS[-2], tmp_path)
     assert calls == [SESSIONS[-1], SESSIONS[-2]]  # a new session recomputes
+
+
+def test_consensus_registers_the_stocks_most_short_rules_agree_on(tmp_path) -> None:
+    bars = _bars(codes=tuple(f"NSE_{i}" for i in range(1, 11)))
+    today = SESSIONS[-1]
+    prior = bars[
+        pd.to_datetime(bars["ts"], unit="s", utc=True).dt.tz_convert("Asia/Kolkata").dt.date < today
+    ]
+    refs = ims.reference_values("nse", today, bars=prior)
+    for name, quantile in (("a", 0.5), ("b", 0.8), ("c", 0.9)):
+        daily.append_chain(
+            tmp_path / "candidates.jsonl",
+            {"event": "candidate_activated", "name": f"opening_bar:{name}",
+             "target": "short_rest_of_day", "checkpoint": "opening_bar",
+             "activated_at": "2026-09-01",
+             "clauses": [{"feature": "r_open", "side": "top", "quantile": quantile}]},
+        )  # fmt: skip
+    daily.append_chain(
+        tmp_path / "candidates.jsonl",
+        {"event": "candidate_activated", "name": "opening_bar:long",
+         "target": "rest_of_day", "checkpoint": "opening_bar", "activated_at": "2026-09-01",
+         "clauses": [{"feature": "r_open", "side": "top", "quantile": 0.1}]},
+    )  # fmt: skip
+    at = datetime(today.year, today.month, today.day, 9, 31, tzinfo=IST)
+    candles = _candles(bars, today, upto=2)
+    result = ims.register_live("nse", candles, now=at, root=tmp_path, refs=refs)
+    assert result["registered"] == 4 and result["consensus_registered"] == 1
+    rows, intact = daily.read_chain(tmp_path / "forward_picks.jsonl")
+    consensus = [r for r in rows if r["candidate"].startswith("consensus_top")]
+    assert intact and len(consensus) == 1
+    row = consensus[0]
+    assert row["target"] == "short_rest_of_day"
+    assert row["rules_voting"] == 3  # the long rule never votes
+    assert 1 <= len(row["codes"]) <= ims.CONSENSUS_N
+    votes = [row["votes"][c] for c in row["codes"]]
+    assert votes == sorted(votes, reverse=True)
+    again = ims.register_live("nse", candles, now=at, root=tmp_path, refs=refs)
+    assert again["consensus_registered"] == 0  # one registration per session and checkpoint
