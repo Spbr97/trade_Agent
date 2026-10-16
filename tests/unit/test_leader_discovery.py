@@ -193,3 +193,41 @@ def test_prospective_session_freeze_refuses_rewritten_causal_evidence(
         assert "changed at immutable field causal_rows_sha256" in str(exc)
     else:
         raise AssertionError("rewritten prospective feature evidence was accepted")
+
+
+def test_prospective_freeze_ignores_float_noise_but_not_real_revisions(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from tradedesk import leader_discovery
+
+    current = _frame(date(2026, 10, 10))
+    meta = {
+        "db_path": "test.duckdb", "latest_closed_session": "2026-10-13",
+        "query_history_start": "2025-05-06", "mature_session_start": "2026-10-10",
+        "mature_session_end": "2026-10-10", "mature_sessions": 1, "raw_rows_considered": 3,
+    }  # fmt: skip
+    monkeypatch.setattr(
+        leader_discovery, "extract_causal_universe", lambda *a, **k: (current.copy(), meta)
+    )
+    tracker = tmp_path / "tracker.jsonl"
+    tracker.write_text(
+        json.dumps(_tracker()[0] | {"armed_on": "2026-10-10"}) + "\n", encoding="utf-8"
+    )
+
+    def run(hour: int) -> dict:
+        return run_missed_leader_audit(
+            market="nse", db_path=tmp_path / "test.duckdb", tracker_path=tracker,
+            output_root=tmp_path / "audit", now=datetime(2026, 10, 14, hour, tzinfo=IST),
+            session_count=1,
+        )  # fmt: skip
+
+    run(12)
+    current.loc[0, "return_5"] = current.loc[0, "return_5"] + 3e-15  # rolling-mean noise
+    assert len(run(13)["prospective_session_freezes"]) == 1
+    current.loc[0, "return_5"] = current.loc[0, "return_5"] + 1e-6  # a real revision
+    try:
+        run(14)
+    except ValueError as exc:
+        assert "changed at immutable field causal_rows_sha256" in str(exc)
+    else:
+        raise AssertionError("a real revision was accepted")

@@ -699,6 +699,23 @@ def _write_dataset(path: Path, rows: Sequence[Mapping[str, Any]]) -> str:
         temporary.unlink(missing_ok=True)
 
 
+FREEZE_FLOAT_DIGITS = 10
+
+
+def _stable_floats(value: Any) -> Any:
+    """Round floats before hashing a freeze. Rolling means sum a different window as history
+    grows, which moves a feature by ~1e-15 with no change to any candle; exact-float hashing
+    then rejects an unchanged cross-section. Ten decimals keeps every real revision visible."""
+
+    if isinstance(value, float):
+        return round(value, FREEZE_FLOAT_DIGITS)
+    if isinstance(value, Mapping):
+        return {key: _stable_floats(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_stable_floats(item) for item in value]
+    return value
+
+
 def _freeze_prospective_sessions(
     rows: Sequence[Mapping[str, Any]],
     summaries: Sequence[Mapping[str, Any]],
@@ -754,7 +771,7 @@ def _freeze_prospective_sessions(
             "created_at": generated_at.isoformat(),
             "contract_sha256": contract_sha256,
             "row_count": len(immutable_rows),
-            "causal_rows_sha256": canonical_sha256(immutable_rows),
+            "causal_rows_sha256": canonical_sha256(_stable_floats(immutable_rows)),
             "active_model_changed": False,
             "eligible_for_live": False,
         }
