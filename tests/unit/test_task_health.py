@@ -53,3 +53,25 @@ def test_each_failure_is_announced_once_and_its_clearing_too(tmp_path) -> None:
     new, cleared = changes(again, fixed)
     assert new == [] and [p["what"] for p in cleared] == ["tradedesk-after-close"]
     assert fixed["status"] == "ok"
+
+
+def test_new_survivors_are_announced_once(tmp_path) -> None:
+    from tradedesk import task_health
+
+    lab = tmp_path / "lab"
+    (lab / "intraday_mover_study" / "nse").mkdir(parents=True)
+    (lab / "intraday_mover_study" / "nse" / "search_latest.json").write_text(
+        json.dumps({"survivors": [{"name": "opening_bar:x", "target": "short_rest_of_day"}]}),
+        "utf-8",
+    )
+    state = tmp_path / "notified.json"
+    sent: list[str] = []
+    original = task_health.toast
+    task_health.toast = lambda title, body, urgent=False: sent.append(body) or True  # type: ignore[assignment]
+    try:
+        first = task_health.watch_survivors(state, lab)
+        second = task_health.watch_survivors(state, lab)
+    finally:
+        task_health.toast = original  # type: ignore[assignment]
+    assert first == ["intraday_mover_study/nse:opening_bar:x/short_rest_of_day"]
+    assert second == [] and len(sent) == 1

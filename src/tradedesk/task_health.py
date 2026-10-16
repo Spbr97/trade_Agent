@@ -4,8 +4,9 @@ The NSE after-close pipeline failed its critical step every day from 6 to 14 Oct
 nothing said so. This check, run hourly by its own scheduled task, reads every
 `tradedesk-*` Windows task's last result and the accuracy-collection pipeline status files,
 writes data/reports/health.json (the dashboard shows a banner only when something is
-failing) and, when Telegram is configured, sends each NEW failure once - plus one message
-when it clears. Read-only towards everything it checks.
+failing) and sends each NEW failure once as a desktop toast (plus Telegram when it is
+configured) - and one more when it clears. It also toasts any new mover-study survivor.
+Read-only towards everything it checks.
 """
 
 from __future__ import annotations
@@ -128,11 +129,28 @@ def changes(previous: Mapping[str, Any] | None, current: Mapping[str, Any]) -> t
     return new, cleared
 
 
+def toast(title: str, body: str, *, urgent: bool = False) -> bool:
+    """Windows desktop toast. Best effort and local only: nothing leaves this machine."""
+
+    try:
+        from tradedesk.alerts.cards import OutboundMessage
+        from tradedesk.alerts.desktop import DesktopNotifier
+
+        return DesktopNotifier().send(OutboundMessage(title=title, body=body, urgent=urgent))
+    except Exception as exc:  # noqa: BLE001 - a health alert must never crash the check
+        print(f"desktop notification not sent: {exc!r}")
+        return False
+
+
 def notify(new: list[dict[str, Any]], cleared: list[dict[str, Any]]) -> bool:
-    """Telegram only if it is enabled in config/alerts.yaml and a bot token is stored."""
+    """A desktop toast always; Telegram too only if enabled in config/alerts.yaml with a
+    stored bot token."""
 
     if not new and not cleared:
         return False
+    lines = [f"FAILING  {p['what']}: {p['detail']}" for p in new]
+    lines += [f"CLEARED  {p['what']}" for p in cleared]
+    sent = toast("tradedesk health", "\n".join(lines)[:400], urgent=bool(new))
     try:
         import asyncio
 
@@ -143,15 +161,67 @@ def notify(new: list[dict[str, Any]], cleared: list[dict[str, Any]]) -> bool:
         settings = load_config(Path("."))
         telegram = settings.alerts.telegram
         token = load_bot_token()
-        if not (telegram.enabled and telegram.allowed_chat_id and token):
-            return False
-        lines = [f"FAILING  {p['what']}: {p['detail']}" for p in new]
-        lines += [f"CLEARED  {p['what']}" for p in cleared]
-        message = OutboundMessage(title="tradedesk health", body="\n".join(lines)[:3500])
-        return asyncio.run(TelegramBot(token, int(telegram.allowed_chat_id)).send(message))
-    except Exception as exc:  # noqa: BLE001 - a health alert must never crash the check
-        print(f"health notification not sent: {exc!r}")
-        return False
+        if telegram.enabled and telegram.allowed_chat_id and token:
+            message = OutboundMessage(title="tradedesk health", body="\n".join(lines)[:3500])
+            bot = TelegramBot(token, int(telegram.allowed_chat_id))
+            sent = asyncio.run(bot.send(message)) or sent
+    except Exception as exc:  # noqa: BLE001
+        print(f"telegram health notification not sent: {exc!r}")
+    return sent
+
+
+SURVIVOR_FILES = (
+    "mover_study/nse",
+    "mover_study/bse",
+    "intraday_mover_study/nse",
+    "intraday_mover_study/bse",
+    "intraday_mover_study/crypto",
+)
+NOTIFIED_PATH = Path("data/reports/health_notified.json")
+LAB_ROOT = Path("data/m14_m18")
+
+
+def watch_survivors(
+    notified_path: Path = NOTIFIED_PATH, lab_root: Path = LAB_ROOT
+) -> list[str]:
+    """Toast any mover-study search survivor not seen before, and remember it. Also records
+    the current failing keys so a person or tool reading the file sees what was announced."""
+
+    try:
+        state = json.loads(notified_path.read_text(encoding="utf-8-sig"))
+    except (OSError, ValueError):
+        state = {}
+    seen = set(state.get("survivors_notified", []))
+    fresh: list[str] = []
+    for part in SURVIVOR_FILES:
+        try:
+            found = json.loads((lab_root / part / "search_latest.json").read_text("utf-8-sig"))
+        except (OSError, ValueError):
+            continue
+        for item in found.get("survivors", []):
+            key = f"{part}:{item['name']}/{item['target']}"
+            if key not in seen:
+                fresh.append(key)
+    if fresh:
+        toast(
+            "tradedesk: new mover-study survivor",
+            f"{len(fresh)} new rule(s) passed their search, e.g. {fresh[0]}. Research only.",
+        )
+        state["survivors_notified"] = sorted(seen | set(fresh))
+        state.setdefault("failing_keys", [])
+        notified_path.parent.mkdir(parents=True, exist_ok=True)
+        notified_path.write_text(json.dumps(state, indent=4), encoding="utf-8")
+    return fresh
+
+
+def record_failing(keys: Iterable[str], notified_path: Path = NOTIFIED_PATH) -> None:
+    try:
+        state = json.loads(notified_path.read_text(encoding="utf-8-sig"))
+    except (OSError, ValueError):
+        state = {"survivors_notified": []}
+    state["failing_keys"] = sorted(keys)
+    notified_path.parent.mkdir(parents=True, exist_ok=True)
+    notified_path.write_text(json.dumps(state, indent=4), encoding="utf-8")
 
 
 def run(path: Path = REPORT_PATH) -> dict[str, Any]:
@@ -163,7 +233,9 @@ def run(path: Path = REPORT_PATH) -> dict[str, Any]:
             previous = None
     report = check()
     new, cleared = changes(previous, report)
-    report["telegram_sent"] = notify(new, cleared)
+    report["notification_sent"] = notify(new, cleared)
+    report["new_survivors"] = watch_survivors()
+    record_failing([p["key"] for p in report["failing"]])
     report["new_since_last_check"] = [p["what"] for p in new]
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(report, indent=2), encoding="utf-8")

@@ -967,6 +967,9 @@ async def collect_equity_pre_takeoff_watch(
             from tradedesk_lab.intraday_mover_study import register_live
 
             register_live(market, candles, now=now)
+            from tradedesk.pick_announcer import announce_new_picks
+
+            announce_new_picks(market, now.astimezone(IST).date())
         except Exception as exc:
             print(f"intraday mover study registration skipped for {market}: {exc!r}")
     return report
