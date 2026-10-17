@@ -25,7 +25,6 @@ import numpy as np
 import pandas as pd
 
 from tradedesk.reliability import wilson_lower_bound
-from tradedesk.stored_path import stored_path
 from tradedesk_lab.artifacts import OUTPUT, digest, write_json
 from tradedesk_lab.crypto_accuracy_dataset import (
     DEFAULT_DB as DEFAULT_C1_DB,
@@ -1124,8 +1123,8 @@ def run_crypto_accuracy_mechanisms(
     daily_artifact = (manifest.get("artifacts") or {}).get("daily") or {}
     label_artifact = (manifest.get("artifacts") or {}).get("labels") or {}
     daily_path, labels_path = (
-        stored_path(daily_artifact.get("path", "")),
-        stored_path(label_artifact.get("path", "")),
+        Path(daily_artifact.get("path", "")),
+        Path(label_artifact.get("path", "")),
     )
     if not daily_path.exists() or not labels_path.exists():
         state = _blocked_state(
@@ -1371,13 +1370,13 @@ def verify_crypto_accuracy_mechanisms(
     ) != (12, 12, 0):
         errors.append("C2 terminal result is not a complete 12-trial first look")
     for name, artifact in (manifest.get("artifacts") or {}).items():
-        path = stored_path(artifact.get("path", ""))
+        path = Path(artifact.get("path", ""))
         if not path.exists():
             errors.append(f"{name} artifact is missing")
         elif digest(path) != artifact.get("sha256"):
             errors.append(f"{name} artifact hash changed")
     implementation = manifest.get("implementation") or {}
-    implementation_path = stored_path(implementation.get("path", ""))
+    implementation_path = Path(implementation.get("path", ""))
     if not implementation_path.exists() or digest(implementation_path) != implementation.get(
         "sha256"
     ):

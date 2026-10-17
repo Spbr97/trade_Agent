@@ -28,7 +28,6 @@ from tradedesk.markets.tax import after_tax_r, tds_share_of_costs
 from tradedesk.models import TradeType, price_decimal
 from tradedesk.prediction.labeling import triple_barrier
 from tradedesk.reliability import wilson_lower_bound
-from tradedesk.stored_path import stored_path
 from tradedesk_lab.artifacts import OUTPUT, ROOT, digest, write_json
 
 VERSION = "crypto-accuracy-recovery-r3-v1"
@@ -580,7 +579,7 @@ def verify_crypto_accuracy_recovery(output: Path = DEFAULT_OUTPUT) -> dict[str, 
         errors.append("implementation")
     else:
         try:
-            implementation_sha = digest(stored_path(str(implementation.get("path") or "")))
+            implementation_sha = digest(Path(str(implementation.get("path") or "")))
         except OSError:
             implementation_sha = None
         if implementation_sha != implementation.get("sha256"):
@@ -590,7 +589,7 @@ def verify_crypto_accuracy_recovery(output: Path = DEFAULT_OUTPUT) -> dict[str, 
         errors.append("source")
     else:
         try:
-            tracker_sha = digest(stored_path(str(source.get("tracker_path") or "")))
+            tracker_sha = digest(Path(str(source.get("tracker_path") or "")))
         except OSError:
             tracker_sha = None
         if tracker_sha != source.get("tracker_sha256"):
@@ -614,7 +613,7 @@ def verify_crypto_accuracy_recovery(output: Path = DEFAULT_OUTPUT) -> dict[str, 
             if not isinstance(item, dict):
                 errors.append(f"{name}_artifact")
                 continue
-            path = stored_path(str(item.get("path") or ""))
+            path = Path(str(item.get("path") or ""))
             try:
                 observed = digest(path)
             except OSError:

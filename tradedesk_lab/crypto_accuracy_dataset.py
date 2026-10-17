@@ -33,7 +33,6 @@ from tradedesk.engine.indicators import atr
 from tradedesk.markets import crypto_market
 from tradedesk.markets.tax import after_tax_r, tds_share_of_costs
 from tradedesk.models import TradeType, price_decimal
-from tradedesk.stored_path import stored_path
 from tradedesk_lab.artifacts import OUTPUT, ROOT, digest, write_json
 
 VERSION = "crypto-accuracy-dataset-v1"
@@ -1022,13 +1021,13 @@ def verify_crypto_dataset(
         errors.append("dataset protocol identity changed")
     for name in ("configuration", "implementation"):
         frozen = manifest.get(name) or {}
-        path = stored_path(frozen.get("path", ""))
+        path = Path(frozen.get("path", ""))
         if not path.exists():
             errors.append(f"{name} source is missing")
         elif digest(path) != frozen.get("sha256"):
             errors.append(f"{name} source changed")
     for name, artifact in (manifest.get("artifacts") or {}).items():
-        path = stored_path(artifact["path"])
+        path = Path(artifact["path"])
         if not path.exists():
             errors.append(f"{name} artifact is missing")
         elif digest(path) != artifact.get("sha256"):

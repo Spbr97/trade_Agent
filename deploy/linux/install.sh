@@ -85,6 +85,9 @@ else
   for timer in "$units"/*.timer; do systemctl enable --now "$(basename "$timer")"; done
 fi
 
+echo "== links for Windows-written paths in sealed evidence (data/ must already be in place)"
+sudo -u "$USER_NAME" "$ROOT/.venv/bin/python" "$ROOT/deploy/linux/link_windows_paths.py" --root "$ROOT"
+
 echo "== Oracle billing guard (second watcher, on the always-on machine)"
 # Not named tradedesk-*, so the cleanup above never removes it. The timer starts only once the
 # owner has put the Oracle API config and key in /etc/tradedesk/oci (docs/cloud-deploy.md).
