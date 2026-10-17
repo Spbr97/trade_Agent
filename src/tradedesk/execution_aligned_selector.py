@@ -46,6 +46,7 @@ from tradedesk.leader_separability import (
     _split_manifest,
 )
 from tradedesk.prediction_ledger import canonical_sha256
+from tradedesk.stored_path import stored_path
 
 VERSION = "execution-aligned-m16-v1"
 DATASET_VERSION = "execution-aligned-dataset-v1"
@@ -894,7 +895,7 @@ def _load_registration(
     if not isinstance(registration, dict):
         raise ValueError("M16 registration is not an object")
     validate_registration(registration)
-    model_path = Path(str(registration["model_path"]))
+    model_path = stored_path(str(registration["model_path"]))
     if not model_path.exists() or _hash_file(model_path) != registration["model_sha256"]:
         raise ValueError("M16 registered model binding mismatch")
     if _protocol_sha256() != registration["protocol_sha256"]:
@@ -958,7 +959,7 @@ def _append_chain(
 
 
 def _load_prospective_model(registration: Mapping[str, Any]) -> dict[str, Any]:
-    path = Path(str(registration["model_path"]))
+    path = stored_path(str(registration["model_path"]))
     if _hash_file(path) != registration["model_sha256"]:
         raise ValueError("M16 prospective model digest mismatch")
     bundle = joblib.load(path)
@@ -1147,7 +1148,7 @@ def _resolve_pending(
         if not isinstance(selected, Mapping) or session in resolved_sessions:
             continue
         snapshot_rows = _validate_snapshot(
-            Path(str(observation["snapshot_path"])),
+            stored_path(str(observation["snapshot_path"])),
             str(observation["snapshot_sha256"]),
             market,
         )
@@ -1206,7 +1207,7 @@ def _prospective_random_control(
 ) -> dict[str, Any]:
     groups: list[tuple[np.ndarray, np.ndarray]] = []
     for resolution in resolutions:
-        replay_path = Path(str(resolution["replay_path"]))
+        replay_path = stored_path(str(resolution["replay_path"]))
         if not replay_path.exists() or _hash_file(replay_path) != resolution["replay_sha256"]:
             raise ValueError(f"M16 prospective replay binding mismatch: {replay_path}")
         rows = _read_gzip_jsonl(replay_path)
@@ -1282,7 +1283,7 @@ def _prospective_summary(
     )
     for observation in observations:
         _validate_snapshot(
-            Path(str(observation["snapshot_path"])),
+            stored_path(str(observation["snapshot_path"])),
             str(observation["snapshot_sha256"]),
             market,
         )

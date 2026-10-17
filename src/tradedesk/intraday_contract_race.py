@@ -684,7 +684,7 @@ async def acquire_manifest_paths(
 
     manifest = load_manifest(market, output_root=output_root)
     rows = _read_manifest_rows(manifest)
-    source_db = db_path or Path(str(manifest["db_path"]))
+    source_db = db_path or stored_path(str(manifest["db_path"]))
     now = observed_at or datetime.now(IST)
 
     groups: dict[tuple[str, str], set[str]] = {}
@@ -1506,7 +1506,7 @@ def _validate_report(report: Mapping[str, Any]) -> None:
 
 
 def _load_source_frame(manifest: Mapping[str, Any]) -> pd.DataFrame:
-    path = Path(str(manifest["source"]["path"]))
+    path = stored_path(str(manifest["source"]["path"]))
     if _hash_file(path) != manifest["source"]["sha256"]:
         raise ValueError("M17 causal source binding mismatch")
     records: list[dict[str, Any]] = []
@@ -1599,7 +1599,7 @@ def run_intraday_contract_race(
         _validate_report(existing)
         return existing
 
-    source_db = db_path or Path(str(manifest["db_path"]))
+    source_db = db_path or stored_path(str(manifest["db_path"]))
     rows = _read_manifest_rows(manifest)
     with CandleStore(source_db) as store:
         paths = [_load_path_record(store, row) for row in rows]
@@ -1911,7 +1911,7 @@ def load_intraday_contract_status(
             supplied = body.pop("artifact_sha256", None)
             if supplied != canonical_sha256(body):
                 raise ValueError("M17 acquisition summary hash mismatch")
-            ledger_path = Path(str(acquisition["ledger_path"]))
+            ledger_path = stored_path(str(acquisition["ledger_path"]))
             if _hash_file(ledger_path) != acquisition["ledger_sha256"]:
                 raise ValueError("M17 acquisition ledger binding mismatch")
             base["acquisition"] = {
@@ -1950,7 +1950,7 @@ def load_intraday_contract_status(
             _validate_report(report)
             if report["manifest"]["sha256"] != manifest["artifact_sha256"]:
                 raise ValueError("M17 result manifest binding mismatch")
-            path_bundle = Path(str(report["path_bundle"]["path"]))
+            path_bundle = stored_path(str(report["path_bundle"]["path"]))
             if _hash_file(path_bundle) != report["path_bundle"]["sha256"]:
                 raise ValueError("M17 result path-bundle binding mismatch")
             gates = report["development_gates"]

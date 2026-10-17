@@ -11,6 +11,7 @@ from typing import Any
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import HTMLResponse
 
+from tradedesk.stored_path import stored_path
 from tradedesk_lab.aem_scorecard import build_accuracy_scorecard
 from tradedesk_lab.decision import from_entry
 from tradedesk_lab.registry import Registry
@@ -88,7 +89,7 @@ def create_app(root: Path, output: Path) -> FastAPI:
         if validation_pointer.is_file():
             pointer = json.loads(validation_pointer.read_text(encoding="utf-8"))
             if pointer.get("dataset_id") == identifier:
-                candidate = Path(pointer["path"])
+                candidate = stored_path(pointer["path"])
                 if candidate.is_file():
                     loaded = json.loads(candidate.read_text(encoding="utf-8"))
                     if (

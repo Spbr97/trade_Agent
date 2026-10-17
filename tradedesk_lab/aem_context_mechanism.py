@@ -19,6 +19,7 @@ from uuid import uuid4
 import numpy as np
 import pandas as pd
 
+from tradedesk.stored_path import stored_path
 from tradedesk_lab.aem_context_integrity import OUTCOME_COLUMNS
 from tradedesk_lab.artifacts import OUTPUT, ROOT, digest, write_json
 
@@ -574,7 +575,7 @@ def run_real_context_mechanism(
     if not protocol_latest.is_file():
         raise ValueError("context mechanism protocol has not been frozen")
     protocol_pointer = json.loads(protocol_latest.read_text(encoding="utf-8"))
-    protocol_report_path = Path(protocol_pointer["path"])
+    protocol_report_path = stored_path(protocol_pointer["path"])
     protocol_report = json.loads(protocol_report_path.read_text(encoding="utf-8"))
     test_path = root / "tests_lab/test_aem_context_mechanism.py"
     plan_path = root / "docs/plan-aem-index-context-accuracy.md"

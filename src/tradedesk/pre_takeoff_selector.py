@@ -39,6 +39,7 @@ from tradedesk.selection_readiness import (
     DEFAULT_OUTPUT_ROOT as M18_OUTPUT_ROOT,
 )
 from tradedesk.selection_readiness import load_selection_readiness_status
+from tradedesk.stored_path import stored_path
 
 VERSION = "pre-takeoff-selector-m19-v1"
 PROTOCOL_PATH = Path("docs/self-learning-m19-pre-takeoff-protocol.md")
@@ -669,7 +670,7 @@ def load_pre_takeoff_status(
         _validate_result(result)
         model = result.get("model_artifact") or {}
         if model:
-            model_path = Path(str(model.get("path", "")))
+            model_path = stored_path(str(model.get("path", "")))
             if not model_path.exists() or _hash_file(model_path) != model.get("sha256"):
                 raise ValueError("M19 model artifact binding mismatch")
         return dict(result)

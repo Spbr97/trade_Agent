@@ -40,6 +40,7 @@ import pandas as pd
 
 from tradedesk.broker.indstocks.models import IST
 from tradedesk.prediction_ledger import canonical_sha256
+from tradedesk.stored_path import stored_path
 
 AUDIT_VERSION = "missed-leader-audit-v1"
 FEATURE_VERSION = "leader-causal-features-v1"
@@ -1015,7 +1016,7 @@ def load_latest_audit(
             raise ValueError("latest audit must be an object")
         validate_audit_report(report)
         dataset = report["dataset"]
-        dataset_path = Path(str(dataset["path"]))
+        dataset_path = stored_path(str(dataset["path"]))
         if not dataset_path.exists():
             raise ValueError("bound leader dataset is missing")
         actual = hashlib.sha256(dataset_path.read_bytes()).hexdigest()

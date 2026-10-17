@@ -52,6 +52,7 @@ from tradedesk.intraday_contract_race import (
 from tradedesk.leader_discovery import FEATURE_COLUMNS
 from tradedesk.models import TradeType, price_decimal
 from tradedesk.prediction_ledger import canonical_sha256
+from tradedesk.stored_path import stored_path
 
 VERSION = "selection-readiness-m18a-v1"
 MANIFEST_VERSION = "selection-readiness-manifest-v1"
@@ -733,7 +734,7 @@ def build_selection_readiness(
         != binding["m17_acquisition_rows_sha256"]
     ):
         raise ValueError("M18-A bound M17 acquisition rows changed")
-    if _hash_file(Path(binding["causal_source_path"])) != binding["causal_source_sha256"]:
+    if _hash_file(stored_path(binding["causal_source_path"])) != binding["causal_source_sha256"]:
         raise ValueError("M18-A bound causal source changed")
 
     candidates = _deduplicate_m17_rows(_read_manifest_rows(m17))
@@ -747,7 +748,7 @@ def build_selection_readiness(
     split_by_session = _session_split(manifest["split"])
     records: list[dict[str, Any]] = []
     market_bundle = _market_bundle(market)
-    with CandleStore(Path(binding["db_path"])) as store:
+    with CandleStore(stored_path(binding["db_path"])) as store:
         path_store = _preload_path_store(store, candidates)
         load_path = partial(_load_path_record_fast, path_store)
         with ThreadPoolExecutor(max_workers=8) as executor:
@@ -923,7 +924,7 @@ def load_selection_readiness_status(
         summary = json.loads(latest_path.read_text(encoding="utf-8"))
         _validate_summary(summary, manifest)
         dataset = summary.get("dataset") or {}
-        dataset_path = Path(str(dataset.get("path", "")))
+        dataset_path = stored_path(str(dataset.get("path", "")))
         if not dataset_path.exists() or _hash_file(dataset_path) != dataset.get("sha256"):
             raise ValueError("M18-A dataset binding mismatch")
         return {

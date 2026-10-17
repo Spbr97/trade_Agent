@@ -44,6 +44,7 @@ from tradedesk.leader_discovery import (
 from tradedesk.markets import bse_market, crypto_market, nse_market
 from tradedesk.models import TradeType, price_decimal
 from tradedesk.prediction_ledger import canonical_sha256
+from tradedesk.stored_path import stored_path
 
 EXPERIMENT_VERSION = "leader-separability-m15-v1"
 DATASET_VERSION = "leader-separability-dataset-v1"
@@ -695,7 +696,7 @@ def _load_registered_result(
         return None
     if len(matches) != 1:
         raise ValueError(f"duplicate M15 registry identity: {identity}")
-    report_path = Path(str(matches[0].get("report_path")))
+    report_path = stored_path(str(matches[0].get("report_path")))
     report = json.loads(report_path.read_text(encoding="utf-8"))
     if not isinstance(report, dict):
         raise ValueError("registered M15 report is not an object")

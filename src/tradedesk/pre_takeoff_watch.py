@@ -40,6 +40,7 @@ from tradedesk.pre_takeoff_evidence import (
     record_pre_takeoff_evidence,
 )
 from tradedesk.prediction_ledger import canonical_sha256
+from tradedesk.stored_path import stored_path
 
 VERSION = "pre-takeoff-watch-v1"
 DEFAULT_OUTPUT_ROOT = Path("data/m14_m18/pre_takeoff_watch")
@@ -188,7 +189,7 @@ def _load_opportunity_shortlist(
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     manifest = load_manifest(market)
     ranker = manifest.get("ranker") or {}
-    model_path = Path(str(ranker.get("path", "")))
+    model_path = stored_path(str(ranker.get("path", "")))
     if not model_path.exists() or _hash_file(model_path) != ranker.get("sha256"):
         raise ValueError("pre-takeoff upstream ranker binding mismatch")
     bundle = joblib.load(model_path)
