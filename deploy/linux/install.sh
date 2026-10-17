@@ -35,13 +35,15 @@ fi
 sudo -u "$USER_NAME" -H bash -lc "cd $ROOT && ~/.local/bin/uv sync --python 3.12"
 
 echo "== cloudflared"
-if ! command -v cloudflared >/dev/null 2>&1; then
+if [ ! -x /usr/bin/cloudflared ]; then
   arch="$(dpkg --print-architecture)"
   curl -fsSL -o /tmp/cloudflared.deb \
     "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-${arch}.deb"
   dpkg -i /tmp/cloudflared.deb
-  ln -sf "$(command -v cloudflared)" /usr/local/bin/cloudflared
 fi
+# The unit runs /usr/local/bin/cloudflared. Link to the package's fixed path every run:
+# `command -v` can resolve to the link itself and leave it pointing at itself.
+ln -sfn /usr/bin/cloudflared /usr/local/bin/cloudflared
 
 echo "== systemd units"
 units="$(mktemp -d)"
