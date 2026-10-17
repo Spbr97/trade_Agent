@@ -44,7 +44,7 @@ fi
 
 echo "== systemd units"
 units="$(mktemp -d)"
-chmod 755 "$units"  # rendered as the service user, so it must be able to write here
+chown "$USER_NAME" "$units"  # rendered as the service user, so it must own the dir
 sudo -u "$USER_NAME" "$ROOT/.venv/bin/python" "$ROOT/deploy/linux/render_units.py" \
   --root "$ROOT" --user "$USER_NAME" --out "$units"
 # Remove units for jobs that no longer exist, then install the fresh set.
