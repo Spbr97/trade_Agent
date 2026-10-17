@@ -22,7 +22,8 @@ echo "== service user and checkout at $ROOT"
 id -u "$USER_NAME" >/dev/null 2>&1 || useradd --system --create-home --shell /bin/bash "$USER_NAME"
 mkdir -p "$ROOT"
 if [ "$SRC" != "$ROOT" ]; then
-  rsync -a --delete --exclude data/ --exclude .venv/ "$SRC"/ "$ROOT"/
+  # Anchored (/data/): an unanchored "data/" would also skip the src/tradedesk/data package.
+  rsync -a --delete --exclude /data/ --exclude /.venv/ "$SRC"/ "$ROOT"/
 fi
 mkdir -p "$ROOT/data/logs" "$ROOT/data/reports"
 chown -R "$USER_NAME:$USER_NAME" "$ROOT"
