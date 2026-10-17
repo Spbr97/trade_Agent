@@ -24,21 +24,59 @@ def _call(symbol: str, rule: str, **extra) -> dict:
     return base | extra
 
 
-def test_multiday_calls_give_names_reference_stop_target_and_exit(tmp_path: Path) -> None:
+def test_multiday_calls_list_every_name_with_buy_day_distances_and_exit_date(
+    tmp_path: Path,
+) -> None:
     rows = [_call("AAA", "rsi2_dip_ema50"), _call("BBB", "random_eligible")]
     _write_jsonl(tmp_path / "data/reports/research_calls.jsonl", rows)
-    title, body = digests.multiday_calls("nse", root=tmp_path) or ("", "")
-    assert "NSE multi-day calls" in title
-    # risk = 3 ATR = 15 -> stop 85, target = 100 + 2 * 15 = 130; the control rule is not listed
-    assert "AAA [rsi2_dip_ema50] ref 100.00 stop 85.00 target 130.00 exit by session 10" in body
+    messages = digests.multiday_calls("nse", root=tmp_path, today=date(2026, 10, 16))
+    title, body = messages[0]
+    assert title == "NSE multi-day calls"
+    # armed Fri 16 Oct -> buy Mon 19 Oct open; risk = 3 x ATR 5 = 15, target 2R = 30;
+    # exit = 10 sessions after the buy day (Mon 19 Oct) = Mon 02 Nov. Control not listed.
+    assert "Buy at the Mon 19 Oct open" in body
+    assert (
+        "AAA [rsi2_dip_ema50] last close 100.00 | stop open-15.00 | target open+30.00 | "
+        "exit by Mon 02 Nov close"
+    ) in body
     assert "BBB" not in body and "RESEARCH ONLY" in body
 
 
-def test_an_entered_call_uses_its_own_recorded_levels(tmp_path: Path) -> None:
-    entered = _call("CCC", "rsi2_dip_ema50", entry=101.5, stop=90.0, t1=124.5)
-    _write_jsonl(tmp_path / "data/reports/research_calls.jsonl", [entered])
-    _, body = digests.multiday_calls("nse", root=tmp_path) or ("", "")
-    assert "CCC [rsi2_dip_ema50] ref 101.50 stop 90.00 target 124.50" in body
+def test_long_lists_split_across_messages_without_dropping_names(tmp_path: Path) -> None:
+    rows = [_call(f"S{i:02d}", "rsi2_dip_ema50") for i in range(40)]
+    _write_jsonl(tmp_path / "data/reports/research_calls.jsonl", rows)
+    messages = digests.multiday_calls("nse", root=tmp_path, today=date(2026, 10, 16))
+    text = "\n".join(body for _, body in messages)
+    assert len(messages) == 3 and messages[0][0].endswith("(1/3)")
+    assert all(f"S{i:02d} [" in text for i in range(40))
+    assert text.count("RESEARCH ONLY") == 1
+
+
+def test_calls_entered_today_use_the_actual_open(tmp_path: Path, monkeypatch) -> None:
+    called = _call("CCC", "rsi2_dip_ema50", scrip_code="NSE_1", armed_on="2026-10-16")
+    _write_jsonl(tmp_path / "data/reports/research_calls.jsonl", [called])
+    monkeypatch.setattr(digests, "daily_opens", lambda *a, **k: {"NSE_1": 101.5})
+    messages = digests.multiday_calls("nse", root=tmp_path, today=date(2026, 10, 19))
+    entered = [body for title, body in messages if "entered today" in title]
+    assert (
+        entered
+        and (
+            "CCC [rsi2_dip_ema50] entry 101.50 | stop 86.50 | target 131.50 | "
+            "exit by Mon 02 Nov close"
+        )
+        in entered[0]
+    )
+
+
+def test_crypto_counts_every_day_and_equity_skips_weekends() -> None:
+    assert digests.add_sessions(date(2026, 10, 16), 1, "nse") == date(2026, 10, 19)
+    assert digests.add_sessions(date(2026, 10, 16), 1, "crypto") == date(2026, 10, 17)
+
+
+def test_rupees_per_10000_use_recorded_prices_and_the_round_trip() -> None:
+    call = {"entry": 100.0, "exit_price": 110.0}
+    assert round(digests.net_inr(call, 0.004), 2) == 960.0  # 10% gain less 0.4% round trip
+    assert digests.net_inr({"entry": 100.0}, 0.004) is None
 
 
 def test_eod_counts_only_what_resolved_that_day(tmp_path: Path) -> None:
@@ -103,7 +141,7 @@ def test_intraday_check_reads_the_nightly_report(tmp_path: Path) -> None:
 
 
 def test_missing_data_never_breaks_a_digest(tmp_path: Path) -> None:
-    assert digests.multiday_calls("crypto", root=tmp_path) is None
+    assert digests.multiday_calls("crypto", root=tmp_path) == []
     assert "No intraday study report" in digests.intraday_check("bse", root=tmp_path)[1]
     assert "Failing tasks now: 0" in digests.weekly(DAY, root=tmp_path)[1]
 

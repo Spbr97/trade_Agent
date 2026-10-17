@@ -81,6 +81,8 @@ DIGEST_HOOKS: dict[str, list[tuple[str, str]]] = {
     "tradedesk-intraday-study-bse-nightly": [("intraday", "bse")],
     "tradedesk-intraday-study-crypto-nightly": [("intraday", "crypto")],
     "tradedesk-multiday-hold-study": [("multiday", "")],
+    # NSE/BSE picks are announced inside the equity collector; crypto's through this hook.
+    "tradedesk-crypto-pre-takeoff-watch": [("picks", "crypto")],
 }
 
 

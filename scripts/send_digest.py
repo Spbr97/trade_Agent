@@ -54,7 +54,7 @@ def _send(key: str, title: str, body: str, *, urgent: bool = False, force: bool 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
-    parser.add_argument("kind", choices=["close", "eod", "intraday", "multiday", "weekly"])
+    parser.add_argument("kind", choices=["close", "eod", "intraday", "multiday", "weekly", "picks"])
     parser.add_argument("--market", choices=sorted(digests.CALLS))
     parser.add_argument("--job", default="")
     parser.add_argument("--result", default="success")
@@ -67,14 +67,19 @@ def main(argv: list[str] | None = None) -> int:
     now = datetime.now(IST)
     day = now.date().isoformat()
     root = ROOT
-    if args.kind == "weekly":
+    if args.kind == "picks":
+        # Consensus paper picks, each announced once (pick_announcer keeps its own record).
+        from tradedesk.pick_announcer import announce_new_picks
+
+        done = announce_new_picks(args.market or "crypto", now.date())
+        print(f"picks announced: {len(done)}")
+    elif args.kind == "weekly":
         title, body = digests.weekly(now.date(), root=root)
         _send(f"weekly:{now.isocalendar().year}-W{now.isocalendar().week}", title, body)
     elif args.kind == "multiday":
         for market in [args.market] if args.market else sorted(digests.CALLS):
-            built = digests.multiday_calls(market, root=root)
-            if built:
-                _send(f"multiday:{market}:{day}", *built)
+            for n, (title, body) in enumerate(digests.multiday_calls(market, root=root)):
+                _send(f"multiday:{market}:{day}:{n}", title, body)
     else:
         if not args.market:
             parser.error(f"{args.kind} needs --market")

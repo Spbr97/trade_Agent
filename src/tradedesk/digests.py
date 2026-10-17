@@ -27,8 +27,16 @@ CALLS = {
     "bse": "research_calls_bse.jsonl",
     "crypto": "research_calls_crypto.jsonl",
 }
+DATABASES = {
+    "nse": "data/tradedesk.duckdb",
+    "bse": "data/bse.duckdb",
+    "crypto": "data/crypto.duckdb",
+}
+# Round trip when the multi-day study's own figure is unavailable (its latest.json carries it).
+FALLBACK_ROUND_TRIP = {"nse": 0.0039098, "bse": 0.0039098, "crypto": 0.01572}
 CONTROL_RULE = "random_eligible"
-MAX_LISTED = 6
+NOTIONAL_INR = 10_000
+LINES_PER_MESSAGE = 18
 RESEARCH = "RESEARCH ONLY, not advice or an alert."
 
 
@@ -92,6 +100,60 @@ def _resolved_on(rows: list[dict[str, Any]], day: date) -> list[dict[str, Any]]:
     return [r for r in rows if r.get("outcome") and _day(r.get("resolved_at")) == day]
 
 
+def round_trip(market: str, *, root: Path = Path(".")) -> float:
+    study = _json(root / LAB / "multiday_hold_study" / market / "latest.json")
+    try:
+        return float(study["round_trip_cost"])
+    except (KeyError, TypeError, ValueError):
+        return FALLBACK_ROUND_TRIP[market]
+
+
+def net_inr(call: Mapping[str, Any], cost: float) -> float | None:
+    """Net rupees on NOTIONAL_INR placed in one resolved call: its own recorded entry and exit
+    prices, minus the market's round-trip cost. None when either price is missing."""
+
+    try:
+        entry, exit_price = float(call["entry"]), float(call["exit_price"])
+    except (KeyError, TypeError, ValueError):
+        return None
+    if entry <= 0:
+        return None
+    return NOTIONAL_INR * (exit_price / entry - 1 - cost)
+
+
+def add_sessions(start: date, sessions: int, market: str) -> date:
+    """Crypto trades every day; NSE/BSE on weekdays. Exchange holidays are not known ahead
+    here, so an equity date is the earliest it can be (a holiday moves it one day later)."""
+
+    if market == "crypto":
+        return start + timedelta(days=sessions)
+    day = start
+    while sessions > 0:
+        day += timedelta(days=1)
+        if day.weekday() < 5:
+            sessions -= 1
+    return day
+
+
+def _rupees(value: float) -> str:
+    return f"{'+' if value >= 0 else '-'}Rs {abs(value):,.0f}"
+
+
+def _inr_line(label: str, rows: list[Mapping[str, Any]], cost: float) -> str | None:
+    values = [(r, v) for r in rows if (v := net_inr(r, cost)) is not None]
+    if not values:
+        return None
+    total = sum(v for _, v in values)
+    best = max(values, key=lambda item: item[1])
+    worst = min(values, key=lambda item: item[1])
+    return (
+        f"{label}: {len(values)} calls, net {_rupees(total)} total, "
+        f"avg {_rupees(total / len(values))} per Rs {NOTIONAL_INR:,}; "
+        f"best {best[0].get('symbol')} {_rupees(best[1])}, "
+        f"worst {worst[0].get('symbol')} {_rupees(worst[1])}"
+    )
+
+
 def close_job(
     market: str, job: str, result: str, exit_status: str, *, today: date, root: Path = Path(".")
 ) -> tuple[str, str]:
@@ -132,6 +194,14 @@ def eod_summary(market: str, day: date, *, root: Path = Path(".")) -> tuple[str,
         f"({_outcomes(done_calls)}), mean {_r(_mean(call_r))}; "
         f"open {sum(1 for r in calls if not r.get('outcome'))}"
     )
+    cost = round_trip(market, root=root)
+    rules = [r for r in done_calls if r.get("rule") != CONTROL_RULE]
+    control = [r for r in done_calls if r.get("rule") == CONTROL_RULE]
+    for label, rows in (("Closed today, rules", rules), ("Closed today, random control", control)):
+        line = _inr_line(label, rows, cost)
+        if line:
+            lines.append(line)
+    lines.append(f"(Rs figures: Rs {NOTIONAL_INR:,} per call, after {100 * cost:.2f}% round trip)")
     lines.append(RESEARCH)
     return f"{_name(market)} end-of-day numbers", "\n".join(lines)
 
@@ -188,31 +258,120 @@ def _levels(call: Mapping[str, Any]) -> tuple[float, float, float] | None:
         return None
 
 
-def multiday_calls(market: str, *, root: Path = Path(".")) -> tuple[str, str] | None:
+def _risk(call: Mapping[str, Any]) -> float | None:
+    """Rupee distance from entry to stop, fixed when the call is armed (stop_atr x ATR)."""
+
+    try:
+        return float(call["stop_atr"]) * float(call["atr_at_arm"])
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+def daily_opens(
+    market: str, codes: Iterable[str], day: date, *, root: Path = Path(".")
+) -> dict[str, float]:
+    """Each code's daily OPEN on `day`, read-only. Empty if the store is busy or missing:
+    the digest then says so instead of guessing a price."""
+
+    wanted = sorted(set(codes))
+    if not wanted:
+        return {}
+    try:
+        import duckdb
+
+        start = datetime.combine(day, datetime.min.time(), tzinfo=IST)
+        end = start + timedelta(days=1)
+        con = duckdb.connect(str(root / DATABASES[market]), read_only=True)
+        try:
+            rows = con.execute(
+                "SELECT scrip_code, open FROM candles WHERE interval = '1day' "
+                "AND ts >= ? AND ts < ? AND scrip_code IN (SELECT unnest(?))",
+                [int(start.timestamp()), int(end.timestamp()), wanted],
+            ).fetchall()
+        finally:
+            con.close()
+    except Exception as exc:  # noqa: BLE001 - a busy store must not cost the whole digest
+        print(f"daily opens unavailable for {market}: {exc!r}")
+        return {}
+    return {str(code): float(price) for code, price in rows if price}
+
+
+def _chunk(title: str, header: list[str], lines: list[str]) -> list[tuple[str, str]]:
+    if not lines:
+        return [(title, "\n".join([*header, RESEARCH]))]
+    parts = [lines[i : i + LINES_PER_MESSAGE] for i in range(0, len(lines), LINES_PER_MESSAGE)]
+    out = []
+    for n, part in enumerate(parts, start=1):
+        label = f"{title} ({n}/{len(parts)})" if len(parts) > 1 else title
+        body = [*(header if n == 1 else []), *part, *([RESEARCH] if n == len(parts) else [])]
+        out.append((label, "\n".join(body)))
+    return out
+
+
+def multiday_calls(
+    market: str, *, root: Path = Path("."), today: date | None = None
+) -> list[tuple[str, str]]:
+    """Every rule call (the random control is not listed): newly armed calls with their buy
+    day, stop and target distances and latest exit day, plus calls entered today with the
+    actual open. One or more messages; empty when the market has no calls."""
+
     calls = [c for c in _jsonl(root / REPORTS / CALLS[market]) if c.get("rule") != CONTROL_RULE]
     if not calls:
-        return None
+        return []
+    today = today or datetime.now(IST).date()
+    messages: list[tuple[str, str]] = []
+
     armed = max(str(c.get("armed_on") or "") for c in calls)
-    today = [c for c in calls if c.get("armed_on") == armed]
-    by_rule = Counter(str(c.get("rule")) for c in today)
-    lines = [
-        f"{_name(market)} multi-day calls armed {armed}: {len(today)} "
+    fresh = [c for c in calls if c.get("armed_on") == armed]
+    buy_day = add_sessions(date.fromisoformat(armed), 1, market)
+    by_rule = Counter(str(c.get("rule")) for c in fresh)
+    header = [
+        f"{_name(market)} new multi-day calls (armed {armed}): {len(fresh)} "
         f"({', '.join(f'{k} {v}' for k, v in sorted(by_rule.items()))})",
-        "Enter at the next session's open; numbers use the arm close as the reference.",
+        f"Buy at the {buy_day:%a %d %b} open. Stop and target are set from that open price.",
     ]
-    scored = [(c, _levels(c)) for c in today]
-    scored = [(c, lv) for c, lv in scored if lv is not None]
-    scored.sort(key=lambda item: (item[1][0] - item[1][1]) / item[1][0] if item[1][0] else 1.0)
-    for call, (entry, stop, target) in scored[:MAX_LISTED]:
+    lines = []
+    for call in sorted(fresh, key=lambda c: str(c.get("symbol"))):
+        risk = _risk(call)
+        if risk is None:
+            continue
+        exit_day = add_sessions(buy_day, int(call.get("max_hold") or 10), market)
+        target = float(call.get("target_r") or 2.0) * risk
         lines.append(
-            f"{call.get('symbol')} [{call.get('rule')}] ref {_price(entry)} "
-            f"stop {_price(stop)} target {_price(target)} exit by session "
-            f"{call.get('max_hold')}"
+            f"{call.get('symbol')} [{call.get('rule')}] last close "
+            f"{_price(float(call['close_at_arm']))} | stop open-{_price(risk)} | "
+            f"target open+{_price(target)} | exit by {exit_day:%a %d %b} close"
         )
-    if len(scored) > MAX_LISTED:
-        lines.append(f"+{len(scored) - MAX_LISTED} more on the dashboard (tightest stops shown)")
-    lines.append(RESEARCH)
-    return f"{_name(market)} multi-day calls", "\n".join(lines)
+    messages += _chunk(f"{_name(market)} multi-day calls", header, lines)
+
+    entered_from = [
+        c for c in calls
+        if not c.get("outcome")
+        and c.get("armed_on")
+        and add_sessions(date.fromisoformat(str(c["armed_on"])), 1, market) == today
+    ]  # fmt: skip
+    if entered_from:
+        opens = daily_opens(
+            market, (str(c.get("scrip_code")) for c in entered_from), today, root=root
+        )
+        rows = []
+        for call in sorted(entered_from, key=lambda c: str(c.get("symbol"))):
+            risk, entry = _risk(call), opens.get(str(call.get("scrip_code")))
+            if risk is None or entry is None:
+                continue
+            exit_day = add_sessions(today, int(call.get("max_hold") or 10), market)
+            target = entry + float(call.get("target_r") or 2.0) * risk
+            rows.append(
+                f"{call.get('symbol')} [{call.get('rule')}] entry {_price(entry)} | "
+                f"stop {_price(entry - risk)} | target {_price(target)} | "
+                f"exit by {exit_day:%a %d %b} close"
+            )
+        missing = len(entered_from) - len(rows)
+        head = [f"{_name(market)} calls entered today {today:%a %d %b} at the open: {len(rows)}"]
+        if missing:
+            head.append(f"{missing} more without a stored open price yet (see dashboard)")
+        messages += _chunk(f"{_name(market)} entered today", head, rows)
+    return messages
 
 
 def weekly(
@@ -237,6 +396,15 @@ def weekly(
                 f"{_name(market)} {label}: {len(done)} resolved, targets {wins} "
                 f"({_pct(wins, len(done))}), mean {_r(_mean(r_values))}"
             )
+            if label == "research calls":
+                cost = round_trip(market, root=root)
+                for name, subset in (
+                    ("rules", [r for r in done if r.get("rule") != CONTROL_RULE]),
+                    ("random control", [r for r in done if r.get("rule") == CONTROL_RULE]),
+                ):
+                    line = _inr_line(f"{_name(market)} {name}", subset, cost)
+                    if line:
+                        lines.append(line)
         consensus = (
             _json(root / LAB / "intraday_mover_study" / market / "latest.json")
             .get("pick_record", {})
@@ -248,8 +416,42 @@ def weekly(
                 f"{_name(market)} consensus picks (all time): {overall['picks']}, "
                 f"winners {overall.get('winners', 0)}, beat market {overall.get('beat_market', 0)}"
             )
+    lines += self_review_lines(start, today, root=root)
     health = _json(root / REPORTS / "health.json")
     failing = health.get("failing") or []
     lines.append(f"Failing tasks now: {len(failing)}")
+    lines.append(f"(Rs figures: Rs {NOTIONAL_INR:,} per call, after each market's round trip)")
     lines.append(RESEARCH)
     return "Weekly numbers", "\n".join(lines)
+
+
+def self_review_lines(start: date, end: date, *, root: Path = Path(".")) -> list[str]:
+    """What the self-review loop saw this week: setups whose rolling 20-day hit rate was under
+    30% on their latest check, and the review queue's decisions."""
+
+    windows = [
+        w for w in _jsonl(root / "data" / "reviews" / "rolling_windows.jsonl")
+        if (d := _day(w.get("recorded_at"))) is not None and start <= d <= end
+    ]  # fmt: skip
+    latest: dict[tuple[str, str], dict[str, Any]] = {}
+    for w in windows:
+        latest[(str(w.get("market")), str(w.get("setup")))] = w
+    weak = sorted(
+        (k, w) for k, w in latest.items()
+        if w.get("window_hit_rate") is not None and float(w["window_hit_rate"]) < 0.30
+    )  # fmt: skip
+    queue = _jsonl(root / "data" / "reviews" / "queue.jsonl")
+    added = [q for q in queue if (d := _day(q.get("created_at"))) is not None and start <= d <= end]
+    pending = [q for q in queue if q.get("status") == "pending"]
+    lines = [
+        f"Self-review: {len(latest)} setup checks this week, {len(weak)} under 30% hit rate; "
+        f"review items added {len(added)}, waiting for you {len(pending)}"
+    ]
+    for (market, setup), w in weak[:8]:
+        lines.append(
+            f"  {market.upper()} {setup}: {100 * float(w['window_hit_rate']):.0f}% "
+            f"over {w.get('window_n')} calls"
+        )
+    if len(weak) > 8:
+        lines.append(f"  +{len(weak) - 8} more on the Review tab")
+    return lines
