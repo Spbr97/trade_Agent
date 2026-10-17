@@ -105,4 +105,4 @@ else
 fi
 
 echo "== done. Next: docs/cloud-deploy.md steps 4-6 (data copy, secrets, ntfy)."
-systemctl list-timers 'tradedesk-*' --no-pager | head -15
+systemctl list-timers 'tradedesk-*' --no-pager | head -15 || true  # head closes the pipe early: exit 141, not a failure
