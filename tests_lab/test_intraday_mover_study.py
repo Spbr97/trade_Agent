@@ -370,3 +370,15 @@ def test_pick_record_counts_winners_after_costs_and_against_the_average(tmp_path
     assert (consensus["picks"], consensus["winners"], consensus["beat_market"]) == (3, 1, 1)
     rules = record["rules"]["all"]
     assert rules["picks"] == 3  # A is counted once even though two rules picked it
+
+
+def test_consensus_cutoff_collects_then_keeps_or_drops_at_the_preregistered_bar() -> None:
+    from tradedesk_lab.intraday_mover_study import CUTOFF_PICKS, consensus_cutoff
+
+    def status(picks: int, rate: float | None) -> str:
+        return consensus_cutoff({"picks": picks, "beat_market_rate": rate})["status"]
+
+    assert status(CUTOFF_PICKS - 1, 0.9) == "collecting"
+    assert status(CUTOFF_PICKS, 0.5) == "keep"
+    assert status(CUTOFF_PICKS, 0.49) == "drop"
+    assert status(0, None) == "collecting"

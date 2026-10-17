@@ -585,7 +585,33 @@ def pick_record(
             "latest": tally([v for k, v in picks.items() if k[0] == latest]),
             "sessions": len(sessions),
         }
+    out["consensus"]["cutoff"] = consensus_cutoff(out["consensus"]["all"])
     return out
+
+
+# Pre-registered 2026-10-17, before these numbers were known, so it cannot be moved later
+# to keep a weak idea alive: after 100 scored consensus picks in a market, the experiment
+# is dropped there unless at least half beat the average stock entered at the same bar.
+# Passing only means "keep collecting toward the full evidence gate", never "tradeable".
+CUTOFF_PICKS = 100
+CUTOFF_BEAT_RATE = 0.5
+CUTOFF_SET_ON = "2026-10-17"
+
+
+def consensus_cutoff(tally: Mapping[str, Any]) -> dict[str, Any]:
+    picks = int(tally.get("picks") or 0)
+    rate = tally.get("beat_market_rate")
+    if picks < CUTOFF_PICKS:
+        status = "collecting"
+    else:
+        status = "keep" if rate is not None and rate >= CUTOFF_BEAT_RATE else "drop"
+    return {
+        "status": status,
+        "picks": picks,
+        "picks_required": CUTOFF_PICKS,
+        "beat_rate_required": CUTOFF_BEAT_RATE,
+        "set_on": CUTOFF_SET_ON,
+    }
 
 
 # ----------------------------------------------------------------------- observation

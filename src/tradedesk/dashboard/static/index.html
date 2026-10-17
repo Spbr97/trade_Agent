@@ -1484,8 +1484,12 @@ async function loadMoverStudy() {
   const recLine = (label, g) => g && g.all && g.all.picks
     ? `<div><b>${label}</b>: ${g.all.winners} of ${g.all.picks} picks made money after costs (${pct(g.all.win_rate)}) and ${g.all.beat_market} beat the average stock (${pct(g.all.beat_market_rate)}) over ${g.sessions} session${g.sessions === 1 ? '' : 's'}; latest session ${esc(String(g.latest_session))}: ${g.latest.winners} of ${g.latest.picks} (${pct(g.latest.win_rate)}).</div>`
     : `<div><b>${label}</b>: no scored picks yet.</div>`;
+  const cutoffLine = c => !c ? '' : `<div class="muted">Cut-off (set ${esc(c.set_on)}, before the results): after ${c.picks_required} scored picks, drop unless at least ${pct(c.beat_rate_required)} beat the average stock. `
+    + (c.status === 'collecting' ? `Collecting: ${c.picks} of ${c.picks_required}.`
+      : c.status === 'drop' ? '<b>Dropped</b>: it missed the cut-off.'
+      : 'Passed the cut-off; keeps collecting toward the full evidence gate. Not tradeable.') + '</div>';
   $('mover-study-record').innerHTML = `<div class="muted">The goal is any stock that makes money, over any hold. These intraday short picks are one narrow experiment toward that, not the aim. Research only; a falling market flatters shorts, so the beat-the-average figure matters more than raw wins.</div>`
-    + (rec ? recLine('Consensus top 3', rec.consensus) + recLine('All rule picks (each stock once per checkpoint)', rec.rules) : '');
+    + (rec ? recLine('Consensus top 3', rec.consensus) + cutoffLine((rec.consensus || {}).cutoff) + recLine('All rule picks (each stock once per checkpoint)', rec.rules) : '');
   rows($('mover-study-table'), ['Stock', '#Move', '#In gap', '#Open→close', '#Open→high', 'Behind it'],
     (obs.movers || []).slice(0, 40).map(m => `<tr><td>${esc(m.symbol)}</td><td class="num">${signedPct(m.move)}</td>`
       + `<td class="num">${signedPct(m.gap_part)}</td><td class="num">${signedPct(m.open_to_close)}</td><td class="num">${signedPct(m.open_to_high)}</td>`
