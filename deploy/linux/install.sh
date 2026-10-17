@@ -85,6 +85,13 @@ else
   for timer in "$units"/*.timer; do systemctl enable --now "$(basename "$timer")"; done
 fi
 
+echo "== lab base record: re-recorded for the code just deployed (only ever here, on deploy)"
+if [ -f "$ROOT/data/m14_m18/base_manifest.json" ]; then
+  sudo -u "$USER_NAME" "$ROOT/.venv/bin/python" "$ROOT/deploy/linux/refresh_base_manifest.py"     --src "$ROOT" --root "$ROOT"
+else
+  echo "   no lab data yet: the record is created after the data copy, on the next deploy"
+fi
+
 echo "== links for Windows-written paths in sealed evidence (data/ must already be in place)"
 sudo -u "$USER_NAME" "$ROOT/.venv/bin/python" "$ROOT/deploy/linux/link_windows_paths.py" --root "$ROOT"
 
