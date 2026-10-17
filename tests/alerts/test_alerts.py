@@ -230,6 +230,26 @@ def test_router_routes_by_grade_and_level() -> None:
     assert off.route(triggered_alert()) == []  # channels disabled in config, no dashboard
 
 
+async def test_router_pushes_grade_a_and_warnings_to_the_phone_off_the_callback() -> None:
+    pushed: list[tuple[str, bool]] = []
+
+    def phone(title: str, body: str, *, urgent: bool = False) -> bool:
+        pushed.append((title, urgent))
+        return True
+
+    cfg = AlertsConfig.model_validate({"ntfy": {"enabled": True}})
+    r = AlertRouter(cfg, watchlist=watchlist(entry(Grade.A)), phone=phone)
+    assert r.route(triggered_alert()) == ["ntfy"]
+    warn = Alert(kind=AlertKind.NEAR_STOP, level=AlertLevel.WARNING, at=at(10, 0), message="x")
+    assert r.route(warn) == ["ntfy"]
+    assert pushed == []  # queued, never sent inside the monitor callback
+    assert await r.flush() == 2 and len(pushed) == 2
+    info = Alert(kind=AlertKind.INFO, level=AlertLevel.INFO, at=at(10, 0), message="y")
+    assert r.route(info) == []
+    no_topic = AlertRouter(cfg, watchlist=watchlist(entry(Grade.A)))
+    assert no_topic.route(triggered_alert()) == []
+
+
 # --------------------------------------------------------------- dashboard
 
 

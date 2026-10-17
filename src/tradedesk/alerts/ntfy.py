@@ -12,6 +12,7 @@ and health text only; nothing here can create a signal or place an order.
 from __future__ import annotations
 
 import logging
+import os
 import secrets
 from typing import Any
 
@@ -21,6 +22,7 @@ log = logging.getLogger(__name__)
 
 SERVICE = "tradedesk-ntfy"
 KEY = "topic"
+ENV_VAR = "TRADEDESK_NTFY_TOPIC"
 SERVER = "https://ntfy.sh"
 TIMEOUT_S = 10.0
 
@@ -30,6 +32,10 @@ def new_topic() -> str:
 
 
 def load_topic() -> str | None:
+    # A headless server may have no keyring backend: there the topic comes from a root-only
+    # systemd EnvironmentFile (/etc/tradedesk/env, see deploy/linux/install.sh).
+    if topic := os.environ.get(ENV_VAR, "").strip():
+        return topic
     try:
         import keyring
 

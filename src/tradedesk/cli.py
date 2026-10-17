@@ -1142,8 +1142,21 @@ def _build_router(settings: Any, watchlist: Any, dashboard: Any) -> AlertRouter:
                 "run `tradedesk alerts setup-telegram`",
                 err=True,
             )
+    phone = None
+    if cfg.ntfy.enabled:
+        from tradedesk.alerts import ntfy
+
+        if ntfy.load_topic():
+            phone = ntfy.send
+        else:
+            typer.echo("ntfy enabled but no topic: run `tradedesk alerts setup-ntfy`", err=True)
     return AlertRouter(
-        cfg, watchlist=watchlist, desktop=desktop, telegram=telegram, dashboard=dashboard
+        cfg,
+        watchlist=watchlist,
+        desktop=desktop,
+        telegram=telegram,
+        dashboard=dashboard,
+        phone=phone,
     )
 
 

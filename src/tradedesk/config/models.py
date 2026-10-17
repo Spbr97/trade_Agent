@@ -305,18 +305,27 @@ class DashboardAlerts(Strict):
     port: int = 8765
 
 
+class NtfyAlerts(Strict):
+    """Phone pushes (alerts/ntfy.py). The topic itself is a secret, never config."""
+
+    enabled: bool = False
+
+
 class GradeRoute(Strict):
     min_score: int = Field(ge=0, le=100)
-    channels: list[Literal["desktop", "telegram", "dashboard"]] = Field(default_factory=list)
+    channels: list[Literal["desktop", "telegram", "ntfy", "dashboard"]] = Field(
+        default_factory=list
+    )
 
 
 class AlertsConfig(Strict):
     desktop: DesktopAlerts = DesktopAlerts()
     telegram: TelegramAlerts = TelegramAlerts()
+    ntfy: NtfyAlerts = NtfyAlerts()
     dashboard: DashboardAlerts = DashboardAlerts()
     grades: dict[str, GradeRoute] = Field(
         default_factory=lambda: {
-            "A": GradeRoute(min_score=80, channels=["desktop", "telegram", "dashboard"]),
+            "A": GradeRoute(min_score=80, channels=["desktop", "telegram", "ntfy", "dashboard"]),
             "B": GradeRoute(min_score=65, channels=["dashboard"]),
             "C": GradeRoute(min_score=0, channels=[]),
         }

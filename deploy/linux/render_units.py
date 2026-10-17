@@ -20,6 +20,9 @@ from pathlib import Path
 from typing import Any
 
 TZ = "Asia/Kolkata"
+# Root-only secrets for a server with no keyring (e.g. TRADEDESK_NTFY_TOPIC). systemd reads it as
+# root before dropping to the service user; "-" means a missing file is not an error.
+ENV_FILE = "/etc/tradedesk/env"
 SCHEDULE = Path(__file__).resolve().parents[1] / "schedule.json"
 DAY_NAMES = ("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat")
 
@@ -85,6 +88,7 @@ def service_unit(job: Mapping[str, Any], *, root: str, user: str) -> str:
             f"WorkingDirectory={root}",
             f"Environment=TZ={TZ}",
             "Environment=PYTHONUNBUFFERED=1",
+            f"EnvironmentFile=-{ENV_FILE}",
             f"ExecStart={root}/.venv/bin/python {root}/scripts/run_hidden.py {command}",
             f"TimeoutStartSec={f'{limit}min' if limit else 'infinity'}",
             "Nice=5",
@@ -130,6 +134,7 @@ def always_on_units(*, root: str, user: str) -> dict[str, str]:
                 f"User={user}",
                 f"WorkingDirectory={root}",
                 f"Environment=TZ={TZ}",
+                f"EnvironmentFile=-{ENV_FILE}",
                 f"ExecStart={exec_start}",
                 "Restart=always",
                 "RestartSec=15",

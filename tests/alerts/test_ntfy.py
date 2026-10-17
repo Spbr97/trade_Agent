@@ -46,3 +46,8 @@ def test_send_is_best_effort_and_skips_without_a_topic(monkeypatch) -> None:
 def test_new_topic_is_long_and_unique() -> None:
     a, b = ntfy.new_topic(), ntfy.new_topic()
     assert a != b and len(a) > 30
+
+
+def test_server_env_topic_wins_over_the_keychain(monkeypatch) -> None:
+    monkeypatch.setenv(ntfy.ENV_VAR, " tradedesk-from-env ")
+    assert ntfy.load_topic() == "tradedesk-from-env"

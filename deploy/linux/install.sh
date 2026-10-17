@@ -45,6 +45,10 @@ fi
 # `command -v` can resolve to the link itself and leave it pointing at itself.
 ln -sfn /usr/bin/cloudflared /usr/local/bin/cloudflared
 
+echo "== root-only secrets file (read by systemd, never by the service user directly)"
+install -d -m 0700 /etc/tradedesk
+[ -e /etc/tradedesk/env ] || install -m 0600 /dev/null /etc/tradedesk/env
+
 echo "== systemd units"
 units="$(mktemp -d)"
 chown "$USER_NAME" "$units"  # rendered as the service user, so it must own the dir

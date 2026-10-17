@@ -77,3 +77,10 @@ def test_systemd_status_maps_to_the_same_rows_as_windows() -> None:
     assert rows["tradedesk-d"]["result"] == task_health.RUNNING
     problems = {p["what"] for p in task_health.task_problems(rows.values())}
     assert problems == {"tradedesk-b"}
+
+
+def test_every_unit_reads_the_root_only_secrets_file() -> None:
+    schedule = json.loads((ROOT / "deploy/schedule.json").read_text(encoding="utf-8"))
+    files = render_units.render(schedule, root="/opt/tradedesk", user="tradedesk")
+    services = [text for name, text in files.items() if name.endswith(".service")]
+    assert services and all("EnvironmentFile=-/etc/tradedesk/env" in t for t in services)

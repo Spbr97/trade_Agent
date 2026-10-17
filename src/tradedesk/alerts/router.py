@@ -1,17 +1,19 @@
 """Route alerts to channels by grade and level (PLAN.md 6.8, 7, config/alerts.yaml).
 
-- Signal alerts (TRIGGERED, CHASED) use the entry's grade: A -> desktop + Telegram +
+- Signal alerts (TRIGGERED, CHASED) use the entry's grade: A -> desktop + Telegram + ntfy +
   dashboard, B -> dashboard, C -> nothing (still logged).
 - Position and health alerts route by level: urgent -> everything enabled, warning ->
-  desktop + dashboard, info -> dashboard.
-Telegram sends are queued and drained by `worker()` (or `flush()` in sync code) so the
-monitor callback never waits on the network.
+  desktop + ntfy + dashboard, info -> dashboard.
+Telegram and ntfy sends are queued and drained by `worker()` (or `flush()` in sync code) so
+the monitor callback never waits on the network; ntfy's blocking HTTP call runs in a worker
+thread.
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from tradedesk.alerts.cards import OutboundMessage, build_message, entry_for
@@ -34,8 +36,11 @@ class AlertRouter:
     desktop: DesktopNotifier | None = None
     telegram: TelegramBot | None = None
     dashboard: DashboardState | None = None
+    # ntfy.send-shaped (title, body, *, urgent) -> delivered; None when no topic is stored
+    phone: Callable[..., bool] | None = None
     routed: list[tuple[Alert, list[str]]] = field(default_factory=list)
     _queue: list[OutboundMessage] = field(default_factory=list)
+    _phone_queue: list[OutboundMessage] = field(default_factory=list)
 
     def channels_for(self, alert: Alert) -> list[str]:
         if alert.kind in SIGNAL_KINDS:
@@ -44,14 +49,15 @@ class AlertRouter:
             route = self.config.grades.get(grade)
             wanted = list(route.channels) if route else []
         elif alert.level is AlertLevel.URGENT:
-            wanted = ["desktop", "telegram", "dashboard"]
+            wanted = ["desktop", "telegram", "ntfy", "dashboard"]
         elif alert.level is AlertLevel.WARNING:
-            wanted = ["desktop", "dashboard"]
+            wanted = ["desktop", "ntfy", "dashboard"]
         else:
             wanted = ["dashboard"]
         enabled = {
             "desktop": self.config.desktop.enabled and self.desktop is not None,
             "telegram": self.config.telegram.enabled and self.telegram is not None,
+            "ntfy": self.config.ntfy.enabled and self.phone is not None,
             "dashboard": self.dashboard is not None,
         }
         return [c for c in wanted if enabled.get(c)]
@@ -68,14 +74,22 @@ class AlertRouter:
             self.desktop.send(msg)
         if "telegram" in channels and self.telegram is not None:
             self._queue.append(msg)
+        if "ntfy" in channels and self.phone is not None:
+            self._phone_queue.append(msg)
         return channels
 
     async def flush(self) -> int:
-        """Send queued Telegram messages now (used by replay and tests)."""
+        """Send queued Telegram and ntfy messages now (used by replay and tests)."""
         n = 0
+        while self._phone_queue:
+            msg = self._phone_queue.pop(0)
+            if self.phone is not None and await asyncio.to_thread(
+                self.phone, msg.title, msg.body, urgent=msg.urgent
+            ):
+                n += 1
         if self.telegram is None:
             self._queue.clear()
-            return 0
+            return n
         while self._queue:
             msg = self._queue.pop(0)
             if await self.telegram.send(msg):
