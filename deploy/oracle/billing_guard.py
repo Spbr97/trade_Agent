@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
@@ -153,6 +154,11 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
     parser.add_argument("--accept", action="store_true", help="record current resources as known")
     parser.add_argument("--profile", default="DEFAULT")
+    parser.add_argument(
+        "--config",
+        default=os.environ.get("OCI_CONFIG_FILE", oci.config.DEFAULT_LOCATION),
+        help="OCI config file (the server keeps its own under /etc/tradedesk/oci)",
+    )
     args = parser.parse_args(argv)
 
     from tradedesk.task_health import alert
@@ -162,7 +168,7 @@ def main(argv: list[str] | None = None) -> int:
     problems: list[str] = []
     actions: list[str] = []
     try:
-        config = oci.config.from_file(profile_name=args.profile)
+        config = oci.config.from_file(file_location=args.config, profile_name=args.profile)
         if args.accept:
             found = resources(config)
             _save(BASELINE, {"accepted_at": now.isoformat(), "resources": found})

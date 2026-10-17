@@ -1,0 +1,16 @@
+[Unit]
+Description=Oracle billing guard (alerts on any charge or unknown resource; stops VMs at the kill limit)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=tradedesk
+WorkingDirectory=/opt/tradedesk
+Environment=TZ=Asia/Kolkata
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/opt/tradedesk/src
+Environment=OCI_CONFIG_FILE=/etc/tradedesk/oci/config
+EnvironmentFile=-/etc/tradedesk/env
+ExecStart=/opt/tradedesk/.venv/bin/python /opt/tradedesk/deploy/oracle/billing_guard.py
+TimeoutStartSec=4min

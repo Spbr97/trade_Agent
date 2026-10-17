@@ -85,5 +85,16 @@ else
   for timer in "$units"/*.timer; do systemctl enable --now "$(basename "$timer")"; done
 fi
 
+echo "== Oracle billing guard (second watcher, on the always-on machine)"
+# Not named tradedesk-*, so the cleanup above never removes it. The timer starts only once the
+# owner has put the Oracle API config and key in /etc/tradedesk/oci (docs/cloud-deploy.md).
+install -m 0644 "$ROOT"/deploy/linux/oracle-billing-guard.service   "$ROOT"/deploy/linux/oracle-billing-guard.timer /etc/systemd/system/
+systemctl daemon-reload
+if [ -f /etc/tradedesk/oci/config ]; then
+  systemctl enable --now oracle-billing-guard.timer
+else
+  echo "   no /etc/tradedesk/oci/config yet: guard timer not started"
+fi
+
 echo "== done. Next: docs/cloud-deploy.md steps 4-6 (data copy, secrets, ntfy)."
 systemctl list-timers 'tradedesk-*' --no-pager | head -15

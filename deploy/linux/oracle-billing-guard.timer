@@ -1,0 +1,12 @@
+[Unit]
+Description=Run the Oracle billing guard every 5 minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+AccuracySec=10s
+Persistent=true
+Unit=oracle-billing-guard.service
+
+[Install]
+WantedBy=timers.target

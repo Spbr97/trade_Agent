@@ -1,4 +1,4 @@
-"""Open a path that an evidence manifest recorded, on any operating system.
+r"""Open a path that an evidence manifest recorded, on any operating system.
 
 Manifests sealed on Windows store their artifact paths as ``data\m14_m18\...``. Linux reads
 that as a single file name containing backslashes and finds nothing. The manifests are
