@@ -40,6 +40,7 @@ from tradedesk.leader_discovery import (
 from tradedesk.markets import bse_market, crypto_market, nse_market
 from tradedesk.models import TradeType, price_decimal
 from tradedesk.prediction_ledger import canonical_sha256
+from tradedesk.stored_path import stored_path
 
 VERSION = "intraday-contract-m17-v1"
 MANIFEST_VERSION = "intraday-acquisition-manifest-v1"
@@ -546,7 +547,7 @@ def build_acquisition_manifest(
 
 
 def _read_manifest_rows(manifest: Mapping[str, Any]) -> list[dict[str, Any]]:
-    path = Path(str(manifest["acquisition_rows"]["path"]))
+    path = stored_path(manifest["acquisition_rows"]["path"])
     if _hash_file(path) != manifest["acquisition_rows"]["sha256"]:
         raise ValueError("M17 acquisition row artifact binding mismatch")
     rows: list[dict[str, Any]] = []
