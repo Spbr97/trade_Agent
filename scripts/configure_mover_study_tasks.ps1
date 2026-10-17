@@ -16,6 +16,8 @@ param(
 #   tradedesk-intraday-study-crypto-search   Saturdays 14:00: weekly crypto search (long only)
 #   tradedesk-news-trial-fetch     hourly 07:20-22:20: enabled news sources only (none by default)
 #   tradedesk-news-trial-score     weekdays 20:45: score each enabled source against the movers
+#   tradedesk-multiday-hold-study  weekdays 21:15 (added 2026-10-17): 1/3/5/10-session hold
+#                                  returns of the research tracker's forward calls, NSE/BSE/crypto
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $pythonw = Join-Path $repoRoot '.venv\Scripts\pythonw.exe'
@@ -23,7 +25,8 @@ $launcher = Join-Path $repoRoot 'scripts\run_hidden.py'
 foreach ($path in @($pythonw, $launcher, (Join-Path $repoRoot 'scripts\filings_watch.py'),
                     (Join-Path $repoRoot 'scripts\mover_study.py'),
                     (Join-Path $repoRoot 'scripts\intraday_mover_study.py'),
-                    (Join-Path $repoRoot 'scripts\news_trial.py'))) {
+                    (Join-Path $repoRoot 'scripts\news_trial.py'),
+                    (Join-Path $repoRoot 'scripts\multiday_hold_study.py'))) {
     if (-not (Test-Path -LiteralPath $path)) { throw "Missing: $path" }
 }
 
@@ -67,6 +70,9 @@ $jobs = @(
     @{ Name = 'tradedesk-intraday-study-bse-search'; Minutes = 180
        Triggers = @(New-ScheduledTaskTrigger -Weekly -WeeksInterval 1 -DaysOfWeek Saturday -At '13:00')
        Args = 'intraday-study-bse-search scripts/intraday_mover_study.py search --market bse' },
+    @{ Name = 'tradedesk-multiday-hold-study'; Minutes = 30
+       Triggers = @(New-ScheduledTaskTrigger -Weekly -WeeksInterval 1 -DaysOfWeek $weekdays -At '21:15')
+       Args = 'multiday-hold-study scripts/multiday_hold_study.py' },
     @{ Name = 'tradedesk-news-trial-fetch'; Minutes = 10; Triggers = @($newsTrigger)
        Args = 'news-trial scripts/news_trial.py fetch' },
     @{ Name = 'tradedesk-news-trial-score'; Minutes = 15
