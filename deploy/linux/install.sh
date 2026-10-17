@@ -52,8 +52,8 @@ chmod 600 /etc/tradedesk/env
 # The INDstocks login lives in an encrypted keyring file. Its password sits only here, is
 # generated once on this machine, and is never printed. Anyone with root can read it, which
 # is true of any unattended setup.
-grep -q '^PYTHON_KEYRING_BACKEND=' /etc/tradedesk/env ||
-  echo 'PYTHON_KEYRING_BACKEND=keyrings.cryptfile.cryptfile.CryptFileKeyring' >> /etc/tradedesk/env
+sed -i '/^PYTHON_KEYRING_BACKEND=/d' /etc/tradedesk/env
+echo 'PYTHON_KEYRING_BACKEND=tradedesk.server_keyring.EnvPasswordKeyring' >> /etc/tradedesk/env
 grep -q '^KEYRING_CRYPTFILE_PASSWORD=' /etc/tradedesk/env ||
   echo "KEYRING_CRYPTFILE_PASSWORD=$(head -c 32 /dev/urandom | base64 | tr -d '=+/\n')" >> /etc/tradedesk/env
 # `tradedesk-cli auth setup` etc. run as the service user with that environment, on a real
