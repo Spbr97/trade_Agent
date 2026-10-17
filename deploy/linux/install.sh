@@ -48,6 +48,21 @@ ln -sfn /usr/bin/cloudflared /usr/local/bin/cloudflared
 echo "== root-only secrets file (read by systemd, never by the service user directly)"
 install -d -m 0700 /etc/tradedesk
 [ -e /etc/tradedesk/env ] || install -m 0600 /dev/null /etc/tradedesk/env
+chmod 600 /etc/tradedesk/env
+# The INDstocks login lives in an encrypted keyring file. Its password sits only here, is
+# generated once on this machine, and is never printed. Anyone with root can read it, which
+# is true of any unattended setup.
+grep -q '^PYTHON_KEYRING_BACKEND=' /etc/tradedesk/env ||
+  echo 'PYTHON_KEYRING_BACKEND=keyrings.cryptfile.cryptfile.CryptFileKeyring' >> /etc/tradedesk/env
+grep -q '^KEYRING_CRYPTFILE_PASSWORD=' /etc/tradedesk/env ||
+  echo "KEYRING_CRYPTFILE_PASSWORD=$(head -c 32 /dev/urandom | base64 | tr -d '=+/\n')" >> /etc/tradedesk/env
+# `tradedesk-cli auth setup` etc. run as the service user with that environment, on a real
+# terminal so hidden prompts work (a plain `sudo -u tradedesk` would not see the password).
+cat > /usr/local/bin/tradedesk-cli <<'WRAP'
+#!/usr/bin/env bash
+exec sudo systemd-run -t --quiet --wait --collect -p User=tradedesk   -p EnvironmentFile=/etc/tradedesk/env -p WorkingDirectory=/opt/tradedesk   /opt/tradedesk/.venv/bin/tradedesk "$@"
+WRAP
+chmod 755 /usr/local/bin/tradedesk-cli
 
 echo "== systemd units"
 units="$(mktemp -d)"
