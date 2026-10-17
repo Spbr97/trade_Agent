@@ -55,3 +55,26 @@ def test_too_few_days_reports_no_t() -> None:
     )
     (row,) = study.summarize(rows, cost=0.0)
     assert row["day_net_t"] is None
+
+
+def test_hedged_book_subtracts_the_index_over_the_same_entry_and_exit_sessions() -> None:
+    bars = {"A": _bars([100.0, 110.0, 120.0, 130.0])}
+    index = _bars([1000.0, 1010.0, 1020.0, 1030.0])
+    calls = [{"rule": "r", "scrip_code": "A", "armed_on": "2026-10-01"}]
+
+    out = study.hold_returns(calls, bars, holds=(3,), index=index)
+    net = study.books_for("nse", 0.004)["hedged"](out)
+
+    stock, nifty = 130 / 109 - 1, 1030 / 1009 - 1
+    expected = stock - nifty - 0.004 - study.INDEX_FUTURES_ROUND_TRIP
+    assert float(net.iloc[0]) == pytest.approx(expected)
+
+
+def test_crypto_futures_books_charge_fees_and_funding_to_both_sides() -> None:
+    returns = pd.DataFrame([{"gross": 0.05, "hold": 5, "index_gross": float("nan")}])
+    books = study.books_for("crypto", 0.0157)
+    drag = study.CRYPTO_FUTURES_ROUND_TRIP + 5 * study.CRYPTO_FUNDING_PER_DAY
+
+    assert float(books["fut_long"](returns).iloc[0]) == pytest.approx(0.05 - drag)
+    assert float(books["fut_short"](returns).iloc[0]) == pytest.approx(-0.05 - drag)
+    assert float(books["spot_long"](returns).iloc[0]) == pytest.approx(0.05 - 0.0157)

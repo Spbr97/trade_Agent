@@ -22,8 +22,18 @@ Rules of the read:
   * Holds overlap (a 10-session hold spans the next nine arming days), so even the
     day-clustered t is optimistic for h > 1. Read it as a screen, not a verdict.
   * `vs_control` is the per-day mean of a rule minus the random control on the same days.
-    It is a market-neutral read: profitable only to someone who can short the index
-    against the basket. `net` is what a long-only trader taking every pick would have made.
+
+Books (added 2026-10-17, once the user confirmed CoinDCX futures and NSE index futures):
+  * NSE/BSE `long`: buy the stock, delivery costs.
+  * NSE/BSE `hedged`: buy the stock and short NIFTY 50 futures over the same window, so the
+    market's move cancels. Costs are delivery plus the futures round trip. Real hedging is
+    lumpy: one NIFTY lot is 65 units, about Rs 15 lakh of index, so the long basket must be
+    that size for the hedge to be whole. The study ignores that; a trader cannot.
+  * crypto `spot_long`: CoinDCX spot, real fees and 1% TDS.
+  * crypto `fut_long` / `fut_short`: the spot price move as a stand-in for the perpetual,
+    CoinDCX futures taker fees plus GST, slippage, and an ASSUMED funding charge against
+    either side. CoinDCX's funding history is not in this repo, and sources disagree on
+    whether TDS applies to futures; both are flagged in the report until verified.
 
 Research only: nothing here alerts, sizes or trades. Output: data/m14_m18/multiday_hold_study.
 """
@@ -50,15 +60,52 @@ OUTPUT_ROOT = OUTPUT / "multiday_hold_study"
 HOLDS = (1, 3, 5, 10)
 CONTROL = "random_eligible"
 MIN_DAYS_FOR_T = 5
+INDEX_NAME = "NIFTY 50"
+# NIFTY futures round trip as a fraction of notional: STT 0.05% on the sell leg (Budget 2026,
+# from 1 Apr 2026), exchange/SEBI/stamp/GST ~0.006%, ~0.01% slippage a leg on the most liquid
+# contract in India. Approximate; brokerage is negligible at one lot's notional.
+INDEX_FUTURES_ROUND_TRIP = 0.0008
+# CoinDCX futures: 0.075% taker a leg (regular tier, its own fee page) plus 18% GST on the
+# fee, plus the crypto market's 0.05% slippage a leg.
+CRYPTO_FUTURES_ROUND_TRIP = 2 * 0.00075 * 1.18 + 2 * 0.0005
+# ASSUMED: 0.01% per 8 hours, the common perpetual baseline, charged against either side so
+# the estimate is conservative. Replace with CoinDCX's real funding history once fetched.
+CRYPTO_FUNDING_PER_DAY = 0.0003
+
+
+def books_for(market: str, delivery_cost: float) -> dict[str, Any]:
+    """book -> function(returns frame) -> net return per row."""
+
+    if market == "crypto":
+        def fut(sign: int) -> Any:
+            return lambda r: sign * r["gross"] - CRYPTO_FUTURES_ROUND_TRIP - (
+                CRYPTO_FUNDING_PER_DAY * r["hold"]
+            )
+
+        return {
+            "spot_long": lambda r: r["gross"] - delivery_cost,
+            "fut_long": fut(1),
+            "fut_short": fut(-1),
+        }
+    return {
+        "long": lambda r: r["gross"] - delivery_cost,
+        "hedged": lambda r: r["gross"] - r["index_gross"] - delivery_cost
+        - INDEX_FUTURES_ROUND_TRIP,
+    }
 
 
 def hold_returns(
     calls: Iterable[Mapping[str, Any]],
     bars: Mapping[str, pd.DataFrame],
     holds: Sequence[int] = HOLDS,
+    index: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     """One row per (call, hold) whose exit close exists. `bars[code]` is a daily frame with
-    `open`/`close` and an IST `session` date column in ascending order."""
+    `open`/`close` and an IST `session` date column in ascending order. With `index`, also
+    the index's open-to-close return over the same entry and exit sessions (NaN if the
+    index has no bar on either)."""
+
+    index_by_day = None if index is None else index.set_index("session")
 
     out: list[dict[str, Any]] = []
     for call in calls:
@@ -77,6 +124,13 @@ def hold_returns(
             last = i0 + hold - 1
             if last >= len(frame):
                 continue
+            index_gross = float("nan")
+            if index_by_day is not None:
+                start, end = frame["session"].iloc[i0], frame["session"].iloc[last]
+                if start in index_by_day.index and end in index_by_day.index:
+                    index_gross = float(index_by_day.at[end, "close"]) / float(
+                        index_by_day.at[start, "open"]
+                    ) - 1.0
             out.append(
                 {
                     "rule": call["rule"],
@@ -84,9 +138,11 @@ def hold_returns(
                     "armed_on": armed.isoformat(),
                     "hold": hold,
                     "gross": float(frame["close"].iloc[last]) / entry - 1.0,
+                    "index_gross": index_gross,
                 }
             )
-    return pd.DataFrame(out, columns=["rule", "scrip_code", "armed_on", "hold", "gross"])
+    columns = ["rule", "scrip_code", "armed_on", "hold", "gross", "index_gross"]
+    return pd.DataFrame(out, columns=columns)
 
 
 def _day_t(values: pd.Series) -> float | None:
@@ -96,13 +152,19 @@ def _day_t(values: pd.Series) -> float | None:
     return float(values.mean() / (sd / np.sqrt(len(values)))) if sd > 0 else None
 
 
-def summarize(returns: pd.DataFrame, cost: float, control: str = CONTROL) -> list[dict[str, Any]]:
+def summarize(
+    returns: pd.DataFrame, cost: float | Any, control: str = CONTROL
+) -> list[dict[str, Any]]:
     """Per (rule, hold): picks, days, mean gross/net per pick, share of picks green after
-    costs, day-clustered mean and t of net, and the same-day difference to the control."""
+    costs, day-clustered mean and t of net, and the same-day difference to the control.
+    `cost` is a flat round-trip fraction, or a function of the returns frame giving net."""
 
     if returns.empty:
         return []
-    frame = returns.assign(net=returns["gross"] - cost)
+    net = cost(returns) if callable(cost) else returns["gross"] - cost
+    frame = returns.assign(net=net).dropna(subset=["net"])
+    if frame.empty:
+        return []
     daily_net = frame.groupby(["rule", "hold", "armed_on"])["net"].mean()
     rows: list[dict[str, Any]] = []
     for (rule, hold), group in frame.groupby(["rule", "hold"], sort=True):
@@ -135,6 +197,14 @@ def summarize(returns: pd.DataFrame, cost: float, control: str = CONTROL) -> lis
 # ------------------------------------------------------------------------------ run
 
 
+def _frame(raw: pd.DataFrame | None) -> pd.DataFrame | None:
+    if raw is None or raw.empty:
+        return None
+    frame = raw[["open", "close"]].copy()
+    frame["session"] = pd.DatetimeIndex(raw.index).tz_convert("Asia/Kolkata").date
+    return frame.reset_index(drop=True)
+
+
 def _load_bars(market: str, codes: Iterable[str]) -> dict[str, pd.DataFrame]:
     from tradedesk.analysis import db_for
     from tradedesk.data.candle_store import CandleStore
@@ -142,13 +212,21 @@ def _load_bars(market: str, codes: Iterable[str]) -> dict[str, pd.DataFrame]:
     bars: dict[str, pd.DataFrame] = {}
     with CandleStore(db_for(market)) as store:
         for code in sorted(set(codes)):
-            raw = store.load(code, Interval.D1)
-            if raw is None or raw.empty:
-                continue
-            frame = raw[["open", "close"]].copy()
-            frame["session"] = pd.DatetimeIndex(raw.index).tz_convert("Asia/Kolkata").date
-            bars[code] = frame.reset_index(drop=True)
+            frame = _frame(store.load(code, Interval.D1))
+            if frame is not None:
+                bars[code] = frame
     return bars
+
+
+def _load_index() -> pd.DataFrame | None:
+    """NIFTY 50 daily bars from the NSE store; the hedge for NSE and BSE baskets alike."""
+
+    from tradedesk.analysis import db_for
+    from tradedesk.data.candle_store import CandleStore
+
+    with CandleStore(db_for("nse")) as store:
+        code = store.index_code(INDEX_NAME)
+        return _frame(store.load(code, Interval.D1)) if code else None
 
 
 def run(market: str, *, root: Path | None = None) -> dict[str, Any]:
@@ -159,8 +237,14 @@ def run(market: str, *, root: Path | None = None) -> dict[str, Any]:
         research_tracker.log_path_for(market)
     ).values()]
     bars = _load_bars(market, (str(call["scrip_code"]) for call in calls))
-    returns = hold_returns(calls, bars)
+    index = None if market == "crypto" else _load_index()
+    returns = hold_returns(calls, bars, index=index)
     cost = daily.cost_fraction(market, TradeType.DELIVERY)
+    rows = [
+        {"book": book, **row}
+        for book, net in books_for(market, cost).items()
+        for row in summarize(returns, net)
+    ]
     armed = sorted({str(call["armed_on"]) for call in calls})
     report = {
         "version": VERSION,
@@ -171,15 +255,21 @@ def run(market: str, *, root: Path | None = None) -> dict[str, Any]:
         "last_armed": armed[-1] if armed else None,
         "holds": list(HOLDS),
         "round_trip_cost": cost,
+        "index_futures_round_trip": None if market == "crypto" else INDEX_FUTURES_ROUND_TRIP,
+        "crypto_futures_round_trip": CRYPTO_FUTURES_ROUND_TRIP if market == "crypto" else None,
+        "crypto_funding_per_day_assumed": CRYPTO_FUNDING_PER_DAY if market == "crypto" else None,
         "control": CONTROL,
-        "rows": summarize(returns, cost),
+        "rows": rows,
         "caveats": [
             "Rules were chosen on 2023-2026 data; these calls are forward-only since the "
             "tracker started, so the evidence is new but the rule choice is not.",
             "Four holds are four looks at the same calls; a lone 'win' at one hold is weak.",
             "Day-clustered t still ignores overlap between holds longer than one session.",
-            "vs_control is market-neutral: it pays only if the index can be shorted against "
-            "the basket. net is the long-only result.",
+            "hedged needs about Rs 15 lakh of stocks per NIFTY lot (65 units) to be a whole "
+            "hedge; smaller baskets are under- or over-hedged.",
+            "Crypto futures use the spot move as a stand-in for the perpetual, an assumed "
+            "funding charge, and no TDS; verify TDS and funding on CoinDCX before relying on "
+            "the futures books.",
         ],
         "research_only": True,
     }
@@ -203,12 +293,12 @@ def render(report: Mapping[str, Any]) -> str:
         f"round-trip cost {100 * report['round_trip_cost']:.2f}%; day-clustered t; "
         "research only",
         "",
-        f"{'rule':28} {'hold':>4} {'picks':>5} {'days':>4} {'net/pick':>9} {'green':>6} "
-        f"{'day t':>6} {'vs ctrl':>8} {'t':>6}",
+        f"{'book':9} {'rule':28} {'hold':>4} {'picks':>5} {'days':>4} {'net/pick':>9} "
+        f"{'green':>6} {'day t':>6} {'vs ctrl':>8} {'t':>6}",
     ]
     for row in report["rows"]:
         lines.append(
-            f"{row['rule']:28} {row['hold']:>4} {row['picks']:>5} {row['days']:>4} "
+            f"{row['book']:9} {row['rule']:28} {row['hold']:>4} {row['picks']:>5} {row['days']:>4} "
             f"{pct(row['net_mean']):>9} {100 * row['green_share']:>5.0f}% "
             f"{tval(row['day_net_t']):>6} {pct(row['vs_control_mean']):>8} "
             f"{tval(row['vs_control_t']):>6}"
