@@ -716,6 +716,47 @@ def _stable_floats(value: Any) -> Any:
     return value
 
 
+def _pending_outcomes(rows: Sequence[Mapping[str, Any]]) -> list[str]:
+    """``scrip_code:column`` for every forward outcome not yet known at freeze time."""
+
+    return sorted(
+        f"{row.get('scrip_code')}:{column}"
+        for row in rows
+        for column in OUTCOME_COLUMNS
+        if (row.get("opportunity") or {}).get(column) is None
+    )
+
+
+def _mask_pending(
+    rows: Sequence[Mapping[str, Any]], pending: Iterable[str]
+) -> list[dict[str, Any]]:
+    """Put outcomes that were still pending at freeze time back to None, so a label that
+    matures on schedule is not read as a rewrite. Every value known at freeze stays hashed."""
+
+    by_code: dict[str, set[str]] = {}
+    for item in pending:
+        code, _, column = str(item).rpartition(":")
+        by_code.setdefault(code, set()).add(column)
+    masked = []
+    for row in rows:
+        columns = by_code.get(str(row.get("scrip_code")), set())
+        opportunity = row.get("opportunity")
+        if columns and isinstance(opportunity, Mapping):
+            opportunity = {
+                key: (None if key in columns else value) for key, value in opportunity.items()
+            }
+        masked.append({**row, "opportunity": opportunity})
+    return masked
+
+
+def _legacy_pending_masks(rows: Sequence[Mapping[str, Any]]) -> list[list[str]]:
+    """A freeze written before ``pending_outcomes`` existed did not record which outcomes
+    were pending. Rows exist only once the 3-session outcomes are mature, so the 5-session
+    close return is the only one that can still be pending: try "nothing pending", then it."""
+
+    return [[], sorted(f"{row.get('scrip_code')}:forward_close_return_5" for row in rows)]
+
+
 def _freeze_prospective_sessions(
     rows: Sequence[Mapping[str, Any]],
     summaries: Sequence[Mapping[str, Any]],
@@ -772,6 +813,7 @@ def _freeze_prospective_sessions(
             "contract_sha256": contract_sha256,
             "row_count": len(immutable_rows),
             "causal_rows_sha256": canonical_sha256(_stable_floats(immutable_rows)),
+            "pending_outcomes": _pending_outcomes(immutable_rows),
             "active_model_changed": False,
             "eligible_for_live": False,
         }
@@ -784,17 +826,24 @@ def _freeze_prospective_sessions(
             existing_hash = existing.get("artifact_sha256")
             if existing_hash != canonical_sha256(_report_without_hash(existing)):
                 raise ValueError(f"prospective freeze {session} hash mismatch")
-            for key in (
-                "version",
-                "market",
-                "contract_sha256",
-                "row_count",
-                "causal_rows_sha256",
-            ):
+            for key in ("version", "market", "contract_sha256", "row_count"):
                 if existing.get(key) != payload.get(key):
                     raise ValueError(
                         f"prospective freeze {session} changed at immutable field {key}"
                     )
+            recorded = existing.get("pending_outcomes")
+            masks = [recorded] if isinstance(recorded, list) else (
+                _legacy_pending_masks(immutable_rows)
+            )
+            if not any(
+                canonical_sha256(_stable_floats(_mask_pending(immutable_rows, mask)))
+                == existing.get("causal_rows_sha256")
+                for mask in masks
+            ):
+                raise ValueError(
+                    f"prospective freeze {session} changed at immutable field "
+                    "causal_rows_sha256"
+                )
             payload = existing
         else:
             _atomic_text(path, json.dumps(payload, indent=2, sort_keys=True) + "\n")

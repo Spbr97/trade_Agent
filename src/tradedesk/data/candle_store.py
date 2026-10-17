@@ -10,6 +10,7 @@ never written back, so a feed that does serve unadjusted prices can opt in witho
 
 from __future__ import annotations
 
+import os
 import time
 from collections.abc import Iterable, Sequence
 from datetime import date, datetime, timedelta
@@ -80,21 +81,34 @@ def _epoch(dt: datetime) -> int:
 # hit this (each is its own process-local DB), so retry only applies to real files.
 _CONNECT_RETRIES = 5
 _CONNECT_BACKOFF_S = 1.0  # doubles each attempt: 1, 2, 4, 8, 16s - ~31s worst case
+# Background jobs may wait longer. 2026-10-16: after a power cut every missed task caught up
+# at once and three BSE jobs lost the ~31s race to a BSE data load. scripts/run_hidden.py
+# sets this for scheduled batch jobs only, never for the dashboard or a live session, which
+# must not sit blocked for minutes.
+LOCK_WAIT_ENV = "TRADEDESK_DB_LOCK_WAIT_S"
+_MAX_BACKOFF_S = 30.0
 
 
 def _connect_with_retry(path: str) -> duckdb.DuckDBPyConnection:
     if path == ":memory:":
         return duckdb.connect(path)
+    try:
+        extra_wait = max(0.0, float(os.environ.get(LOCK_WAIT_ENV, "0")))
+    except ValueError:
+        extra_wait = 0.0
     delay = _CONNECT_BACKOFF_S
-    for attempt in range(_CONNECT_RETRIES + 1):
+    waited = 0.0
+    attempt = 0
+    while True:
         try:
             return duckdb.connect(path)
         except duckdb.IOException:
-            if attempt == _CONNECT_RETRIES:
+            if attempt >= _CONNECT_RETRIES and waited >= extra_wait:
                 raise
             time.sleep(delay)
-            delay *= 2
-    raise AssertionError("unreachable")  # the loop always returns or raises
+            waited += delay
+            attempt += 1
+            delay = min(delay * 2, _MAX_BACKOFF_S)
 
 
 class CandleStore:

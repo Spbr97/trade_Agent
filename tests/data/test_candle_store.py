@@ -330,6 +330,39 @@ def test_connect_raises_the_real_error_once_retries_are_exhausted(tmp_path: Path
         proc.wait(timeout=5)
 
 
+def test_batch_lock_wait_keeps_retrying_past_the_default_budget(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A scheduled job given TRADEDESK_DB_LOCK_WAIT_S outlasts a lock that beats the default."""
+    import duckdb
+
+    from tradedesk.data import candle_store as cs_module
+
+    calls: list[str] = []
+    slept: list[float] = []
+
+    def connect(path: str) -> object:
+        calls.append(path)
+        if len(calls) <= 6:  # one more failure than _CONNECT_RETRIES allows
+            raise duckdb.IOException("Cannot open file: used by another process")
+        return "connection"
+
+    monkeypatch.setattr(cs_module, "_CONNECT_RETRIES", 2)
+    monkeypatch.setattr(cs_module, "_CONNECT_BACKOFF_S", 1.0)
+    monkeypatch.setattr(cs_module.duckdb, "connect", connect)
+    monkeypatch.setattr(cs_module.time, "sleep", slept.append)
+
+    monkeypatch.delenv(cs_module.LOCK_WAIT_ENV, raising=False)
+    with pytest.raises(duckdb.IOException):
+        cs_module._connect_with_retry(str(tmp_path / "x.duckdb"))
+
+    calls.clear()
+    slept.clear()
+    monkeypatch.setenv(cs_module.LOCK_WAIT_ENV, "60")
+    assert cs_module._connect_with_retry(str(tmp_path / "x.duckdb")) == "connection"
+    assert max(slept) <= cs_module._MAX_BACKOFF_S
+
+
 def test_scan_uses_todays_bar_for_equity_but_only_closed_bars_for_crypto(
     store: CandleStore,
 ) -> None:

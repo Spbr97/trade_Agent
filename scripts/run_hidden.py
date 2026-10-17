@@ -8,16 +8,22 @@ data/logs/<log-name>.log, and the exit code is preserved.
 
 from __future__ import annotations
 
+import os
 import runpy
 import sys
 from datetime import datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+BATCH_DB_LOCK_WAIT_S = "300"  # see data/candle_store.py LOCK_WAIT_ENV
 
 
 def main() -> int:
     log_name, script, *args = sys.argv[1:]
+    if not log_name.endswith("live-session"):
+        # Batch jobs wait out another job's DuckDB lock instead of failing; a live session
+        # keeps the short default so it never sits blocked during market hours.
+        os.environ.setdefault("TRADEDESK_DB_LOCK_WAIT_S", BATCH_DB_LOCK_WAIT_S)
     log_dir = ROOT / "data" / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
     target = Path(script)
