@@ -46,7 +46,9 @@ fi
 ln -sfn /usr/bin/cloudflared /usr/local/bin/cloudflared
 
 echo "== root-only secrets file (read by systemd, never by the service user directly)"
-install -d -m 0700 /etc/tradedesk
+# 0711: services may pass through to their own folders (oci/, owned by the guard user), but
+# cannot list it or read env, which stays 0600 root and is read by systemd itself.
+install -d -m 0711 /etc/tradedesk
 [ -e /etc/tradedesk/env ] || install -m 0600 /dev/null /etc/tradedesk/env
 chmod 600 /etc/tradedesk/env
 # The INDstocks login lives in an encrypted keyring file. Its password sits only here, is
