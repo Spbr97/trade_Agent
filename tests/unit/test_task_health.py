@@ -66,12 +66,12 @@ def test_new_survivors_are_announced_once(tmp_path) -> None:
     )
     state = tmp_path / "notified.json"
     sent: list[str] = []
-    original = task_health.toast
-    task_health.toast = lambda title, body, urgent=False: sent.append(body) or True  # type: ignore[assignment]
+    original = task_health.alert
+    task_health.alert = lambda title, body, urgent=False: sent.append(body) or True  # type: ignore[assignment]
     try:
         first = task_health.watch_survivors(state, lab)
         second = task_health.watch_survivors(state, lab)
     finally:
-        task_health.toast = original  # type: ignore[assignment]
+        task_health.alert = original  # type: ignore[assignment]
     assert first == ["intraday_mover_study/nse:opening_bar:x/short_rest_of_day"]
     assert second == [] and len(sent) == 1

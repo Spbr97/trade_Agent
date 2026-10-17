@@ -1,9 +1,9 @@
 """Announce the intraday mover study's consensus paper picks as they register.
 
-Read-only towards the study: it reads the hash-chained forward_picks.jsonl and toasts each
+Read-only towards the study: it reads the hash-chained forward_picks.jsonl and announces each
 `consensus_top3` row once, labelled research-only. Called by the equity collector right after
-it registers picks, so no chat session has to be running. A toast is local to this machine;
-nothing is sent to an outside service.
+it registers picks, so no chat session has to be running. Delivery is task_health.alert: a
+desktop toast, plus an ntfy phone push only when a topic has been stored.
 """
 
 from __future__ import annotations
@@ -75,7 +75,7 @@ def announce_new_picks(
         return []
     names = _symbols(instruments)
     if send is None:
-        from tradedesk.task_health import toast as send  # local desktop toast
+        from tradedesk.task_health import alert as send  # desktop toast + ntfy push
     done: list[str] = []
     for key, row in fresh:
         codes = ", ".join(names.get(c, c) for c in row["codes"])

@@ -5,6 +5,7 @@ CLAUDE.md is accurate and fail with the milestone that implements them."""
 from __future__ import annotations
 
 import asyncio
+import sys
 from collections.abc import Awaitable, Callable
 from datetime import date, datetime, timedelta
 from decimal import Decimal
@@ -1181,6 +1182,35 @@ def alerts_chat_id() -> None:
     if not token:
         raise typer.BadParameter("no bot token stored; run `tradedesk alerts setup-telegram`")
     typer.echo(asyncio.run(TelegramBot(token=token, chat_id=0).my_chat_ids()))
+
+
+@alerts_app.command("setup-ntfy")
+def alerts_setup_ntfy(
+    stdin: bool = typer.Option(False, "--stdin", help="read an existing topic from stdin"),
+) -> None:
+    """Store an ntfy topic in the keychain (a new random one unless --stdin), for phone
+    pushes on a machine with no desktop. Subscribe to the printed topic in the ntfy app."""
+    from tradedesk.alerts import ntfy
+
+    topic = sys.stdin.readline().strip() if stdin else ntfy.new_topic()
+    if len(topic) < 20:
+        raise typer.BadParameter("use a long random topic; anyone who knows it can read it")
+    ntfy.store_topic(topic)
+    typer.echo(f"stored in keychain service '{ntfy.SERVICE}'.")
+    if not stdin:
+        typer.echo(f"Subscribe to this topic in the ntfy app (server {ntfy.SERVER}): {topic}")
+        typer.echo("Keep it private. Then run `tradedesk alerts ntfy-test`.")
+
+
+@alerts_app.command("ntfy-test")
+def alerts_ntfy_test() -> None:
+    """Send one test push to the stored ntfy topic."""
+    from tradedesk.alerts import ntfy
+
+    if not ntfy.load_topic():
+        raise typer.BadParameter("no topic stored; run `tradedesk alerts setup-ntfy`")
+    ok = ntfy.send("tradedesk test", "ntfy phone pushes are wired.")
+    typer.echo("sent" if ok else "not sent; see the log line above")
 
 
 @alerts_app.command("test")

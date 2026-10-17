@@ -1,0 +1,1454 @@
+{
+  "timezone": "Asia/Kolkata",
+  "jobs": [
+    {
+      "name": "tradedesk-after-close",
+      "enabled": true,
+      "command": [
+        "after-close",
+        "scripts/accuracy_collection_pipeline.py",
+        "--market",
+        "nse"
+      ],
+      "windows_action": "C:\\Users\\sibap\\OneDrive\\Documents\\Trade_Agent\\.venv\\Scripts\\pythonw.exe \"C:\\Users\\sibap\\OneDrive\\Documents\\Trade_Agent\\scripts\\run_hidden.py\" after-close scripts/accuracy_collection_pipeline.py --market nse",
+      "time_limit_minutes": 240,
+      "triggers": [
+        {
+          "kind": "Weekly",
+          "at": "16:00",
+          "first_date": "2026-09-12",
+          "days": [
+            "Mon",
+            "Tue",
+            "Wed",
+            "Thu",
+            "Fri"
+          ],
+          "every_days": null,
+          "repeat_minutes": null,
+          "repeat_for_minutes": null,
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "name": "tradedesk-bse-after-close",
+      "enabled": true,
+      "command": [
+        "bse-after-close",
+        "scripts/accuracy_collection_pipeline.py",
+        "--market",
+        "bse"
+      ],
+      "windows_action": "C:\\Users\\sibap\\OneDrive\\Documents\\Trade_Agent\\.venv\\Scripts\\pythonw.exe \"C:\\Users\\sibap\\OneDrive\\Documents\\Trade_Agent\\scripts\\run_hidden.py\" bse-after-close scripts/accuracy_collection_pipeline.py --market bse",
+      "time_limit_minutes": 240,
+      "triggers": [
+        {
+          "kind": "Weekly",
+          "at": "16:15",
+          "first_date": "2026-09-12",
+          "days": [
+            "Mon",
+            "Tue",
+            "Wed",
+            "Thu",
+            "Fri"
+          ],
+          "every_days": null,
+          "repeat_minutes": null,
+          "repeat_for_minutes": null,
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "name": "tradedesk-bse-live-session",
+      "enabled": true,
+      "command": [
+        "bse-live-session",
+        "tradedesk",
+        "live",
+        "--market",
+        "bse",
+        "--until",
+        "15:35",
+        "--no-dashboard"
+      ],
+      "windows_action": "C:\\Users\\sibap\\OneDrive\\Documents\\Trade_Agent\\.venv\\Scripts\\pythonw.exe \"C:\\Users\\sibap\\OneDrive\\Documents\\Trade_Agent\\scripts\\run_hidden.py\" bse-live-session tradedesk live --market bse --until 15:35 --no-dashboard",
+      "time_limit_minutes": 420,
+      "triggers": [
+        {
+          "kind": "Weekly",
+          "at": "09:10",
+          "first_date": "2026-09-12",
+          "days": [
+            "Mon",
+            "Tue",
+            "Wed",
+            "Thu",
+            "Fri"
+          ],
+          "every_days": null,
+          "repeat_minutes": null,
+          "repeat_for_minutes": null,
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "name": "tradedesk-bse-research-tracker",
+      "enabled": true,
+      "command": [
+        "bse-research-tracker",
+        "scripts/research_tracker.py",
+        "run",
+        "--market",
+        "bse"
+      ],
+      "windows_action": "C:\\Users\\sibap\\OneDrive\\Documents\\Trade_Agent\\.venv\\Scripts\\pythonw.exe \"C:\\Users\\sibap\\OneDrive\\Documents\\Trade_Agent\\scripts\\run_hidden.py\" bse-research-tracker scripts/research_tracker.py run --market bse",
+      "time_limit_minutes": 180,
+      "triggers": [
+        {
+          "kind": "Weekly",
+          "at": "16:40",
+          "first_date": "2026-09-13",
+          "days": [
+            "Mon",
+            "Tue",
+            "Wed",
+            "Thu",
+            "Fri"
+          ],
+          "every_days": null,
+          "repeat_minutes": null,
+          "repeat_for_minutes": null,
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "name": "tradedesk-bse-self-review",
+      "enabled": true,
+      "command": [
+        "bse-self-review",
+        "tradedesk",
+        "review",
+        "self-review-run",
+        "--market",
+        "bse"
+      ],
+      "windows_action": "C:\\Users\\sibap\\OneDrive\\Documents\\Trade_Agent\\.venv\\Scripts\\pythonw.exe \"C:\\Users\\sibap\\OneDrive\\Documents\\Trade_Agent\\scripts\\run_hidden.py\" bse-self-review tradedesk review self-review-run --market bse",
+      "time_limit_minutes": 4320,
+      "triggers": [
+        {
+          "kind": "Daily",
+          "at": "16:40",
+          "first_date": "2026-09-29",
+          "days": [],
+          "every_days": 1,
+          "repeat_minutes": null,
+          "repeat_for_minutes": null,
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "name": "tradedesk-bse-tracker",
+      "enabled": true,
+      "command": [
+        "bse-tracker",
+        "scripts/bse_signal_tracker.py"
+      ],
+      "windows_action": "C:\\Users\\sibap\\OneDrive\\Documents\\Trade_Agent\\.venv\\Scripts\\pythonw.exe \"C:\\Users\\sibap\\OneDrive\\Documents\\Trade_Agent\\scripts\\run_hidden.py\" bse-tracker scripts/bse_signal_tracker.py",
+      "time_limit_minutes": 15,
+      "triggers": [
+        {
+          "kind": "Weekly",
+          "at": "16:05",
+          "first_date": "2026-09-12",
+          "days": [
+            "Mon",
+            "Tue",
+            "Wed",
+            "Thu",
+            "Fri"
+          ],
+          "every_days": null,
+          "repeat_minutes": null,
+          "repeat_for_minutes": null,
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "name": "tradedesk-cloudflare-tunnel",
+      "enabled": true,
+      "command": null,
+      "windows_action": "C:\\Users\\sibap\\bin\\cloudflared.exe tunnel --url http://localhost:8765 --logfile \"C:\\Users\\sibap\\OneDrive\\Documents\\Trade_Agent\\data\\reports\\cloudflare_tunnel.log\"",
+      "time_limit_minutes": 0,
+      "triggers": [
+        {
+          "kind": "Time",
+          "at": "13:25",
+          "first_date": "2026-09-14",
+          "days": [],
+          "every_days": null,
+          "repeat_minutes": 60,
+          "repeat_for_minutes": 5256000,
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "name": "tradedesk-crypto-eod-learning",
+      "enabled": true,
+      "command": [
+        "crypto-eod-learning",
+        "scripts/research_tracker.py",
+        "eod-learn",
+        "--market",
+        "crypto"
+      ],
+      "windows_action": "C:\\Users\\sibap\\OneDrive\\Documents\\Trade_Agent\\.venv\\Scripts\\pythonw.exe \"C:\\Users\\sibap\\OneDrive\\Documents\\Trade_Agent\\scripts\\run_hidden.py\" crypto-eod-learning scripts/research_tracker.py eod-learn --market crypto",
+      "time_limit_minutes": 120,
+      "triggers": [
+        {
+          "kind": "Daily",
+          "at": "20:10",
+          "first_date": "2026-09-14",
+          "days": [],
+          "every_days": 1,
+          "repeat_minutes": null,
+          "repeat_for_minutes": null,
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "name": "tradedesk-crypto-pre-takeoff-watch",
+      "enabled": true,
+      "command": [
+        "crypto-pre-takeoff-watch",
+        "scripts/pre_takeoff_watch.py",
+        "collect",
+        "--market",
+        "crypto"
+      ],
+      "windows_action": "C:\\Users\\sibap\\OneDrive\\Documents\\Trade_Agent\\.venv\\Scripts\\pythonw.exe \"C:\\Users\\sibap\\OneDrive\\Documents\\Trade_Agent\\scripts\\run_hidden.py\" crypto-pre-takeoff-watch scripts/pre_takeoff_watch.py collect --market crypto",
+      "time_limit_minutes": 10,
+      "triggers": [
+        {
+          "kind": "Time",
+          "at": "15:32",
+          "first_date": "2026-10-11",
+          "days": [],
+          "every_days": null,
+          "repeat_minutes": 15,
+          "repeat_for_minutes": 5256000,
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "name": "tradedesk-crypto-research-tracker",
+      "enabled": true,
+      "command": [
+        "crypto-research-tracker",
+        "scripts/research_tracker.py",
+        "run",
+        "--market",
+        "crypto"
+      ],
+      "windows_action": "C:\\Users\\sibap\\OneDrive\\Documents\\Trade_Agent\\.venv\\Scripts\\pythonw.exe \"C:\\Users\\sibap\\OneDrive\\Documents\\Trade_Agent\\scripts\\run_hidden.py\" crypto-research-tracker scripts/research_tracker.py run --market crypto",
+      "time_limit_minutes": 180,
+      "triggers": [
+        {
+          "kind": "Daily",
+          "at": "08:10",
+          "first_date": "2026-09-13",
+          "days": [],
+          "every_days": 1,
+          "repeat_minutes": null,
+          "repeat_for_minutes": null,
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "name": "tradedesk-crypto-self-review",
+      "enabled": true,
+      "command": [
+        "crypto-self-review",
+        "tradedesk",
+        "review",
+        "self-review-run",
+        "--market",
+        "crypto"
+      ],
+      "windows_action": "C:\\Users\\sibap\\OneDrive\\Documents\\Trade_Agent\\.venv\\Scripts\\pythonw.exe \"C:\\Users\\sibap\\OneDrive\\Documents\\Trade_Agent\\scripts\\run_hidden.py\" crypto-self-review tradedesk review self-review-run --market crypto",
+      "time_limit_minutes": 4320,
+      "triggers": [
+        {
+          "kind": "Daily",
+          "at": "00:20",
+          "first_date": "2026-09-28",
+          "days": [],
+          "every_days": 1,
+          "repeat_minutes": null,
+          "repeat_for_minutes": null,
+          "enabled": true
+        },
+        {
+          "kind": "Daily",
+          "at": "13:45",
+          "first_date": "2026-09-28",
+          "days": [],
+          "every_days": 1,
+          "repeat_minutes": null,
+          "repeat_for_minutes": null,
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "name": "tradedesk-crypto-tracker",
+      "enabled": true,
+      "command": [
+        "crypto-tracker",
+        "scripts/accuracy_collection_pipeline.py",
+        "--market",
+        "crypto"
+      ],
+      "windows_action": "C:\\Users\\sibap\\OneDrive\\Documents\\Trade_Agent\\.venv\\Scripts\\pythonw.exe \"C:\\Users\\sibap\\OneDrive\\Documents\\Trade_Agent\\scripts\\run_hidden.py\" crypto-tracker scripts/accuracy_collection_pipeline.py --market crypto",
+      "time_limit_minutes": 120,
+      "triggers": [
+        {
+          "kind": "Time",
+          "at": "00:00",
+          "first_date": "2026-09-13",
+          "days": [],
+          "every_days": null,
+          "repeat_minutes": 30,
+          "repeat_for_minutes": 5256000,
+          "enabled": true
+        },
+        {
+          "kind": "Daily",
+          "at": "12:00",
+          "first_date": "2026-09-27",
+          "days": [],
+          "every_days": 1,
+          "repeat_minutes": null,
+          "repeat_for_minutes": null,
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "name": "tradedesk-dashboard",
+      "enabled": true,
+      "command": null,
+      "windows_action": "C:\\Users\\sibap\\.local\\bin\\uv.exe run tradedesk dashboard",
+      "time_limit_minutes": 0,
+      "triggers": [
+        {
+          "kind": "Logon",
+          "at": null,
+          "first_date": null,
+          "days": [],
+          "every_days": null,
+          "repeat_minutes": null,
+          "repeat_for_minutes": null,
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "name": "tradedesk-equity-pre-takeoff-watch",
+      "enabled": true,
+      "command": [
+        "equity-pre-takeoff-watch",
+        "scripts/pre_takeoff_watch.py",
+        "collect",
+        "--market",
+        "equity"
+      ],
+      "windows_action": "C:\\Users\\sibap\\OneDrive\\Documents\\Trade_Agent\\.venv\\Scripts\\pythonw.exe \"C:\\Users\\sibap\\OneDrive\\Documents\\Trade_Agent\\scripts\\run_hidden.py\" equity-pre-takeoff-watch scripts/pre_takeoff_watch.py collect --market equity",
+      "time_limit_minutes": 14,
+      "triggers": [
+        {
+          "kind": "Weekly",
+          "at": "09:31",
+          "first_date": "2026-10-13",
+          "days": [
+            "Mon",
+            "Tue",
+            "Wed",
+            "Thu",
+            "Fri"
+          ],
+          "every_days": null,
+          "repeat_minutes": null,
+          "repeat_for_minutes": null,
+          "enabled": true
+        },
+        {
+          "kind": "Weekly",
+          "at": "09:46",
+          "first_date": "2026-10-13",
+          "days": [
+            "Mon",
+            "Tue",
+            "Wed",
+            "Thu",
+            "Fri"
+          ],
+          "every_days": null,
+          "repeat_minutes": null,
+          "repeat_for_minutes": null,
+          "enabled": true
+        },
+        {
+          "kind": "Weekly",
+          "at": "10:01",
+          "first_date": "2026-10-13",
+          "days": [
+            "Mon",
+            "Tue",
+            "Wed",
+            "Thu",
+            "Fri"
+          ],
+          "every_days": null,
+          "repeat_minutes": null,
+          "repeat_for_minutes": null,
+          "enabled": true
+        },
+        {
+          "kind": "Weekly",
+          "at": "10:16",
+          "first_date": "2026-10-13",
+          "days": [
+            "Mon",
+            "Tue",
+            "Wed",
+            "Thu",
+            "Fri"
+          ],
+          "every_days": null,
+          "repeat_minutes": null,
+          "repeat_for_minutes": null,
+          "enabled": true
+        },
+        {
+          "kind": "Weekly",
+          "at": "10:31",
+          "first_date": "2026-10-13",
+          "days": [
+            "Mon",
+            "Tue",
+            "Wed",
+            "Thu",
+            "Fri"
+          ],
+          "every_days": null,
+          "repeat_minutes": null,
+          "repeat_for_minutes": null,
+          "enabled": true
+        },
+        {
+          "kind": "Weekly",
+          "at": "10:46",
+          "first_date": "2026-10-13",
+          "days": [
+            "Mon",
+            "Tue",
+            "Wed",
+            "Thu",
+            "Fri"
+          ],
+          "every_days": null,
+          "repeat_minutes": null,
+          "repeat_for_minutes": null,
+          "enabled": true
+        },
+        {
+          "kind": "Weekly",
+          "at": "11:01",
+          "first_date": "2026-10-13",
+          "days": [
+            "Mon",
+            "Tue",
+            "Wed",
+            "Thu",
+            "Fri"
+          ],
+          "every_days": null,
+          "repeat_minutes": null,
+          "repeat_for_minutes": null,
+          "enabled": true
+        },
+        {
+          "kind": "Weekly",
+          "at": "11:16",
+          "first_date": "2026-10-13",
+          "days": [
+            "Mon",
+            "Tue",
+            "Wed",
+            "Thu",
+            "Fri"
+          ],
+          "every_days": null,
+          "repeat_minutes": null,
+          "repeat_for_minutes": null,
+          "enabled": true
+        },
+        {
+          "kind": "Weekly",
+          "at": "11:31",
+          "first_date": "2026-10-13",
+          "days": [
+            "Mon",
+            "Tue",
+            "Wed",
+            "Thu",
+            "Fri"
+          ],
+          "every_days": null,
+          "repeat_minutes": null,
+          "repeat_for_minutes": null,
+          "enabled": true
+        },
+        {
+          "kind": "Weekly",
+          "at": "11:46",
+          "first_date": "2026-10-13",
+          "days": [
+            "Mon",
+            "Tue",
+            "Wed",
+            "Thu",
+            "Fri"
+          ],
+          "every_days": null,
+          "repeat_minutes": null,
+          "repeat_for_minutes": null,
+          "enabled": true
+        },
+        {
+          "kind": "Weekly",
+          "at": "12:01",
+          "first_date": "2026-10-13",
+          "days": [
+            "Mon",
+            "Tue",
+            "Wed",
+            "Thu",
+            "Fri"
+          ],
+          "every_days": null,
+          "repeat_minutes": null,
+          "repeat_for_minutes": null,
+          "enabled": true
+        },
+        {
+          "kind": "Weekly",
+          "at": "12:16",
+          "first_date": "2026-10-13",
+          "days": [
+            "Mon",
+            "Tue",
+            "Wed",
+            "Thu",
+            "Fri"
+          ],
+          "every_days": null,
+          "repeat_minutes": null,
+          "repeat_for_minutes": null,
+          "enabled": true
+        },
+        {
+          "kind": "Weekly",
+          "at": "12:31",
+          "first_date": "2026-10-13",
+          "days": [
+            "Mon",
+            "Tue",
+            "Wed",
+            "Thu",
+            "Fri"
+          ],
+          "every_days": null,
+          "repeat_minutes": null,
+          "repeat_for_minutes": null,
+          "enabled": true
+        },
+        {
+          "kind": "Weekly",
+          "at": "12:46",
+          "first_date": "2026-10-13",
+          "days": [
+            "Mon",
+            "Tue",
+            "Wed",
+            "Thu",
+            "Fri"
+          ],
+          "every_days": null,
+          "repeat_minutes": null,
+          "repeat_for_minutes": null,
+          "enabled": true
+        },
+        {
+          "kind": "Weekly",
+          "at": "13:01",
+          "first_date": "2026-10-13",
+          "days": [
+            "Mon",
+            "Tue",
+            "Wed",
+            "Thu",
+            "Fri"
+          ],
+          "every_days": null,
+          "repeat_minutes": null,
+          "repeat_for_minutes": null,
+          "enabled": true
+        },
+        {
+          "kind": "Weekly",
+          "at": "13:16",
+          "first_date": "2026-10-13",
+          "days": [
+            "Mon",
+            "Tue",
+            "Wed",
+            "Thu",
+            "Fri"
+          ],
+          "every_days": null,
+          "repeat_minutes": null,
+          "repeat_for_minutes": null,
+          "enabled": true
+        },
+        {
+          "kind": "Weekly",
+          "at": "13:31",
+          "first_date": "2026-10-13",
+          "days": [
+            "Mon",
+            "Tue",
+            "Wed",
+            "Thu",
+            "Fri"
+          ],
+          "every_days": null,
+          "repeat_minutes": null,
+          "repeat_for_minutes": null,
+          "enabled": true
+        },
+        {
+          "kind": "Weekly",
+          "at": "13:46",
+          "first_date": "2026-10-13",
+          "days": [
+            "Mon",
+            "Tue",
+            "Wed",
+            "Thu",
+            "Fri"
+          ],
+          "every_days": null,
+          "repeat_minutes": null,
+          "repeat_for_minutes": null,
+          "enabled": true
+        },
+        {
+          "kind": "Weekly",
+          "at": "14:01",
+          "first_date": "2026-10-13",
+          "days": [
+            "Mon",
+            "Tue",
+            "Wed",
+            "Thu",
+            "Fri"
+          ],
+          "every_days": null,
+          "repeat_minutes": null,
+          "repeat_for_minutes": null,
+          "enabled": true
+        },
+        {
+          "kind": "Weekly",
+          "at": "14:16",
+          "first_date": "2026-10-13",
+          "days": [
+            "Mon",
+            "Tue",
+            "Wed",
+            "Thu",
+            "Fri"
+          ],
+          "every_days": null,
+          "repeat_minutes": null,
+          "repeat_for_minutes": null,
+          "enabled": true
+        },
+        {
+          "kind": "Weekly",
+          "at": "14:31",
+          "first_date": "2026-10-13",
+          "days": [
+            "Mon",
+            "Tue",
+            "Wed",
+            "Thu",
+            "Fri"
+          ],
+          "every_days": null,
+          "repeat_minutes": null,
+          "repeat_for_minutes": null,
+          "enabled": true
+        },
+        {
+          "kind": "Weekly",
+          "at": "14:46",
+          "first_date": "2026-10-13",
+          "days": [
+            "Mon",
+            "Tue",
+            "Wed",
+            "Thu",
+            "Fri"
+          ],
+          "every_days": null,
+          "repeat_minutes": null,
+          "repeat_for_minutes": null,
+          "enabled": true
+        },
+        {
+          "kind": "Weekly",
+          "at": "15:01",
+          "first_date": "2026-10-13",
+          "days": [
+            "Mon",
+            "Tue",
+            "Wed",
+            "Thu",
+            "Fri"
+          ],
+          "every_days": null,
+          "repeat_minutes": null,
+          "repeat_for_minutes": null,
+          "enabled": true
+        },
+        {
+          "kind": "Weekly",
+          "at": "15:16",
+          "first_date": "2026-10-13",
+          "days": [
+            "Mon",
+            "Tue",
+            "Wed",
+            "Thu",
+            "Fri"
+          ],
+          "every_days": null,
+          "repeat_minutes": null,
+          "repeat_for_minutes": null,
+          "enabled": true
+        },
+        {
+          "kind": "Weekly",
+          "at": "15:31",
+          "first_date": "2026-10-13",
+          "days": [
+            "Mon",
+            "Tue",
+            "Wed",
+            "Thu",
+            "Fri"
+          ],
+          "every_days": null,
+          "repeat_minutes": null,
+          "repeat_for_minutes": null,
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "name": "tradedesk-filings-watch",
+      "enabled": true,
+      "command": [
+        "filings-watch",
+        "scripts/filings_watch.py",
+        "fetch",
+        "--days",
+        "2"
+      ],
+      "windows_action": "C:\\Users\\sibap\\OneDrive\\Documents\\Trade_Agent\\.venv\\Scripts\\pythonw.exe \"C:\\Users\\sibap\\OneDrive\\Documents\\Trade_Agent\\scripts\\run_hidden.py\" filings-watch scripts/filings_watch.py fetch --days 2",
+      "time_limit_minutes": 10,
+      "triggers": [
+        {
+          "kind": "Daily",
+          "at": "07:30",
+          "first_date": "2026-10-17",
+          "days": [],
+          "every_days": 1,
+          "repeat_minutes": 15,
+          "repeat_for_minutes": 840,
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "name": "tradedesk-health-check",
+      "enabled": true,
+      "command": [
+        "health-check",
+        "scripts/task_health.py",
+        "check"
+      ],
+      "windows_action": "C:\\Users\\sibap\\OneDrive\\Documents\\Trade_Agent\\.venv\\Scripts\\pythonw.exe \"C:\\Users\\sibap\\OneDrive\\Documents\\Trade_Agent\\scripts\\run_hidden.py\" health-check scripts/task_health.py check",
+      "time_limit_minutes": 5,
+      "triggers": [
+        {
+          "kind": "Daily",
+          "at": "00:05",
+          "first_date": "2026-10-14",
+          "days": [],
+          "every_days": 1,
+          "repeat_minutes": 60,
+          "repeat_for_minutes": 1440,
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "name": "tradedesk-intraday-study-bse-nightly",
+      "enabled": true,
+      "command": [
+        "intraday-study-bse-nightly",
+        "scripts/intraday_mover_study.py",
+        "nightly",
+        "--market",
+        "bse"
+      ],
+      "windows_action": "C:\\Users\\sibap\\OneDrive\\Documents\\Trade_Agent\\.venv\\Scripts\\pythonw.exe \"C:\\Users\\sibap\\OneDrive\\Documents\\Trade_Agent\\scripts\\run_hidden.py\" intraday-study-bse-nightly scripts/intraday_mover_study.py nightly --market bse",
+      "time_limit_minutes": 90,
+      "triggers": [
+        {
+          "kind": "Weekly",
+          "at": "20:45",
+          "first_date": "2026-10-17",
+          "days": [
+            "Mon",
+            "Tue",
+            "Wed",
+            "Thu",
+            "Fri"
+          ],
+          "every_days": null,
+          "repeat_minutes": null,
+          "repeat_for_minutes": null,
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "name": "tradedesk-intraday-study-bse-search",
+      "enabled": true,
+      "command": [
+        "intraday-study-bse-search",
+        "scripts/intraday_mover_study.py",
+        "search",
+        "--market",
+        "bse"
+      ],
+      "windows_action": "C:\\Users\\sibap\\OneDrive\\Documents\\Trade_Agent\\.venv\\Scripts\\pythonw.exe \"C:\\Users\\sibap\\OneDrive\\Documents\\Trade_Agent\\scripts\\run_hidden.py\" intraday-study-bse-search scripts/intraday_mover_study.py search --market bse",
+      "time_limit_minutes": 180,
+      "triggers": [
+        {
+          "kind": "Weekly",
+          "at": "13:00",
+          "first_date": "2026-10-17",
+          "days": [
+            "Sat"
+          ],
+          "every_days": null,
+          "repeat_minutes": null,
+          "repeat_for_minutes": null,
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "name": "tradedesk-intraday-study-crypto-nightly",
+      "enabled": true,
+      "command": [
+        "intraday-study-crypto-nightly",
+        "scripts/intraday_mover_study.py",
+        "nightly",
+        "--market",
+        "crypto"
+      ],
+      "windows_action": "C:\\Users\\sibap\\OneDrive\\Documents\\Trade_Agent\\.venv\\Scripts\\pythonw.exe \"C:\\Users\\sibap\\OneDrive\\Documents\\Trade_Agent\\scripts\\run_hidden.py\" intraday-study-crypto-nightly scripts/intraday_mover_study.py nightly --market crypto",
+      "time_limit_minutes": 60,
+      "triggers": [
+        {
+          "kind": "Daily",
+          "at": "06:45",
+          "first_date": "2026-10-17",
+          "days": [],
+          "every_days": 1,
+          "repeat_minutes": null,
+          "repeat_for_minutes": null,
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "name": "tradedesk-intraday-study-crypto-search",
+      "enabled": true,
+      "command": [
+        "intraday-study-crypto-search",
+        "scripts/intraday_mover_study.py",
+        "search",
+        "--market",
+        "crypto"
+      ],
+      "windows_action": "C:\\Users\\sibap\\OneDrive\\Documents\\Trade_Agent\\.venv\\Scripts\\pythonw.exe \"C:\\Users\\sibap\\OneDrive\\Documents\\Trade_Agent\\scripts\\run_hidden.py\" intraday-study-crypto-search scripts/intraday_mover_study.py search --market crypto",
+      "time_limit_minutes": 180,
+      "triggers": [
+        {
+          "kind": "Weekly",
+          "at": "14:00",
+          "first_date": "2026-10-17",
+          "days": [
+            "Sat"
+          ],
+          "every_days": null,
+          "repeat_minutes": null,
+          "repeat_for_minutes": null,
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "name": "tradedesk-intraday-study-nightly",
+      "enabled": true,
+      "command": [
+        "intraday-study-nightly",
+        "scripts/intraday_mover_study.py",
+        "nightly",
+        "--market",
+        "nse"
+      ],
+      "windows_action": "C:\\Users\\sibap\\OneDrive\\Documents\\Trade_Agent\\.venv\\Scripts\\pythonw.exe \"C:\\Users\\sibap\\OneDrive\\Documents\\Trade_Agent\\scripts\\run_hidden.py\" intraday-study-nightly scripts/intraday_mover_study.py nightly --market nse",
+      "time_limit_minutes": 90,
+      "triggers": [
+        {
+          "kind": "Weekly",
+          "at": "20:15",
+          "first_date": "2026-10-15",
+          "days": [
+            "Mon",
+            "Tue",
+            "Wed",
+            "Thu",
+            "Fri"
+          ],
+          "every_days": null,
+          "repeat_minutes": null,
+          "repeat_for_minutes": null,
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "name": "tradedesk-intraday-study-search",
+      "enabled": true,
+      "command": [
+        "intraday-study-search",
+        "scripts/intraday_mover_study.py",
+        "search",
+        "--market",
+        "nse"
+      ],
+      "windows_action": "C:\\Users\\sibap\\OneDrive\\Documents\\Trade_Agent\\.venv\\Scripts\\pythonw.exe \"C:\\Users\\sibap\\OneDrive\\Documents\\Trade_Agent\\scripts\\run_hidden.py\" intraday-study-search scripts/intraday_mover_study.py search --market nse",
+      "time_limit_minutes": 180,
+      "triggers": [
+        {
+          "kind": "Weekly",
+          "at": "12:00",
+          "first_date": "2026-10-17",
+          "days": [
+            "Sat"
+          ],
+          "every_days": null,
+          "repeat_minutes": null,
+          "repeat_for_minutes": null,
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "name": "tradedesk-live-session",
+      "enabled": true,
+      "command": [
+        "live-session",
+        "tradedesk",
+        "live",
+        "--until",
+        "15:35",
+        "--no-dashboard"
+      ],
+      "windows_action": "C:\\Users\\sibap\\OneDrive\\Documents\\Trade_Agent\\.venv\\Scripts\\pythonw.exe \"C:\\Users\\sibap\\OneDrive\\Documents\\Trade_Agent\\scripts\\run_hidden.py\" live-session tradedesk live --until 15:35 --no-dashboard",
+      "time_limit_minutes": 420,
+      "triggers": [
+        {
+          "kind": "Weekly",
+          "at": "09:10",
+          "first_date": "2026-09-12",
+          "days": [
+            "Mon",
+            "Tue",
+            "Wed",
+            "Thu",
+            "Fri"
+          ],
+          "every_days": null,
+          "repeat_minutes": null,
+          "repeat_for_minutes": null,
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "name": "tradedesk-mover-study-crypto",
+      "enabled": true,
+      "command": [
+        "mover-study-crypto",
+        "scripts/mover_study.py",
+        "nightly",
+        "--market",
+        "crypto"
+      ],
+      "windows_action": "C:\\Users\\sibap\\OneDrive\\Documents\\Trade_Agent\\.venv\\Scripts\\pythonw.exe \"C:\\Users\\sibap\\OneDrive\\Documents\\Trade_Agent\\scripts\\run_hidden.py\" mover-study-crypto scripts/mover_study.py nightly --market crypto",
+      "time_limit_minutes": 45,
+      "triggers": [
+        {
+          "kind": "Daily",
+          "at": "06:30",
+          "first_date": "2026-10-17",
+          "days": [],
+          "every_days": 1,
+          "repeat_minutes": null,
+          "repeat_for_minutes": null,
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "name": "tradedesk-mover-study-nightly",
+      "enabled": true,
+      "command": [
+        "mover-study-nightly",
+        "scripts/mover_study.py",
+        "nightly",
+        "--market",
+        "nse",
+        "--market",
+        "bse"
+      ],
+      "windows_action": "C:\\Users\\sibap\\OneDrive\\Documents\\Trade_Agent\\.venv\\Scripts\\pythonw.exe \"C:\\Users\\sibap\\OneDrive\\Documents\\Trade_Agent\\scripts\\run_hidden.py\" mover-study-nightly scripts/mover_study.py nightly --market nse --market bse",
+      "time_limit_minutes": 90,
+      "triggers": [
+        {
+          "kind": "Weekly",
+          "at": "19:30",
+          "first_date": "2026-10-17",
+          "days": [
+            "Mon",
+            "Tue",
+            "Wed",
+            "Thu",
+            "Fri"
+          ],
+          "every_days": null,
+          "repeat_minutes": null,
+          "repeat_for_minutes": null,
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "name": "tradedesk-mover-study-search",
+      "enabled": true,
+      "command": [
+        "mover-study-search",
+        "scripts/mover_study.py",
+        "search",
+        "--market",
+        "nse",
+        "--market",
+        "bse"
+      ],
+      "windows_action": "C:\\Users\\sibap\\OneDrive\\Documents\\Trade_Agent\\.venv\\Scripts\\pythonw.exe \"C:\\Users\\sibap\\OneDrive\\Documents\\Trade_Agent\\scripts\\run_hidden.py\" mover-study-search scripts/mover_study.py search --market nse --market bse",
+      "time_limit_minutes": 180,
+      "triggers": [
+        {
+          "kind": "Weekly",
+          "at": "10:00",
+          "first_date": "2026-10-17",
+          "days": [
+            "Sat"
+          ],
+          "every_days": null,
+          "repeat_minutes": null,
+          "repeat_for_minutes": null,
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "name": "tradedesk-multiday-hold-study",
+      "enabled": true,
+      "command": [
+        "multiday-hold-study",
+        "scripts/multiday_hold_study.py"
+      ],
+      "windows_action": "C:\\Users\\sibap\\OneDrive\\Documents\\Trade_Agent\\.venv\\Scripts\\pythonw.exe \"C:\\Users\\sibap\\OneDrive\\Documents\\Trade_Agent\\scripts\\run_hidden.py\" multiday-hold-study scripts/multiday_hold_study.py",
+      "time_limit_minutes": 30,
+      "triggers": [
+        {
+          "kind": "Weekly",
+          "at": "21:15",
+          "first_date": "2026-10-17",
+          "days": [
+            "Mon",
+            "Tue",
+            "Wed",
+            "Thu",
+            "Fri"
+          ],
+          "every_days": null,
+          "repeat_minutes": null,
+          "repeat_for_minutes": null,
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "name": "tradedesk-news-trial-fetch",
+      "enabled": true,
+      "command": [
+        "news-trial",
+        "scripts/news_trial.py",
+        "fetch"
+      ],
+      "windows_action": "C:\\Users\\sibap\\OneDrive\\Documents\\Trade_Agent\\.venv\\Scripts\\pythonw.exe \"C:\\Users\\sibap\\OneDrive\\Documents\\Trade_Agent\\scripts\\run_hidden.py\" news-trial scripts/news_trial.py fetch",
+      "time_limit_minutes": 10,
+      "triggers": [
+        {
+          "kind": "Daily",
+          "at": "07:20",
+          "first_date": "2026-10-17",
+          "days": [],
+          "every_days": 1,
+          "repeat_minutes": 60,
+          "repeat_for_minutes": 900,
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "name": "tradedesk-news-trial-score",
+      "enabled": true,
+      "command": [
+        "news-trial",
+        "scripts/news_trial.py",
+        "score"
+      ],
+      "windows_action": "C:\\Users\\sibap\\OneDrive\\Documents\\Trade_Agent\\.venv\\Scripts\\pythonw.exe \"C:\\Users\\sibap\\OneDrive\\Documents\\Trade_Agent\\scripts\\run_hidden.py\" news-trial scripts/news_trial.py score",
+      "time_limit_minutes": 15,
+      "triggers": [
+        {
+          "kind": "Weekly",
+          "at": "20:45",
+          "first_date": "2026-10-17",
+          "days": [
+            "Mon",
+            "Tue",
+            "Wed",
+            "Thu",
+            "Fri"
+          ],
+          "every_days": null,
+          "repeat_minutes": null,
+          "repeat_for_minutes": null,
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "name": "tradedesk-nse-self-review",
+      "enabled": true,
+      "command": [
+        "nse-self-review",
+        "tradedesk",
+        "review",
+        "self-review-run",
+        "--market",
+        "nse"
+      ],
+      "windows_action": "C:\\Users\\sibap\\OneDrive\\Documents\\Trade_Agent\\.venv\\Scripts\\pythonw.exe \"C:\\Users\\sibap\\OneDrive\\Documents\\Trade_Agent\\scripts\\run_hidden.py\" nse-self-review tradedesk review self-review-run --market nse",
+      "time_limit_minutes": 4320,
+      "triggers": [
+        {
+          "kind": "Daily",
+          "at": "16:25",
+          "first_date": "2026-09-27",
+          "days": [],
+          "every_days": 1,
+          "repeat_minutes": null,
+          "repeat_for_minutes": null,
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "name": "tradedesk-options-snapshot",
+      "enabled": true,
+      "command": [
+        "options-snapshot",
+        "scripts/options_snapshot.py"
+      ],
+      "windows_action": "C:\\Users\\sibap\\OneDrive\\Documents\\Trade_Agent\\.venv\\Scripts\\pythonw.exe \"C:\\Users\\sibap\\OneDrive\\Documents\\Trade_Agent\\scripts\\run_hidden.py\" options-snapshot scripts/options_snapshot.py",
+      "time_limit_minutes": 4320,
+      "triggers": [
+        {
+          "kind": "Weekly",
+          "at": "13:00",
+          "first_date": "2026-09-13",
+          "days": [
+            "Mon",
+            "Tue",
+            "Wed",
+            "Thu",
+            "Fri"
+          ],
+          "every_days": null,
+          "repeat_minutes": null,
+          "repeat_for_minutes": null,
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "name": "tradedesk-potential-movers-bse",
+      "enabled": true,
+      "command": [
+        "potential-movers-bse",
+        "scripts/potential_movers.py",
+        "run",
+        "--market",
+        "bse"
+      ],
+      "windows_action": "C:\\Users\\sibap\\OneDrive\\Documents\\Trade_Agent\\.venv\\Scripts\\pythonw.exe \"C:\\Users\\sibap\\OneDrive\\Documents\\Trade_Agent\\scripts\\run_hidden.py\" potential-movers-bse scripts/potential_movers.py run --market bse",
+      "time_limit_minutes": 30,
+      "triggers": [
+        {
+          "kind": "Weekly",
+          "at": "17:05",
+          "first_date": "2026-10-13",
+          "days": [
+            "Mon",
+            "Tue",
+            "Wed",
+            "Thu",
+            "Fri"
+          ],
+          "every_days": null,
+          "repeat_minutes": null,
+          "repeat_for_minutes": null,
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "name": "tradedesk-potential-movers-crypto",
+      "enabled": true,
+      "command": [
+        "potential-movers-crypto",
+        "scripts/potential_movers.py",
+        "run",
+        "--market",
+        "crypto"
+      ],
+      "windows_action": "C:\\Users\\sibap\\OneDrive\\Documents\\Trade_Agent\\.venv\\Scripts\\pythonw.exe \"C:\\Users\\sibap\\OneDrive\\Documents\\Trade_Agent\\scripts\\run_hidden.py\" potential-movers-crypto scripts/potential_movers.py run --market crypto",
+      "time_limit_minutes": 30,
+      "triggers": [
+        {
+          "kind": "Daily",
+          "at": "05:45",
+          "first_date": "2026-10-13",
+          "days": [],
+          "every_days": 1,
+          "repeat_minutes": null,
+          "repeat_for_minutes": null,
+          "enabled": true
+        },
+        {
+          "kind": "Daily",
+          "at": "06:15",
+          "first_date": "2026-10-13",
+          "days": [],
+          "every_days": 1,
+          "repeat_minutes": null,
+          "repeat_for_minutes": null,
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "name": "tradedesk-potential-movers-nse",
+      "enabled": true,
+      "command": [
+        "potential-movers-nse",
+        "scripts/potential_movers.py",
+        "run",
+        "--market",
+        "nse"
+      ],
+      "windows_action": "C:\\Users\\sibap\\OneDrive\\Documents\\Trade_Agent\\.venv\\Scripts\\pythonw.exe \"C:\\Users\\sibap\\OneDrive\\Documents\\Trade_Agent\\scripts\\run_hidden.py\" potential-movers-nse scripts/potential_movers.py run --market nse",
+      "time_limit_minutes": 30,
+      "triggers": [
+        {
+          "kind": "Weekly",
+          "at": "16:55",
+          "first_date": "2026-10-13",
+          "days": [
+            "Mon",
+            "Tue",
+            "Wed",
+            "Thu",
+            "Fri"
+          ],
+          "every_days": null,
+          "repeat_minutes": null,
+          "repeat_for_minutes": null,
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "name": "tradedesk-probation-desk-bse",
+      "enabled": true,
+      "command": [
+        "probation-desk-bse",
+        "scripts/probation_desk.py",
+        "run",
+        "--market",
+        "bse"
+      ],
+      "windows_action": "C:\\Users\\sibap\\OneDrive\\Documents\\Trade_Agent\\.venv\\Scripts\\pythonw.exe \"C:\\Users\\sibap\\OneDrive\\Documents\\Trade_Agent\\scripts\\run_hidden.py\" probation-desk-bse scripts/probation_desk.py run --market bse",
+      "time_limit_minutes": 20,
+      "triggers": [
+        {
+          "kind": "Weekly",
+          "at": "17:15",
+          "first_date": "2026-10-14",
+          "days": [
+            "Mon",
+            "Tue",
+            "Wed",
+            "Thu",
+            "Fri"
+          ],
+          "every_days": null,
+          "repeat_minutes": null,
+          "repeat_for_minutes": null,
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "name": "tradedesk-research-tracker",
+      "enabled": true,
+      "command": [
+        "research-tracker",
+        "scripts/research_tracker.py",
+        "run"
+      ],
+      "windows_action": "C:\\Users\\sibap\\OneDrive\\Documents\\Trade_Agent\\.venv\\Scripts\\pythonw.exe \"C:\\Users\\sibap\\OneDrive\\Documents\\Trade_Agent\\scripts\\run_hidden.py\" research-tracker scripts/research_tracker.py run",
+      "time_limit_minutes": 180,
+      "triggers": [
+        {
+          "kind": "Weekly",
+          "at": "16:30",
+          "first_date": "2026-09-13",
+          "days": [
+            "Mon",
+            "Tue",
+            "Wed",
+            "Thu",
+            "Fri"
+          ],
+          "every_days": null,
+          "repeat_minutes": null,
+          "repeat_for_minutes": null,
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "name": "tradedesk-results-calendar",
+      "enabled": true,
+      "command": [
+        "results-calendar",
+        "tradedesk",
+        "data",
+        "refresh-results"
+      ],
+      "windows_action": "C:\\Users\\sibap\\OneDrive\\Documents\\Trade_Agent\\.venv\\Scripts\\pythonw.exe \"C:\\Users\\sibap\\OneDrive\\Documents\\Trade_Agent\\scripts\\run_hidden.py\" results-calendar tradedesk data refresh-results",
+      "time_limit_minutes": 20,
+      "triggers": [
+        {
+          "kind": "Weekly",
+          "at": "07:30",
+          "first_date": "2026-10-13",
+          "days": [
+            "Mon",
+            "Tue",
+            "Wed",
+            "Thu",
+            "Fri"
+          ],
+          "every_days": null,
+          "repeat_minutes": null,
+          "repeat_for_minutes": null,
+          "enabled": true
+        },
+        {
+          "kind": "Weekly",
+          "at": "16:50",
+          "first_date": "2026-10-13",
+          "days": [
+            "Mon",
+            "Tue",
+            "Wed",
+            "Thu",
+            "Fri"
+          ],
+          "every_days": null,
+          "repeat_minutes": null,
+          "repeat_for_minutes": null,
+          "enabled": true
+        }
+      ]
+    }
+  ]
+}

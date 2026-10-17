@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+# One-time (and re-runnable) setup of tradedesk on an Ubuntu 22.04/24.04 server, x86_64 or
+# arm64 (Oracle Ampere). Run as a sudo-capable user from a checkout of the repo:
+#   sudo bash deploy/linux/install.sh
+# It installs packages, creates the `tradedesk` service user, puts the repo at /opt/tradedesk,
+# builds the venv, installs cloudflared and the systemd units, and enables the timers.
+# It never touches credentials: storing the INDstocks secrets and the ntfy topic is a manual
+# step afterwards (docs/cloud-deploy.md), done by the owner, not by a script.
+# First install: TRADEDESK_NO_START=1 sudo -E bash deploy/linux/install.sh (units stay off).
+set -euo pipefail
+
+ROOT=/opt/tradedesk
+USER_NAME=tradedesk
+SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+
+echo "== packages and timezone"
+apt-get update -y
+apt-get install -y git curl rsync ca-certificates
+timedatectl set-timezone Asia/Kolkata
+
+echo "== service user and checkout at $ROOT"
+id -u "$USER_NAME" >/dev/null 2>&1 || useradd --system --create-home --shell /bin/bash "$USER_NAME"
+mkdir -p "$ROOT"
+if [ "$SRC" != "$ROOT" ]; then
+  rsync -a --delete --exclude data/ --exclude .venv/ "$SRC"/ "$ROOT"/
+fi
+mkdir -p "$ROOT/data/logs" "$ROOT/data/reports"
+chown -R "$USER_NAME:$USER_NAME" "$ROOT"
+
+echo "== uv and the virtualenv (Python 3.12, same pins as Windows)"
+if ! sudo -u "$USER_NAME" -H bash -lc 'command -v uv' >/dev/null 2>&1; then
+  sudo -u "$USER_NAME" -H bash -lc 'curl -LsSf https://astral.sh/uv/install.sh | sh'
+fi
+sudo -u "$USER_NAME" -H bash -lc "cd $ROOT && ~/.local/bin/uv sync --python 3.12"
+
+echo "== cloudflared"
+if ! command -v cloudflared >/dev/null 2>&1; then
+  arch="$(dpkg --print-architecture)"
+  curl -fsSL -o /tmp/cloudflared.deb \
+    "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-${arch}.deb"
+  dpkg -i /tmp/cloudflared.deb
+  ln -sf "$(command -v cloudflared)" /usr/local/bin/cloudflared
+fi
+
+echo "== systemd units"
+units="$(mktemp -d)"
+chmod 755 "$units"  # rendered as the service user, so it must be able to write here
+sudo -u "$USER_NAME" "$ROOT/.venv/bin/python" "$ROOT/deploy/linux/render_units.py" \
+  --root "$ROOT" --user "$USER_NAME" --out "$units"
+# Remove units for jobs that no longer exist, then install the fresh set.
+for old in /etc/systemd/system/tradedesk-*.service /etc/systemd/system/tradedesk-*.timer; do
+  [ -e "$old" ] || continue
+  [ -e "$units/$(basename "$old")" ] || { systemctl disable --now "$(basename "$old")" || true; rm -f "$old"; }
+done
+install -m 0644 "$units"/* /etc/systemd/system/
+systemctl daemon-reload
+if [ "${TRADEDESK_NO_START:-0}" = "1" ]; then
+  # First install: leave everything off until the data is copied over, so no job writes a
+  # fresh ledger that forks the hash-chained evidence. Re-run without the flag to start.
+  echo "== units installed but NOT started (TRADEDESK_NO_START=1)"
+else
+  systemctl enable --now tradedesk-dashboard.service tradedesk-cloudflare-tunnel.service
+  for timer in "$units"/*.timer; do systemctl enable --now "$(basename "$timer")"; done
+fi
+
+echo "== done. Next: docs/cloud-deploy.md steps 4-6 (data copy, secrets, ntfy)."
+systemctl list-timers 'tradedesk-*' --no-pager | head -15
