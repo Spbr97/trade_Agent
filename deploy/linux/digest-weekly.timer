@@ -1,0 +1,11 @@
+[Unit]
+Description=Send the weekly numbers digest on Friday evening
+
+[Timer]
+OnCalendar=Fri *-*-* 21:45:00 Asia/Kolkata
+Persistent=true
+AccuracySec=1s
+Unit=digest-weekly.service
+
+[Install]
+WantedBy=timers.target

@@ -68,6 +68,33 @@ def on_calendar(trigger: Mapping[str, Any]) -> list[str]:
     ]
 
 
+# Phone digests (scripts/send_digest.py), sent when the named job ends. ExecStopPost with a
+# leading "-" can never change the job's own result; the sender skips non-close digests when
+# the job did not succeed (the hourly health check already reports that failure).
+DIGEST_HOOKS: dict[str, list[tuple[str, str]]] = {
+    "tradedesk-after-close": [("close", "nse")],
+    "tradedesk-bse-after-close": [("close", "bse")],
+    "tradedesk-crypto-eod-learning": [("close", "crypto"), ("eod", "crypto")],
+    "tradedesk-research-tracker": [("eod", "nse")],
+    "tradedesk-bse-research-tracker": [("eod", "bse")],
+    "tradedesk-intraday-study-nightly": [("intraday", "nse")],
+    "tradedesk-intraday-study-bse-nightly": [("intraday", "bse")],
+    "tradedesk-intraday-study-crypto-nightly": [("intraday", "crypto")],
+    "tradedesk-multiday-hold-study": [("multiday", "")],
+}
+
+
+def digest_lines(job_name: str, *, root: str) -> list[str]:
+    lines = []
+    for kind, market in DIGEST_HOOKS.get(job_name, []):
+        market_arg = f" --market {market}" if market else ""
+        lines.append(
+            f"ExecStopPost=-{root}/.venv/bin/python {root}/scripts/send_digest.py {kind}"
+            f"{market_arg} --job {job_name} --result $SERVICE_RESULT --exit $EXIT_STATUS"
+        )
+    return lines
+
+
 def _quote(arg: str) -> str:
     return f'"{arg}"' if any(ch in arg for ch in ' "\\') else arg
 
@@ -90,6 +117,7 @@ def service_unit(job: Mapping[str, Any], *, root: str, user: str) -> str:
             "Environment=PYTHONUNBUFFERED=1",
             f"EnvironmentFile=-{ENV_FILE}",
             f"ExecStart={root}/.venv/bin/python {root}/scripts/run_hidden.py {command}",
+            *digest_lines(job["name"], root=root),
             f"TimeoutStartSec={f'{limit}min' if limit else 'infinity'}",
             "Nice=5",
             "",

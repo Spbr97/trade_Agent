@@ -1,0 +1,14 @@
+[Unit]
+Description=Weekly numbers digest to the phone (research only)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=tradedesk
+WorkingDirectory=/opt/tradedesk
+Environment=TZ=Asia/Kolkata
+Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=-/etc/tradedesk/env
+ExecStart=/opt/tradedesk/.venv/bin/python /opt/tradedesk/scripts/send_digest.py weekly
+TimeoutStartSec=5min
