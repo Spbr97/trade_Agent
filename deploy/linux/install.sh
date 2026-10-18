@@ -84,6 +84,9 @@ if [ "${TRADEDESK_NO_START:-0}" = "1" ]; then
   echo "== units installed but NOT started (TRADEDESK_NO_START=1)"
 else
   systemctl enable --now tradedesk-dashboard.service tradedesk-cloudflare-tunnel.service
+  # A running dashboard keeps the code it started with; restart it so a deploy takes effect
+  # (the tunnel's link stays the same - only the app behind it restarts).
+  systemctl restart tradedesk-dashboard.service
   for timer in "$units"/*.timer; do systemctl enable --now "$(basename "$timer")"; done
 fi
 
