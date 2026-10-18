@@ -1702,6 +1702,22 @@ def create_app(
 
         return JSONResponse(await asyncio.to_thread(load))
 
+    @app.get("/api/scoreboard")
+    async def api_scoreboard() -> JSONResponse:
+        """Each setup's live winner numbers and profit verdict (profit_gate.py), with its
+        quick twin's 5-session results; written daily by scripts/profit_gate.py."""
+
+        def load() -> dict[str, Any]:
+            from tradedesk.profit_gate import SCOREBOARD_PATH
+
+            if not SCOREBOARD_PATH.exists():
+                return {"written_at": None, "verdicts": []}
+            board = json.loads(SCOREBOARD_PATH.read_text(encoding="utf-8"))
+            board.pop("rule", None)
+            return board
+
+        return JSONResponse(await asyncio.to_thread(load))
+
     @app.get("/api/news-trial")
     async def api_news_trial() -> JSONResponse:
         """The news-source trial: which sources are candidates, which the user has enabled,

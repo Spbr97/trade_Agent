@@ -659,9 +659,12 @@ def _live_rebuild_watchlist(settings: Settings, market: str, root: Path, journal
                 for p in jn.open_positions(source="live")
             ]
             records = track_records(jn, [k.value for k in cfg.setups])
+        from tradedesk.profit_gate import alerting_setups
+
         return build_watchlist(
-            md, cfg, settings, day, open_positions=held, track_records=records, market=mkt
-        )
+            md, cfg, settings, day, open_positions=held, track_records=records, market=mkt,
+            alerting=alerting_setups(mkt.name, root=root),
+        )  # fmt: skip
 
 
 @data_app.command("sync-instruments")
@@ -2079,9 +2082,12 @@ def scan(
             for p in jn.open_positions(source="live")
         ]
         records = track_records(jn, [k.value for k in cfg.setups])
+    from tradedesk.profit_gate import alerting_setups
+
     wl = build_watchlist(
-        md, cfg, settings, day, open_positions=held, track_records=records, market=mkt
-    )
+        md, cfg, settings, day, open_positions=held, track_records=records, market=mkt,
+        alerting=alerting_setups(mkt.name, root=root),
+    )  # fmt: skip
     typer.echo(render_text(wl, include_rejected=include_rejected))
     if charts:
         chart_dir = out_dir / day.isoformat()

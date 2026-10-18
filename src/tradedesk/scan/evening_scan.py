@@ -49,6 +49,7 @@ from tradedesk.engine.scoring import (
 from tradedesk.engine.signals import SetupKind, Signal
 from tradedesk.markets import Market, nse_market
 from tradedesk.models import Side, TradeType, price_decimal
+from tradedesk.profit_gate import AlertingSetup
 from tradedesk.risk.sizing import SizeInputs, gap95_pct, position_size
 
 
@@ -242,10 +243,16 @@ def build_watchlist(
     surveillance: Mapping[str, str] | None = None,
     sector_percentile: Mapping[str, float] | None = None,
     market: Market | None = None,
+    alerting: Mapping[str, AlertingSetup] | None = None,
 ) -> Watchlist:
     """`market` defaults to NSE, same reasoning as scan_config - pass crypto_market(settings)
     to build a crypto watchlist (M13 Phase 4). `cfg` should come from the matching
-    scan_config(..., market=market) call so cfg.costs/universe_rules agree with it."""
+    scan_config(..., market=market) call so cfg.costs/universe_rules agree with it.
+
+    `alerting` (profit_gate.alerting_setups) names setups whose profit verdict lets them
+    alert on this market: TRADEABLE at full size, PROVISIONAL at a quarter. Such a setup's
+    evidence comes from that verdict instead of the empty paper book, and its research-only
+    flag no longer blocks it; the score floor, regime, filters and risk limits still apply."""
     market = market or nse_market(settings)
     policy = _eligibility_policy(settings)
     regime = regime_on(md, on, cfg)
@@ -264,6 +271,15 @@ def build_watchlist(
         feats = snapshot.features[sig.scrip_code]
         last = feats.iloc[-1]
         track = (track_records or {}).get(sig.setup.value) or no_evidence(policy)
+        allowed = (alerting or {}).get(sig.setup.value)
+        if allowed is not None:
+            track = TrackRecord(
+                trades=allowed.history_trades,
+                expectancy_r=allowed.history_net_r,
+                oos_trades=allowed.history_trades,
+                eligible=True,
+            )
+        size_factor = allowed.size_factor if allowed is not None else 1.0
         size = position_size(
             SizeInputs(
                 equity=capital,
@@ -271,9 +287,10 @@ def build_watchlist(
                 stop=sig.stop,
                 max_risk_pct=float(cfg.risk.max_risk_per_trade_pct),
                 max_position_value_pct=float(cfg.risk.max_position_value_pct),
-                size_multiplier=mult
-                if mult > 0
-                else 1.0,  # size shown even when risk_off blocks it
+                size_multiplier=(
+                    mult if mult > 0 else 1.0
+                )  # size shown even when risk_off blocks it
+                * size_factor,
                 gap_risk_cap_pct=float(cfg.risk.gap_risk_cap_pct),
                 gap95_pct=gap95_pct(feats),
                 available_heat_pct=float(cfg.risk.max_portfolio_heat_pct) - heat_before,
@@ -327,10 +344,20 @@ def build_watchlist(
         setup_cfg = settings.setups.setups.get(sig.setup.value)
         if setup_cfg is not None and market.name in setup_cfg.retired_markets:
             rejected.append(f"{RETIRED_REASON_PREFIX} {market.name} (shadow-tracked only)")
-        if setup_cfg is not None and market.name in setup_cfg.research_only_markets:
+        if (
+            allowed is None
+            and setup_cfg is not None
+            and market.name in setup_cfg.research_only_markets
+        ):
             rejected.append(
                 f"{RESEARCH_ONLY_REASON_PREFIX} {market.name} "
                 "(awaiting accuracy qualification; shadow-tracked only)"
+            )
+        if allowed is not None:
+            score.notes.append(
+                f"{allowed.status.upper()} ({allowed.size_factor:g}x size): {allowed.reason}"
+                if allowed.status == "provisional"
+                else f"TRADEABLE: {allowed.reason}"
             )
         entries.append(
             WatchlistEntry(

@@ -1,0 +1,11 @@
+[Unit]
+Description=Run the profit gate after the evening trackers (NSE/BSE) and after crypto's end of day
+
+[Timer]
+OnCalendar=*-*-* 16:55:00 Asia/Kolkata
+OnCalendar=*-*-* 20:25:00 Asia/Kolkata
+Persistent=true
+Unit=profit-gate.service
+
+[Install]
+WantedBy=timers.target

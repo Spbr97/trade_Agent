@@ -568,3 +568,37 @@ def test_chart_renders_png(world, tmp_path: Path) -> None:  # type: ignore[no-un
     feats = md.features[code].iloc[: md.pos_by_date[code][ts.signal.armed_on] + 1]
     out = render_signal_chart(feats, ts.signal, tmp_path / "charts" / "x.png")
     assert out.exists() and out.stat().st_size > 10_000
+
+
+def test_a_provisional_setup_passes_research_only_at_a_quarter_of_the_size(world) -> None:  # type: ignore[no-untyped-def]
+    """Owner-approved 2026-10-18 (profit_gate.py): a setup proven on history may alert at a
+    quarter size. Only its evidence and research-only flag change: same score, filters and
+    risk limits, and every other setup is untouched."""
+    from tradedesk.profit_gate import AlertingSetup
+
+    store, cfg, md, res, settings = world
+    d = sorted({ts.signal.armed_on for ts in res.signals})[-1]
+    s = _with_research_only(_settings_for(settings, cfg), "base_breakout", ["nse"])
+    plain = build_watchlist(md, cfg, s, d)
+    allowed = {
+        "base_breakout": AlertingSetup(
+            status="provisional", size_factor=0.25, history_trades=1091,
+            history_net_r=0.26, reason="history +0.26R over 1091 trades after costs",
+        )
+    }  # fmt: skip
+    gated = build_watchlist(md, cfg, s, d, alerting=allowed)
+
+    by_id = {e.signal.id: e for e in plain.entries}
+    checked = 0
+    for e in gated.entries:
+        before = by_id[e.signal.id]
+        if e.signal.setup.value != "base_breakout":
+            assert e.rejected_for == before.rejected_for and e.qty == before.qty
+            continue
+        checked += 1
+        assert not any(r.startswith("research-only on nse") for r in e.rejected_for)
+        assert not any("resolved trades, need" in r for r in e.rejected_for)
+        assert any(n.startswith("PROVISIONAL (0.25x size)") for n in e.score_notes)
+        if before.qty:  # risk-sized quantity is a quarter (whole shares, so rounded down)
+            assert e.risk_amount <= before.risk_amount * 0.25 + 1e-6
+    assert checked

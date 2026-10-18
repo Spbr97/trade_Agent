@@ -118,6 +118,7 @@
 
 <nav class="tabs">
   <button class="tab-btn active" data-tab="calls">Today</button>
+  <button class="tab-btn" data-tab="scoreboard">Scoreboard</button>
   <button class="tab-btn" data-tab="movers">Movers</button>
   <button class="tab-btn" data-tab="crypto">Crypto</button>
   <button class="tab-btn" data-tab="reportresearch">Report</button>
@@ -446,6 +447,15 @@
       </section>
     </div>
   </div>
+</main>
+
+<main id="tab-scoreboard" hidden>
+  <section>
+    <h2>Which setups win, after costs, on live calls <span class="info-ic" title="Every setup that runs on a market, judged daily on its LIVE calls only (backfilled history excluded), in R after real costs. TRADEABLE: the lowest plausible average is above +0.05R per trade (at least 50 calls) - may alert at full size. PROVISIONAL: proven on history (500+ trades, +0.20R or better after costs, NSE/BSE) - may alert at a quarter size until live proof, and is stopped automatically if live results fall below break-even or it loses 12 in a row. NO EDGE / STOPPED: live results are below break-even. Quick twin: the same stock bought at the next open and sold 5 sessions later, against the average stock over the same days - an early read on whether the entry picks winners.">&#9432;</span>
+      <span class="muted headline-inline" id="scoreboard-meta"></span></h2>
+    <table id="scoreboard-table"></table>
+    <p class="muted" style="margin-top:8px;">R = the call's risk (entry to stop). +0.25R on a call risking Rs 1,000 is +Rs 250. Research numbers, not advice.</p>
+  </section>
 </main>
 
 <main id="tab-movers" hidden>
@@ -1682,13 +1692,13 @@ fetch('/api/state/bse').then(r => r.ok ? r.json() : null).then(s => { if (s) { r
 // with the two original tab bodies inside it as .subtab divs, toggled by a "View"/"Show"
 // dropdown instead of top-level nav buttons - deliberately keeping every inner id, render
 // function and filter untouched so "same UI" holds exactly, not just approximately.
-const TAB_IDS = ['calls', 'movers', 'crypto', 'reportresearch', 'learningreview'];
+const TAB_IDS = ['calls', 'scoreboard', 'movers', 'crypto', 'reportresearch', 'learningreview'];
 // Which perf-strip card(s), if any, belong to the current view - keyed by the active
 // top-level tab PLUS, for the two merged tabs, whichever sub-view is currently selected
 // within it (a dropdown change can switch this without a tab click). Per standing feedback,
 // each market gets its own card only where relevant, never all three shown everywhere.
 const PERF_CARDS_BY_VIEW = {
-  'calls-nse': ['nse'], 'calls-bse': ['bse'], crypto: ['crypto'],
+  'calls-nse': ['nse'], 'calls-bse': ['bse'], crypto: ['crypto'], scoreboard: [],
   'reportresearch-report': ['nse'], 'reportresearch-research': [], learningreview: [],
 };
 function currentView() {
@@ -1794,6 +1804,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     const target = btn.dataset.tab;
     TAB_IDS.forEach(id => { $('tab-' + id).hidden = target !== id; });
     if (target === 'calls') showCallsMarket($('calls-market-select').value);
+    if (target === 'scoreboard') loadScoreboard();
     if (target === 'movers') { loadMoverStudy(); loadFilings(); loadMyPicks(); }
     if (target === 'crypto') { showLiveView('crypto', $('crypto-live-view-select').value); loadBackfillPnl('crypto'); loadSymbolConfidence('crypto'); }
     if (target === 'reportresearch') showReportResearchView($('reportresearch-view-select').value);
@@ -1809,6 +1820,38 @@ loadPersonalCalls();
   const btn = wanted && document.querySelector(`.tab-btn[data-tab="${CSS.escape(wanted)}"]`);
   if (btn) btn.click();
 })();
+
+// ---------------------------------------------------------------- scoreboard
+// Owner request 2026-10-18: the winner numbers in one place - every setup's live calls,
+// winners and average result after costs, its profit verdict, and its quick twin.
+const VERDICT_LABEL = {
+  tradeable: ['TRADEABLE', 'A'], provisional: ['PROVISIONAL (1/4 size)', 'B'],
+  stopped: ['STOPPED', 'neg'], no_edge: ['NO EDGE', 'neg'], collecting: ['COLLECTING', 'C'],
+};
+function fmtR(v) { return v == null ? '-' : (v >= 0 ? '+' : '') + v.toFixed(2) + 'R'; }
+async function loadScoreboard() {
+  try {
+    const r = await fetch('/api/scoreboard');
+    const d = r.ok ? await r.json() : { verdicts: [] };
+    $('scoreboard-meta').textContent = d.written_at ? `updated ${new Date(d.written_at).toLocaleString()}` : 'not run yet';
+    const order = { tradeable: 0, provisional: 1, collecting: 2, stopped: 3, no_edge: 4 };
+    const rows = (d.verdicts || []).slice().sort((a, b) =>
+      (order[a.status] - order[b.status]) || a.market.localeCompare(b.market) || a.setup.localeCompare(b.setup));
+    const head = '<tr><th>Setup</th><th>Market</th><th>Verdict</th><th>Live calls</th><th>Winners</th><th>Avg after costs</th><th>Plausible range</th><th>Quick twin (5 sessions)</th><th>History after costs</th></tr>';
+    const body = rows.map(v => {
+      const [label, cls] = VERDICT_LABEL[v.status] || [v.status, ''];
+      const winPct = v.live_calls ? ` (${Math.round(100 * v.live_winners / v.live_calls)}%)` : '';
+      const range = v.pooled_calls >= 20 ? `${fmtR(v.live_lower_r)} to ${fmtR(v.live_upper_r)}` : 'needs 20+ calls';
+      const t = v.quick_twin;
+      const twin = t && t.twins ? `${t.twins} calls, ${t.winners} won, ${t.beat_market} beat market, avg ${(100 * t.mean_net_return).toFixed(2)}%` : '-';
+      const h = v.history ? `${fmtR(v.history.net_r)} over ${v.history.n_trades} trades` : '-';
+      return `<tr title="${esc(v.reason)}"><td>${esc(v.setup)}</td><td>${v.market.toUpperCase()}</td><td class="${cls}">${label}</td><td>${v.live_calls}</td><td>${v.live_winners}${winPct}</td><td>${fmtR(v.live_mean_r)}</td><td>${range}</td><td>${twin}</td><td>${h}</td></tr>`;
+    }).join('');
+    $('scoreboard-table').innerHTML = head + (body || '<tr><td colspan="9" class="muted">No verdicts yet - the profit gate runs every evening.</td></tr>');
+  } catch (e) {
+    $('scoreboard-meta').textContent = 'failed to load';
+  }
+}
 
 // ---------------------------------------------------------------- status banner
 // Collapsed by default (native <details>/<summary>, no JS needed to toggle) - the summary

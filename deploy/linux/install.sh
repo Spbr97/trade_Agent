@@ -105,11 +105,11 @@ systemctl enable --now digest-weekly.timer
 echo "== nightly backup (pulled by the laptop), log rotation, dashboard-link push"
 install -d -m 0700 -o ubuntu -g ubuntu /home/ubuntu/backups
 install -m 0644 "$ROOT"/deploy/linux/logrotate-tradedesk /etc/logrotate.d/tradedesk
-for unit in tradedesk-backup dashboard-link; do
+for unit in tradedesk-backup dashboard-link profit-gate; do
   install -m 0644 "$ROOT/deploy/linux/$unit.service" "$ROOT/deploy/linux/$unit.timer" /etc/systemd/system/
 done
 systemctl daemon-reload
-systemctl enable --now tradedesk-backup.timer dashboard-link.timer
+systemctl enable --now tradedesk-backup.timer dashboard-link.timer profit-gate.timer
 
 echo "== Oracle billing guard (second watcher, on the always-on machine)"
 # Not named tradedesk-*, so the cleanup above never removes it. The timer starts only once the

@@ -1,0 +1,15 @@
+[Unit]
+Description=Quick twins + daily profit verdicts per setup (scripts/profit_gate.py)
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=tradedesk
+WorkingDirectory=/opt/tradedesk
+Environment=TZ=Asia/Kolkata
+Environment=PYTHONUNBUFFERED=1
+Environment=TRADEDESK_DB_LOCK_WAIT_S=300
+EnvironmentFile=-/etc/tradedesk/env
+ExecStart=/opt/tradedesk/.venv/bin/python /opt/tradedesk/scripts/run_hidden.py profit-gate scripts/profit_gate.py
+TimeoutStartSec=60min
+Nice=5
