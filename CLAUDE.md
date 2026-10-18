@@ -80,7 +80,9 @@ results beat the market by +1.6% over 20 sessions, 2016-2026): calls after each 
 Tested and failed on 2026-10-18 (do not re-test without new data): the intraday playbook (ORB,
 VWAP pullback, breakout-retest, first-hour momentum - tradedesk_lab/intraday_playbook.py), daily
 setups' entries held 5 sessions (daily_twin_test.py), NIFTY 50 trend rules and sector rotation
-(edge_hunt.py).
+(edge_hunt.py). Also failed on 2026-10-19 (the owner's algo plan): ORB with a volume filter and
+VWAP band + RSI reversion on 1-minute history (tradedesk_lab/intraday_plan_test.py), dual-momentum
+rotation and Donchian-55 with a 3xATR trail (tradedesk_lab/multiday_rotation.py).
 
 **Scope limits, by design, not oversight**: paper trading and the live risk manager remain
 NSE-only (crypto/BSE have no paper book to grade against). Crypto/BSE calls are
