@@ -134,3 +134,5 @@ Nothing is written here by hand; this file is append-only from `apply()`'s own c
 - applied: 2026-10-18T00:27:17.929929+00:00
 - commit: `c85e01a5dfd8fa0d51c641e7c8d37327b8fb09f1`
 - files: config\setups.yaml
+
+- REVERTED 2026-10-18: the owner does not want a setup retired without a better replacement put in its place at the same time. `retired_markets: [bse]` removed; the setup is back on the BSE roster.
