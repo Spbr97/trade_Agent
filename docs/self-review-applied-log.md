@@ -127,3 +127,10 @@ Nothing is written here by hand; this file is append-only from `apply()`'s own c
 - applied: 2026-10-13T03:19:43.043022+00:00
 - commit: `1e6bd79f67a2d3f84585b1a1739b06c802c9461a`
 - files: src\tradedesk\engine\signals.py, src\tradedesk\setups\r_donchian20_strong_trend_trend_trail.py, src\tradedesk\setups\__init__.py, config\setups.yaml
+
+## RETIRE r_donchian20_strong_trend_trend_trail on bse (shadow-tracked), replace with lab_candidate:20121c7b2b1b4d46b5f72828c4f82a1b:bda5a39be26a4e44b077d4b55e18fff6
+
+- item: `bse:2026-10-17T15:25:27.292674+05:30`
+- applied: 2026-10-18T00:27:17.929929+00:00
+- commit: `c85e01a5dfd8fa0d51c641e7c8d37327b8fb09f1`
+- files: config\setups.yaml
