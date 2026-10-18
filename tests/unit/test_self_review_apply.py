@@ -77,9 +77,7 @@ def _init_repo(tmp_path: Path) -> Path:
     subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=root, check=True)
     subprocess.run(["git", "config", "user.name", "Test"], cwd=root, check=True)
     subprocess.run(["git", "add", "-A"], cwd=root, check=True, capture_output=True)
-    subprocess.run(
-        ["git", "commit", "-m", "initial"], cwd=root, check=True, capture_output=True
-    )
+    subprocess.run(["git", "commit", "-m", "initial"], cwd=root, check=True, capture_output=True)
     return root
 
 
@@ -87,13 +85,18 @@ def _submit_and_approve(tmp_path: Path, root: Path) -> tuple[str, Path]:
     review_path = tmp_path / "queue.jsonl"
     proposals_dir = tmp_path / "proposals"
     payload = ConfigPatch(
-        setup="base_breakout", market="nse", path="setups.base_breakout.partial_at_r",
-        old_value=2.0, new_value=2.5,
+        setup="base_breakout",
+        market="nse",
+        path="setups.base_breakout.partial_at_r",
+        old_value=2.0,
+        new_value=2.5,
     )
     proposal = new_proposal(
-        ProposalKind.CONFIG_PATCH, payload,
+        ProposalKind.CONFIG_PATCH,
+        payload,
         gauntlet_report={"stopped_at": None, "kill_criteria": {"passed": True}},
-        gauntlet_artifact_path="x", gauntlet_artifact_sha256="y",
+        gauntlet_artifact_path="x",
+        gauntlet_artifact_sha256="y",
         evidence_summary="3 consecutive windows below floor",
     )
     item = rq.add_item("nse", "TUNE base_breakout", "detail", "proposal", path=review_path)
@@ -152,12 +155,13 @@ def _submit_and_approve_retirement(
 ) -> tuple[str, Path]:
     review_path = tmp_path / "queue.jsonl"
     proposals_dir = tmp_path / "proposals"
-    payload = RetireSetup(
-        setup="nr7_breakout", market="nse", replacement_source=replacement_source
-    )
+    payload = RetireSetup(setup="nr7_breakout", market="nse", replacement_source=replacement_source)
     proposal = new_proposal(
-        ProposalKind.RETIRE_SETUP, payload,
-        gauntlet_report={}, gauntlet_artifact_path="", gauntlet_artifact_sha256="",
+        ProposalKind.RETIRE_SETUP,
+        payload,
+        gauntlet_report={},
+        gauntlet_artifact_path="",
+        gauntlet_artifact_sha256="",
         evidence_summary="3 consecutive windows below floor",
     )
     item = rq.add_item("nse", "RETIRE nr7_breakout", "detail", "proposal", path=review_path)
@@ -174,8 +178,11 @@ def test_apply_retire_setup_retires_on_that_market_only(tmp_path: Path) -> None:
     item_id, review_path = _submit_and_approve_retirement(tmp_path, root)
 
     result = ap.apply(
-        item_id, root=root, review_path=review_path,
-        applied_dir=tmp_path / "applied", applied_log=tmp_path / "log.md",
+        item_id,
+        root=root,
+        review_path=review_path,
+        applied_dir=tmp_path / "applied",
+        applied_log=tmp_path / "log.md",
     )
 
     text = (root / "config" / "setups.yaml").read_text(encoding="utf-8")
@@ -227,8 +234,11 @@ def test_apply_retire_setup_never_auto_promotes_a_named_replacement(tmp_path: Pa
     )
 
     ap.apply(
-        item_id, root=root, review_path=review_path,
-        applied_dir=tmp_path / "applied", applied_log=tmp_path / "log.md",
+        item_id,
+        root=root,
+        review_path=review_path,
+        applied_dir=tmp_path / "applied",
+        applied_log=tmp_path / "log.md",
     )
 
     text = (root / "config" / "setups.yaml").read_text(encoding="utf-8")
@@ -276,9 +286,11 @@ def test_apply_new_detector_writes_all_five_wiring_points(tmp_path: Path) -> Non
         ],
     )
     proposal = new_proposal(
-        ProposalKind.NEW_DETECTOR, payload,
+        ProposalKind.NEW_DETECTOR,
+        payload,
         gauntlet_report={"stopped_at": None, "kill_criteria": {"passed": True}},
-        gauntlet_artifact_path="x", gauntlet_artifact_sha256="y",
+        gauntlet_artifact_path="x",
+        gauntlet_artifact_sha256="y",
         evidence_summary="cleared the gauntlet",
     )
     item = rq.add_item(
@@ -291,8 +303,12 @@ def test_apply_new_detector_writes_all_five_wiring_points(tmp_path: Path) -> Non
     rq.decide(item.id, "approved", path=review_path)
 
     result = ap.apply(
-        item.id, root=root, lab_output=lab_output, review_path=review_path,
-        applied_dir=tmp_path / "applied", applied_log=tmp_path / "log.md",
+        item.id,
+        root=root,
+        lab_output=lab_output,
+        review_path=review_path,
+        applied_dir=tmp_path / "applied",
+        applied_log=tmp_path / "log.md",
     )
 
     signals_text = (root / "src" / "tradedesk" / "engine" / "signals.py").read_text(
@@ -301,14 +317,12 @@ def test_apply_new_detector_writes_all_five_wiring_points(tmp_path: Path) -> Non
     assert 'MEAN_REVERSION_V1 = "mean_reversion_v1"' in signals_text
     assert "NR7_BREAKOUT" in signals_text  # existing members untouched
 
-    new_setup_text = (
-        root / "src" / "tradedesk" / "setups" / "mean_reversion_v1.py"
-    ).read_text(encoding="utf-8")
-    assert new_setup_text == GENERATED_SOURCE
-
-    init_text = (root / "src" / "tradedesk" / "setups" / "__init__.py").read_text(
+    new_setup_text = (root / "src" / "tradedesk" / "setups" / "mean_reversion_v1.py").read_text(
         encoding="utf-8"
     )
+    assert new_setup_text == GENERATED_SOURCE
+
+    init_text = (root / "src" / "tradedesk" / "setups" / "__init__.py").read_text(encoding="utf-8")
     assert "from tradedesk.setups.mean_reversion_v1 import MeanReversionV1" in init_text
     assert "SetupKind.MEAN_REVERSION_V1: MeanReversionV1()," in init_text
     assert "SetupKind.NR7_BREAKOUT: Nr7Breakout()," in init_text  # untouched
@@ -326,9 +340,59 @@ def test_apply_new_detector_writes_all_five_wiring_points(tmp_path: Path) -> Non
 
     with pytest.raises(ap.ApplyRefused, match="already installed"):
         ap.apply(
-            item.id, root=root, lab_output=lab_output, review_path=review_path,
-            applied_dir=tmp_path / "applied", applied_log=tmp_path / "log.md",
+            item.id,
+            root=root,
+            lab_output=lab_output,
+            review_path=review_path,
+            applied_dir=tmp_path / "applied",
+            applied_log=tmp_path / "log.md",
         )
+
+
+def test_a_swap_adds_the_better_setup_and_replaces_the_old_one_in_one_commit(
+    tmp_path: Path,
+) -> None:
+    root = _init_repo(tmp_path)
+    lab_output = tmp_path / "lab_output"
+    (lab_output / "candidates" / "exp1").mkdir(parents=True)
+    (lab_output / "candidates" / "exp1" / "production_setup.py").write_text(
+        GENERATED_SOURCE, encoding="utf-8"
+    )
+    review_path = tmp_path / "queue.jsonl"
+    payload = NewDetectorCode(
+        setup_kind="mean_reversion_v1", market="nse",
+        lab_module_path="tradedesk_lab/candidates/mean_reversion_v1.py",
+        lab_experiment_id="exp1", lab_candidate_id="cand1",
+        target_files=["config/setups.yaml"], replaces=["nr7_breakout"],
+    )  # fmt: skip
+    proposal = new_proposal(
+        ProposalKind.NEW_DETECTOR, payload,
+        gauntlet_report={"stopped_at": None, "kill_criteria": {"passed": True}},
+        gauntlet_artifact_path="x", gauntlet_artifact_sha256="y",
+        evidence_summary="beat nr7_breakout on nse after costs",
+    )  # fmt: skip
+    item = rq.add_item("nse", "NEW DETECTOR mean_reversion_v1", "d", "p", path=review_path)
+    proposal_path = write_proposal(proposal, item_id=item.id, directory=tmp_path / "proposals")
+    rows = rq.load_queue(review_path)
+    rows[item.id].proposal_ref = str(proposal_path)
+    rq.save_queue(rows, review_path)
+    rq.decide(item.id, "approved", path=review_path)
+
+    ap.apply(
+        item.id, root=root, lab_output=lab_output, review_path=review_path,
+        applied_dir=tmp_path / "applied", applied_log=tmp_path / "log.md",
+    )  # fmt: skip
+
+    yaml_text = (root / "config" / "setups.yaml").read_text(encoding="utf-8")
+    assert "mean_reversion_v1:\n    enabled: true\n    markets: [nse]" in yaml_text
+    assert "REPLACED on nse" in yaml_text and "by mean_reversion_v1" in yaml_text
+    nr7_block = yaml_text.split("  nr7_breakout:")[1].split("\n  ")[0]
+    assert "retired_markets: [nse]" in yaml_text.split("  nr7_breakout:")[1][:200]
+    assert nr7_block is not None
+    subject = subprocess.run(
+        ["git", "log", "-1", "--format=%s"], cwd=root, check=True, capture_output=True, text=True
+    ).stdout
+    assert "replacing nr7_breakout" in subject  # one commit for the whole swap
 
 
 def test_apply_new_detector_refuses_without_a_pre_generated_source(tmp_path: Path) -> None:
@@ -343,8 +407,11 @@ def test_apply_new_detector_refuses_without_a_pre_generated_source(tmp_path: Pat
         lab_candidate_id="cand_missing",
     )
     proposal = new_proposal(
-        ProposalKind.NEW_DETECTOR, payload,
-        gauntlet_report={}, gauntlet_artifact_path="", gauntlet_artifact_sha256="",
+        ProposalKind.NEW_DETECTOR,
+        payload,
+        gauntlet_report={},
+        gauntlet_artifact_path="",
+        gauntlet_artifact_sha256="",
         evidence_summary="",
     )
     item = rq.add_item("nse", "NEW DETECTOR ghost_setup", "detail", "proposal", path=review_path)
@@ -356,5 +423,8 @@ def test_apply_new_detector_refuses_without_a_pre_generated_source(tmp_path: Pat
 
     with pytest.raises(ap.ApplyRefused, match="no pre-generated production source"):
         ap.apply(
-            item.id, root=root, lab_output=tmp_path / "empty_lab_output", review_path=review_path,
+            item.id,
+            root=root,
+            lab_output=tmp_path / "empty_lab_output",
+            review_path=review_path,
         )

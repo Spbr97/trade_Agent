@@ -76,6 +76,7 @@ results on fresh data after 14 days. A candidate becomes a NEW_DETECTOR proposal
 clears the full gauntlet, +0.10R over random, a Bonferroni-adjusted random-benchmark p-value
 and beats the retired setups' own forward result - the bar is never lowered to produce a
 winner. The Review tab's "Replacement research" panel shows the plan and leaderboard.
+**Replace, never retire into a blank** (owner's rule, 2026-10-18): the loop no longer raises retire-only items. A sustained failure stays on its market's roster (and stays a research target) until a candidate beats it; that candidate is one NEW_DETECTOR proposal whose `replaces` lists the setups it beat, and `apply()` adds it and moves those to `retired_markets` in a single commit. The 2026-09-30 retire-only changes were restored the same day.
 Full spec and milestone list: PLAN.md.
 
 ## Hard rules

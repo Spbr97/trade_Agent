@@ -47,14 +47,13 @@ from tradedesk.proposals import ProposalKind
 from tradedesk.review_queue import ReviewItem
 from tradedesk.rolling_failure_monitor import FailureSeverity, run_daily_check
 from tradedesk.self_review.config_tuning import propose_config_patches
-from tradedesk.self_review.decision_packet import refresh_retirement_plan, submit_for_review
+from tradedesk.self_review.decision_packet import submit_for_review
 from tradedesk.self_review.detector_authoring import detector_payload
 from tradedesk.self_review.replacement_search import (
     DEFAULT_TIME_BUDGET_S,
     SearchOutcome,
     run_replacement_search,
 )
-from tradedesk.self_review.retire_replace import propose_retirement
 
 DEFAULT_MAX_CODES = 150
 
@@ -196,12 +195,18 @@ def run_self_review(
         time_budget_s=search_time_budget_s,
     )
     result.search = search
+    # Owner's rule (2026-10-18): replace, never retire into a blank. A candidate only passes
+    # by beating the best of these setups' own results on this market, so it stands in for
+    # the sustained failures in the same approval.
+    beaten = [s for s in flagged if by_setup[s].severity == FailureSeverity.SUSTAINED]
     for found in select_for_submission(search.passed, search.candidates_by_name):
         candidate = search.candidates_by_name[found.name]
         evidence = json.loads(Path(found.artifact_path).read_text(encoding="utf-8"))
+        payload = detector_payload(candidate, market, found.experiment_id, found.candidate_id)
+        payload = replace(payload, replaces=beaten)
         item = submit_for_review(
             ProposalKind.NEW_DETECTOR,
-            detector_payload(candidate, market, found.experiment_id, found.candidate_id),
+            payload,
             failure=next((by_setup[s] for s in flagged if s in by_setup), None),
             gauntlet_report={
                 "stopped_at": evidence.get("stopped_at"),
@@ -222,28 +227,9 @@ def run_self_review(
         failure = by_setup[setup]
         setup_kind = SetupKind(setup)
         if failure.severity == FailureSeverity.SUSTAINED:
-            payload = propose_retirement(
-                setup_kind,
-                market,
-                failure,
-                already_retired=setup in retired_here,
-                replacement_plan=plan,
-                replacement_search_report=search.report_path,
-            )
-            if payload is None:
-                continue
-            item = submit_for_review(
-                ProposalKind.RETIRE_SETUP,
-                payload,
-                failure=failure,
-                gauntlet_report={},
-                gauntlet_artifact_path="",
-                gauntlet_artifact_sha256="",
-            )
-            if item is not None:
-                result.items.append(item)
-            else:
-                refresh_retirement_plan(market, setup, plan)
+            # No retire-only proposal: the setup stays on the roster and stays a research
+            # target until a better candidate is found, which is then proposed as one swap.
+            print(f"{market} {setup}: sustained failure; kept on the roster - {plan}")
             continue
 
         if md is None:

@@ -292,11 +292,23 @@ def _apply_new_detector(
     new_setup_py.write_text(production_source, encoding="utf-8")
     _insert_registry_entry(setups_init, payload.setup_kind, class_name, enum_member)
     _append_setup_block(setups_yaml, payload.setup_kind, payload.market)
+    today = datetime.now(UTC).date().isoformat()
+    for old in payload.replaces:
+        # The same commit takes the beaten setup off this market only (it stays enabled
+        # elsewhere and is still shadow-tracked here), so the swap is never half done.
+        _insert_comment_above_setup(
+            setups_yaml,
+            old,
+            f"REPLACED on {payload.market} {today} by {payload.setup_kind} "
+            f"(self-review item {item_id}); still shadow-tracked on {payload.market}",
+        )
+        _add_to_flow_list(setups_yaml, old, "retired_markets", payload.market)
 
     changed_paths = [signals_py, new_setup_py, setups_init, setups_yaml]
+    swap = f", replacing {', '.join(payload.replaces)}" if payload.replaces else ""
     sha = _commit(
         changed_paths,
-        f"[self-review] add new detector {payload.setup_kind} on {payload.market} "
+        f"[self-review] add new detector {payload.setup_kind} on {payload.market}{swap} "
         f"(item {item_id}, lab experiment {payload.lab_experiment_id})",
         root=root,
     )
@@ -317,9 +329,7 @@ def _apply_new_detector(
 
 
 def _git(*args: str, cwd: Path) -> str:
-    result = subprocess.run(
-        ["git", *args], cwd=cwd, capture_output=True, text=True, check=True
-    )
+    result = subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True, check=True)
     return result.stdout.strip()
 
 

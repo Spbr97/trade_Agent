@@ -82,6 +82,10 @@ class NewDetectorCode:
     lab_experiment_id: str
     lab_candidate_id: str
     target_files: list[str] = field(default_factory=list)
+    # The swap (owner's rule, 2026-10-18): the failing setups on `market` this candidate beat.
+    # Approving the proposal adds the new setup AND takes these off the market in one commit,
+    # so a market is never left with a blank where a setup used to be.
+    replaces: list[str] = field(default_factory=list)
 
 
 PAYLOAD_TYPES: dict[ProposalKind, type] = {
