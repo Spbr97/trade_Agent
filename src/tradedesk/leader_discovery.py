@@ -287,9 +287,7 @@ def _prepare_causal_frame(
     )
     frame["distance_sma_20"] = _safe_ratio(frame["close"], frame["sma_20"]) - 1.0
     frame["distance_sma_50"] = _safe_ratio(frame["close"], frame["sma_50"]) - 1.0
-    frame["distance_prior_high_20"] = (
-        _safe_ratio(frame["close"], frame["prior_high_20"]) - 1.0
-    )
+    frame["distance_prior_high_20"] = _safe_ratio(frame["close"], frame["prior_high_20"]) - 1.0
     frame["atr_14_pct"] = _safe_ratio(frame["atr_14"], frame["close"])
 
     for column in (
@@ -334,27 +332,16 @@ def extract_causal_universe(
 
     frame = _prepare_causal_frame(frame, spec, require_mature_outcomes=True)
 
-    frame["forward_close_return_1"] = (
-        _safe_ratio(frame["close_lead_1"], frame["close"]) - 1.0
-    )
-    frame["forward_close_return_3"] = (
-        _safe_ratio(frame["close_lead_3"], frame["close"]) - 1.0
-    )
-    frame["forward_close_return_5"] = (
-        _safe_ratio(frame["close_lead_5"], frame["close"]) - 1.0
-    )
-    frame["forward_max_high_return_3"] = (
-        _safe_ratio(frame["high_forward_3"], frame["close"]) - 1.0
-    )
-    frame["forward_min_low_return_3"] = (
-        _safe_ratio(frame["low_forward_3"], frame["close"]) - 1.0
-    )
+    frame["forward_close_return_1"] = _safe_ratio(frame["close_lead_1"], frame["close"]) - 1.0
+    frame["forward_close_return_3"] = _safe_ratio(frame["close_lead_3"], frame["close"]) - 1.0
+    frame["forward_close_return_5"] = _safe_ratio(frame["close_lead_5"], frame["close"]) - 1.0
+    frame["forward_max_high_return_3"] = _safe_ratio(frame["high_forward_3"], frame["close"]) - 1.0
+    frame["forward_min_low_return_3"] = _safe_ratio(frame["low_forward_3"], frame["close"]) - 1.0
     frame["opportunity_percentile"] = frame.groupby("session_date")[
         "forward_max_high_return_3"
     ].rank(method="average", pct=True)
-    frame["opportunity_label"] = (
-        (frame["opportunity_percentile"] >= spec.leader_percentile)
-        & (frame["forward_max_high_return_3"] >= spec.minimum_primary_move)
+    frame["opportunity_label"] = (frame["opportunity_percentile"] >= spec.leader_percentile) & (
+        frame["forward_max_high_return_3"] >= spec.minimum_primary_move
     )
 
     sessions = sorted(frame["session_date"].unique())[-session_count:]
@@ -420,13 +407,9 @@ def extract_decision_universe(
         raise ValueError(f"no liquid decision rows available for {market}")
     source = {
         "db_path": str(db_path),
-        "latest_closed_session": datetime.fromtimestamp(
-            latest_ts, tz=IST
-        ).date().isoformat(),
+        "latest_closed_session": datetime.fromtimestamp(latest_ts, tz=IST).date().isoformat(),
         "decision_session": decision_session.isoformat(),
-        "query_history_start": datetime.fromtimestamp(
-            history_start, tz=IST
-        ).date().isoformat(),
+        "query_history_start": datetime.fromtimestamp(history_start, tz=IST).date().isoformat(),
         "universe_rows": int(len(frame)),
     }
     return frame, source
@@ -562,9 +545,7 @@ def build_audit_rows(
         features = {name: _finite(source.get(name)) for name in FEATURE_COLUMNS}
         outcomes: dict[str, Any] = {
             name: (
-                bool(source.get(name))
-                if name == "opportunity_label"
-                else _finite(source.get(name))
+                bool(source.get(name)) if name == "opportunity_label" else _finite(source.get(name))
             )
             for name in OUTCOME_COLUMNS
         }
@@ -649,11 +630,10 @@ def _session_summary(rows: Sequence[Mapping[str, Any]], session: str) -> dict[st
                 "forward_close_return_3": (row.get("opportunity") or {}).get(
                     "forward_close_return_3"
                 ),
-                "identification_state": (row.get("tracking") or {}).get(
-                    "identification_state"
-                ),
+                "identification_state": (row.get("tracking") or {}).get("identification_state"),
                 "execution_state": (row.get("tracking") or {}).get("execution_state"),
-                "miss_reasons": (row.get("tracking") or {}).get("rejection_buckets") or (
+                "miss_reasons": (row.get("tracking") or {}).get("rejection_buckets")
+                or (
                     ["no_pattern_candidate"]
                     if (row.get("tracking") or {}).get("identification_state")
                     == "no_setup_candidate"
@@ -700,21 +680,36 @@ def _write_dataset(path: Path, rows: Sequence[Mapping[str, Any]]) -> str:
         temporary.unlink(missing_ok=True)
 
 
-FREEZE_FLOAT_DIGITS = 10
+FREEZE_FLOAT_DIGITS = 10  # legacy rule: decimal places (freezes written before 2026-10-18)
+FREEZE_SIGNIFICANT_DIGITS = 12
+FREEZE_ROUNDING = "significant-12"
+SIGNIFICANT_HASH_FIELD = "causal_rows_sha256_significant12"
 
 
-def _stable_floats(value: Any) -> Any:
+def _stable_floats(value: Any, *, legacy: bool = False) -> Any:
     """Round floats before hashing a freeze. Rolling means sum a different window as history
-    grows, which moves a feature by ~1e-15 with no change to any candle; exact-float hashing
-    then rejects an unchanged cross-section. Ten decimals keeps every real revision visible."""
+    grows, which moves a feature by a unit in its last place with no change to any candle;
+    exact-float hashing then rejects an unchanged cross-section.
+
+    The legacy rule rounded to 10 decimal places, which is finer than a float can hold for
+    large values: a 20-day turnover near 7.2e6 carries ~1e-9 of noise, so its 10th decimal
+    flipped whenever the window moved (the crypto audit failed from every 00:00 UTC candle
+    until the digit flipped back). Twelve significant digits ignores that noise at any
+    magnitude while a real revision, millions of times larger, still changes the hash."""
 
     if isinstance(value, float):
-        return round(value, FREEZE_FLOAT_DIGITS)
+        if legacy:
+            return round(value, FREEZE_FLOAT_DIGITS)
+        return float(f"{value:.{FREEZE_SIGNIFICANT_DIGITS}g}")
     if isinstance(value, Mapping):
-        return {key: _stable_floats(item) for key, item in value.items()}
+        return {key: _stable_floats(item, legacy=legacy) for key, item in value.items()}
     if isinstance(value, (list, tuple)):
-        return [_stable_floats(item) for item in value]
+        return [_stable_floats(item, legacy=legacy) for item in value]
     return value
+
+
+def _rows_hash(rows: Sequence[Mapping[str, Any]], *, legacy: bool = False) -> str:
+    return canonical_sha256(_stable_floats(rows, legacy=legacy))
 
 
 def _pending_outcomes(rows: Sequence[Mapping[str, Any]]) -> list[str]:
@@ -813,7 +808,8 @@ def _freeze_prospective_sessions(
             "created_at": generated_at.isoformat(),
             "contract_sha256": contract_sha256,
             "row_count": len(immutable_rows),
-            "causal_rows_sha256": canonical_sha256(_stable_floats(immutable_rows)),
+            "float_rounding": FREEZE_ROUNDING,
+            "causal_rows_sha256": _rows_hash(immutable_rows),
             "pending_outcomes": _pending_outcomes(immutable_rows),
             "active_model_changed": False,
             "eligible_for_live": False,
@@ -833,19 +829,54 @@ def _freeze_prospective_sessions(
                         f"prospective freeze {session} changed at immutable field {key}"
                     )
             recorded = existing.get("pending_outcomes")
-            masks = [recorded] if isinstance(recorded, list) else (
-                _legacy_pending_masks(immutable_rows)
+            masks = (
+                [recorded]
+                if isinstance(recorded, list)
+                else (_legacy_pending_masks(immutable_rows))
             )
-            if not any(
-                canonical_sha256(_stable_floats(_mask_pending(immutable_rows, mask)))
-                == existing.get("causal_rows_sha256")
-                for mask in masks
-            ):
-                raise ValueError(
-                    f"prospective freeze {session} changed at immutable field "
+            if existing.get("float_rounding") == FREEZE_ROUNDING:
+                expected = existing.get(SIGNIFICANT_HASH_FIELD) or existing.get(
                     "causal_rows_sha256"
                 )
+                matched = any(
+                    _rows_hash(_mask_pending(immutable_rows, mask)) == expected for mask in masks
+                )
+                migrated = None
+            else:
+                # Legacy freeze: verify under the rule it was written with. Only after it
+                # verifies, record the same rows' significant-digit hash next to the
+                # original (which stays), so later checks are immune to last-place noise.
+                legacy_mask = next(
+                    (
+                        mask
+                        for mask in masks
+                        if _rows_hash(_mask_pending(immutable_rows, mask), legacy=True)
+                        == existing.get("causal_rows_sha256")
+                    ),
+                    None,
+                )
+                matched = legacy_mask is not None
+                migrated = (
+                    {
+                        **_report_without_hash(existing),
+                        "float_rounding": FREEZE_ROUNDING,
+                        SIGNIFICANT_HASH_FIELD: _rows_hash(
+                            _mask_pending(immutable_rows, legacy_mask)
+                        ),
+                        "float_rounding_recorded_at": generated_at.isoformat(),
+                    }
+                    if matched
+                    else None
+                )
+            if not matched:
+                raise ValueError(
+                    f"prospective freeze {session} changed at immutable field causal_rows_sha256"
+                )
             payload = existing
+            if migrated is not None:
+                migrated["artifact_sha256"] = canonical_sha256(migrated)
+                _atomic_text(path, json.dumps(migrated, indent=2, sort_keys=True) + "\n")
+                payload = migrated
         else:
             _atomic_text(path, json.dumps(payload, indent=2, sort_keys=True) + "\n")
         freezes.append(
@@ -916,13 +947,9 @@ def run_missed_leader_audit(
         "last_session": observed_summaries[-1]["session"] if observed_summaries else None,
         "leader_count": observed_leaders,
         "candidate_count": observed_candidates,
-        "candidate_recall": (
-            observed_candidates / observed_leaders if observed_leaders else None
-        ),
+        "candidate_recall": (observed_candidates / observed_leaders if observed_leaders else None),
         "qualified_count": observed_qualified,
-        "qualified_recall": (
-            observed_qualified / observed_leaders if observed_leaders else None
-        ),
+        "qualified_recall": (observed_qualified / observed_leaders if observed_leaders else None),
     }
 
     market_root = output_root / market
@@ -993,9 +1020,7 @@ def run_missed_leader_audit(
     return report
 
 
-def load_latest_audit(
-    market: str, *, output_root: Path = DEFAULT_OUTPUT_ROOT
-) -> dict[str, Any]:
+def load_latest_audit(market: str, *, output_root: Path = DEFAULT_OUTPUT_ROOT) -> dict[str, Any]:
     spec_for(market)
     path = output_root / market / "latest.json"
     if not path.exists():
