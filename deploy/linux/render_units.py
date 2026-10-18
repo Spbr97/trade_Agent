@@ -122,6 +122,31 @@ def service_unit(job: Mapping[str, Any], *, root: str, user: str) -> str:
             *digest_lines(job["name"], root=root),
             f"TimeoutStartSec={f'{limit}min' if limit else 'infinity'}",
             "Nice=5",
+            f"Slice={JOBS_SLICE}",
+            # Jobs go before the always-on services if the whole machine ever runs out.
+            "OOMScoreAdjust=200",
+            "",
+        ]
+    )
+
+
+# Every batch job shares one memory budget below the machine's RAM, so a runaway job is stopped
+# on its own (systemd Result=oom-kill, pushed by deploy/linux/memory_guard.py) and the dashboard,
+# tunnel, billing guard and ssh always keep room. Percentages are of physical RAM; jobs may still
+# use the swap file before the cap stops one.
+JOBS_SLICE = "tradedesk-jobs.slice"
+
+
+def jobs_slice() -> str:
+    return "\n".join(
+        [
+            "[Unit]",
+            "Description=tradedesk batch jobs (one shared, capped memory budget)",
+            "",
+            "[Slice]",
+            "MemoryAccounting=yes",
+            "MemoryHigh=75%",
+            "MemoryMax=85%",
             "",
         ]
     )
@@ -191,6 +216,7 @@ def always_on_units(*, root: str, user: str) -> dict[str, str]:
 
 def render(schedule: Mapping[str, Any], *, root: str, user: str) -> dict[str, str]:
     files = always_on_units(root=root, user=user)
+    files[JOBS_SLICE] = jobs_slice()
     for job in schedule["jobs"]:
         if not job.get("enabled", True) or job["name"] in {
             "tradedesk-dashboard", "tradedesk-cloudflare-tunnel"

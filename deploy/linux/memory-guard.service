@@ -1,0 +1,15 @@
+[Unit]
+Description=Memory guard (phone push when server memory runs low or a job is stopped for lack of memory)
+
+[Service]
+Type=oneshot
+User=tradedesk
+WorkingDirectory=/opt/tradedesk
+Environment=TZ=Asia/Kolkata
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/opt/tradedesk/src
+EnvironmentFile=-/etc/tradedesk/env
+ExecStart=/opt/tradedesk/.venv/bin/python /opt/tradedesk/deploy/linux/memory_guard.py
+TimeoutStartSec=2min
+# Last in line for the out-of-memory killer: the watcher must outlive what it reports on.
+OOMScoreAdjust=-900

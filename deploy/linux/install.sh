@@ -125,5 +125,19 @@ else
   echo "   no /etc/tradedesk/oci/config yet: guard timer not started"
 fi
 
+echo "== memory fail-safe: swap file, capped job budget (tradedesk-jobs.slice), memory guard"
+# The swap file lives on the existing boot volume: no new Oracle resource, no charge. Low
+# swappiness keeps it a cushion for peaks, not working memory.
+if ! grep -q '^/swapfile ' /proc/swaps; then
+  [ -f /swapfile ] || { fallocate -l 4G /swapfile && chmod 600 /swapfile && mkswap /swapfile >/dev/null; }
+  swapon /swapfile
+fi
+grep -q '^/swapfile ' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
+echo 'vm.swappiness=10' > /etc/sysctl.d/99-tradedesk-swap.conf
+sysctl -q -p /etc/sysctl.d/99-tradedesk-swap.conf
+install -m 0644 "$ROOT"/deploy/linux/memory-guard.service "$ROOT"/deploy/linux/memory-guard.timer /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable --now memory-guard.timer
+
 echo "== done. Next: docs/cloud-deploy.md steps 4-6 (data copy, secrets, ntfy)."
 systemctl list-timers 'tradedesk-*' --no-pager | head -15 || true  # head closes the pipe early: exit 141, not a failure

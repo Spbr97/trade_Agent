@@ -1,0 +1,11 @@
+[Unit]
+Description=Run the memory guard every minute
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=1min
+AccuracySec=5s
+Unit=memory-guard.service
+
+[Install]
+WantedBy=timers.target

@@ -14,3 +14,5 @@ Environment=OCI_CONFIG_FILE=/etc/tradedesk/oci/config
 EnvironmentFile=-/etc/tradedesk/env
 ExecStart=/opt/tradedesk/.venv/bin/python /opt/tradedesk/deploy/oracle/billing_guard.py
 TimeoutStartSec=4min
+# Last in line for the out-of-memory killer: the charge watch must survive a memory crunch.
+OOMScoreAdjust=-900

@@ -57,7 +57,11 @@ source into evidence (`digest(Path(__file__))`) to fix paths. Alerts reach the p
 on, sends close-job, end-of-day, intraday-check, multi-day-call, earnings-drift and weekly
 digests. Oracle cost safety: a `free-tier-only` quota policy, a SGD budget alert, and
 `deploy/oracle/billing_guard.py` every 5 min on both the server and the laptop (kill switch at
-SGD 0.30) - the owner cannot afford any Oracle charge. Nightly backups of data/ are pulled to the
+SGD 0.30) - the owner cannot afford any Oracle charge. Memory safety: every batch job runs in
+`tradedesk-jobs.slice` (one shared cap at 85% of RAM, so a runaway job is stopped alone while the
+dashboard, tunnel and billing guard keep room), a 4 GB swap file on the boot volume cushions peaks,
+and `deploy/linux/memory_guard.py` (every minute) pushes low/critical memory, any out-of-memory
+kill and the all-clear. Nightly backups of data/ are pulled to the
 laptop (`deploy/linux/backup.py`, `deploy/laptop/pull_backups.py`); the laptop also watches
 that the server is alive (`deploy/laptop/server_watch.py`). Dashboard (2026-10-18 layout): Today
 (NSE/BSE, opens with earnings-drift calls), Crypto, Scoreboard, Markets, Review, Research; the
