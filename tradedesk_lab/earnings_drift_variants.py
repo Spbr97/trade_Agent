@@ -148,7 +148,7 @@ def main(argv: list[str] | None = None) -> None:
         print(
             f"{name:7s} n={r['trades']} mean={r['mean_return']:+.2%} sd={r['sd']:.1%} per-risk={r['return_per_risk']:.3f} "  # noqa: E501
             f"win={r['win_rate']:.0%} worst={r['worst_trade']:+.0%} worst-month={r['worst_month_avg']:+.1%} "  # noqa: E501
-            f"years+={r['positive_years']} {'IMPROVES' if r['improves_on_base'] else ''}\n         [{yrs}]"
+            f"years+={r['positive_years']} {'IMPROVES' if r['improves_on_base'] else ''}\n         [{yrs}]"  # noqa: E501
         )  # noqa: E501
 
 
