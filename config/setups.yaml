@@ -83,7 +83,9 @@ setups:
     enabled: true
     markets: [bse]
     research_only_markets: [bse]
+  # RETIRED on bse 2026-10-18 by self-review item bse:2026-10-17T15:25:27.292674+05:30: sustained failure; still enabled elsewhere and shadow-tracked on bse (see docs/self-review-applied-log.md)
   r_donchian20_strong_trend_trend_trail:
+    retired_markets: [bse]
     enabled: true
     markets: [bse]
     research_only_markets: [bse]
