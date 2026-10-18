@@ -40,14 +40,43 @@ built on those same tested primitives; its first real run correctly killed
 `crypto_intraday_research.py`'s `MomentumContinuation` at the random-entry-benchmark stage
 (p=0.986 - worse than random timing), and every run's report surfaces at `/lab`'s Harness tab.
 
-**Automation**: ~15 Windows Scheduled Tasks (`Get-ScheduledTask -TaskName tradedesk-*`) run
-the whole pipeline unattended - data loads, live sessions, after-close scans, per-market
-signal trackers, research trackers, EOD learning, drift checks, an options snapshot, and a
-permanently-running dashboard. Every `uv run` scheduled action uses `--no-sync` (the
-always-on dashboard task holds a lock on `tradedesk.exe`; a normal dependency-sync step can
-silently collide with it and exit 0 without running). Dashboard: one FastAPI app at
-`127.0.0.1:8765` (Calls/Report-Research/Learning-Review tabs, a market dropdown per tab,
-plus Lookup); the research lab is mounted at `/lab` under the same origin/port.
+**Automation (since 2026-10-18 on an Oracle Always Free VM, not the laptop)**: the pipeline
+runs on `ubuntu@140.245.20.98` (Ubuntu 24.04 ARM, repo at `/opt/tradedesk`, user `tradedesk`)
+as 35 systemd timers rendered from `deploy/schedule.json` (exported from the old Windows tasks)
+plus an always-on dashboard and Cloudflare quick tunnel - see docs/cloud-deploy.md. Deploys are
+`git archive HEAD` copied over and `sudo bash deploy/linux/install.sh`, which also restarts the
+dashboard (a running app keeps old code otherwise) and re-records the lab's base manifest for
+the deployed code. The laptop's `tradedesk-*` Windows tasks are DISABLED as a cold standby:
+never run both - the hash-chained ledgers must not fork. The server has no keychain:
+secrets live in root-only `/etc/tradedesk/env` (ntfy topic, keyring-file password) and an
+encrypted keyring file (`tradedesk.server_keyring`, INDstocks login); `tradedesk-cli` on the
+server runs the CLI with that environment. Windows-sealed backslash paths in evidence resolve
+via symlinks from `deploy/linux/link_windows_paths.py` - never edit modules that hash their own
+source into evidence (`digest(Path(__file__))`) to fix paths. Alerts reach the phone through ntfy
+(`task_health.alert`); `scripts/send_digest.py`, hooked as ExecStopPost on the jobs it reports
+on, sends close-job, end-of-day, intraday-check, multi-day-call, earnings-drift and weekly
+digests. Oracle cost safety: a `free-tier-only` quota policy, a SGD budget alert, and
+`deploy/oracle/billing_guard.py` every 5 min on both the server and the laptop (kill switch at
+SGD 0.30) - the owner cannot afford any Oracle charge. Nightly backups of data/ are pulled to the
+laptop (`deploy/linux/backup.py`, `deploy/laptop/pull_backups.py`); the laptop also watches
+that the server is alive (`deploy/laptop/server_watch.py`). Dashboard (2026-10-18 layout): Today
+(NSE/BSE, opens with earnings-drift calls), Crypto, Scoreboard, Markets, Review, Research; the
+research lab is mounted at `/lab` under the same origin/port.
+
+**What may alert (2026-10-18)**: `profit_gate.py` judges every setup per market daily on LIVE
+calls after costs (time-uniform confidence sequence, NSE+BSE pooled): TRADEABLE (lower bound >
++0.05R, 50+ calls) alerts at full size; PROVISIONAL (500+ historical gauntlet trades at +0.20R or
+better on that market, NSE/BSE) alerts at a quarter size and is stopped automatically below
+break-even or after 12 straight losses; `build_watchlist` takes these verdicts (score floor,
+regime, filters and risk limits still apply; a missing or stale status allows nothing).
+`earnings_drift.py` is the one strategy that passed a pre-registered bar after costs
+(tradedesk_lab/edge_hunt.py: liquid NSE stocks jumping 5%+ vs the market on 2x volume after
+results beat the market by +1.6% over 20 sessions, 2016-2026): calls after each NSE close, Rs
+10,000 each, fixed 20-session hold, no stop, stops issuing if live results trail the market.
+Tested and failed on 2026-10-18 (do not re-test without new data): the intraday playbook (ORB,
+VWAP pullback, breakout-retest, first-hour momentum - tradedesk_lab/intraday_playbook.py), daily
+setups' entries held 5 sessions (daily_twin_test.py), NIFTY 50 trend rules and sector rotation
+(edge_hunt.py).
 
 **Scope limits, by design, not oversight**: paper trading and the live risk manager remain
 NSE-only (crypto/BSE have no paper book to grade against). Crypto/BSE calls are
