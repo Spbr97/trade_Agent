@@ -484,3 +484,55 @@ def self_review_lines(start: date, end: date, *, root: Path = Path(".")) -> list
     if len(weak) > 8:
         lines.append(f"  +{len(weak) - 8} more on the Review tab")
     return lines
+
+
+def review_items(*, root: Path = Path(".")) -> list[tuple[str, str, str]]:
+    """``(key, title, body)`` for every review-queue item still waiting for the owner. The key
+    is the item id, so send_digest announces each item once however many jobs run this."""
+
+    out = []
+    for item in _jsonl(root / "data" / "reviews" / "queue.jsonl"):
+        if item.get("status") != "pending" or not item.get("id"):
+            continue
+        body = "\n".join(
+            [
+                str(item.get("detail") or "")[:240],
+                "Approve or reject on the dashboard: Review tab. Nothing changes until you do.",
+            ]
+        )
+        title = f"Review waiting ({str(item.get('market') or '').upper()}): {item.get('title')}"
+        out.append((f"review:{item['id']}", title[:120], body))
+    return out
+
+
+MOVERS_SHOWN = 10
+
+
+def potential_movers(market: str, *, root: Path = Path(".")) -> tuple[str, str, str] | None:
+    """``(key, title, body)`` for the newest potential-movers watch, or None when there is no
+    fresh list. Research only: the watch's own forward record is shown with it."""
+
+    report = _json(root / LAB / "potential_movers" / market / "latest.json")
+    rows = report.get("candidates") or []
+    if report.get("status") != "available" or report.get("data_stale") or not rows:
+        return None
+    lines = [
+        f"{r.get('symbol')}  {r.get('tier')}  close {_price(float(r['close']))}"
+        f"  5d {float(r.get('five_session_change_pct') or 0):+.1f}%"
+        f"  p(up5%) {100 * float(r.get('model_probability') or 0):.0f}%"
+        for r in rows[:MOVERS_SHOWN]
+        if r.get("close") is not None
+    ]
+    forward = report.get("forward_tracking") or {}
+    if forward.get("picks"):
+        lines.append(
+            f"Track record: {100 * float(forward.get('up5_rate') or 0):.0f}% of "
+            f"{forward['picks']} past picks rose 5%+ next session (all stocks: "
+            f"{100 * float(forward.get('same_day_universe_up5_rate') or 0):.0f}%); "
+            f"{100 * float(forward.get('down5_rate') or 0):.0f}% fell 5%+"
+        )
+    if len(rows) > MOVERS_SHOWN:
+        lines.append(f"+{len(rows) - MOVERS_SHOWN} more on the dashboard (Markets tab)")
+    lines.append(RESEARCH)
+    title = f"{_name(market)} potential movers for the next session ({report.get('as_of')})"
+    return f"movers:{market}:{report.get('as_of')}", title, "\n".join(lines)

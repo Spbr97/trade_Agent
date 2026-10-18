@@ -175,3 +175,43 @@ def test_the_dashboard_link_is_sent_once_per_change(tmp_path: Path) -> None:
     assert digests.dashboard_link(root=tmp_path) is None  # unchanged: nothing to send
     log.write_text("")  # rotated log: the last link is remembered, nothing re-sent
     assert digests.dashboard_link(root=tmp_path) is None
+
+
+def test_each_waiting_review_item_is_announced_with_where_to_act(tmp_path: Path) -> None:
+    _write_jsonl(
+        tmp_path / "data" / "reviews" / "queue.jsonl",
+        [
+            {"id": "nse:1", "market": "nse", "status": "pending",
+             "title": "NEW DETECTOR r_x on nse", "detail": "nr7_breakout below 30%"},
+            {"id": "nse:0", "market": "nse", "status": "approved", "title": "old", "detail": ""},
+        ],
+    )  # fmt: skip
+    items = digests.review_items(root=tmp_path)
+    assert [key for key, _, _ in items] == ["review:nse:1"]
+    _, title, body = items[0]
+    assert title == "Review waiting (NSE): NEW DETECTOR r_x on nse" and "Review tab" in body
+
+
+def test_potential_movers_list_their_own_track_record(tmp_path: Path) -> None:
+    report = {
+        "status": "available", "data_stale": False, "as_of": "2026-10-19",
+        "candidates": [
+            {"symbol": f"S{i}", "tier": "capitulation", "close": 350.45,
+             "five_session_change_pct": -10.0, "model_probability": 0.2}
+            for i in range(12)
+        ],
+        "forward_tracking": {"picks": 50, "up5_rate": 0.12, "down5_rate": 0.16,
+                             "same_day_universe_up5_rate": 0.03},
+    }  # fmt: skip
+    path = tmp_path / "data" / "m14_m18" / "potential_movers" / "nse" / "latest.json"
+    path.parent.mkdir(parents=True)
+    path.write_text(json.dumps(report), encoding="utf-8")
+
+    key, title, body = digests.potential_movers("nse", root=tmp_path)
+    assert key == "movers:nse:2026-10-19" and "2026-10-19" in title
+    assert "S0  capitulation  close 350.45  5d -10.0%  p(up5%) 20%" in body
+    assert "12% of 50 past picks rose 5%+" in body and "+2 more" in body
+    assert digests.RESEARCH in body
+    report["data_stale"] = True
+    path.write_text(json.dumps(report), encoding="utf-8")
+    assert digests.potential_movers("nse", root=tmp_path) is None

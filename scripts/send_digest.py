@@ -6,6 +6,8 @@
     python scripts/send_digest.py intraday --market nse
     python scripts/send_digest.py multiday            # every market
     python scripts/send_digest.py weekly
+    python scripts/send_digest.py review           # review items waiting, each once
+    python scripts/send_digest.py movers --market nse
 
 systemd runs it as ExecStopPost of the job it reports on, so it can never change that job's
 result (`-` prefix) and a delivery failure only costs the message. A message already sent for
@@ -56,7 +58,18 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
     parser.add_argument(
         "kind",
-        choices=["close", "eod", "intraday", "multiday", "weekly", "picks", "link", "drift"],
+        choices=[
+            "close",
+            "eod",
+            "intraday",
+            "multiday",
+            "weekly",
+            "picks",
+            "link",
+            "drift",
+            "review",
+            "movers",
+        ],
     )
     parser.add_argument("--market", choices=sorted(digests.CALLS))
     parser.add_argument("--job", default="")
@@ -64,7 +77,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--exit", dest="exit_status", default="0")
     args = parser.parse_args(argv)
 
-    if args.kind not in {"close", "weekly"} and args.result != "success":
+    # Review items wait for the owner whatever the job that found them did next.
+    if args.kind not in {"close", "weekly", "review"} and args.result != "success":
         print(f"{args.kind}: job result {args.result}, nothing sent (the health check reports it)")
         return 0
     now = datetime.now(IST)
@@ -84,6 +98,17 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps({k: v for k, v in result.items() if k != "verdict"}, default=str)[:2000])
         for n, (title, body) in enumerate(earnings_drift.messages(result)):
             _send(f"drift:{result['last_session']}:{n}", title, body)
+        return 0
+    if args.kind == "review":
+        for key, title, body in digests.review_items(root=root):
+            _send(key, title, body)
+        return 0
+    if args.kind == "movers":
+        built = digests.potential_movers(args.market or "nse", root=root)
+        if built:
+            _send(*built)
+        else:
+            print("movers: no fresh list, nothing sent")
         return 0
     if args.kind == "picks":
         # Consensus paper picks, each announced once (pick_announcer keeps its own record).

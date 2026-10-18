@@ -28,20 +28,25 @@ def _rows(market: str) -> list[dict[str, Any]]:
 async def _notify(calls: list[dict[str, Any]]) -> None:
     from tradedesk.alerts import TelegramBot, load_bot_token
     from tradedesk.alerts.cards import OutboundMessage
+    from tradedesk.task_health import alert
 
     settings = load_config(ROOT)
     token = load_bot_token()
     chat = settings.alerts.telegram.allowed_chat_id
-    if not (settings.alerts.telegram.enabled and token and chat):
-        return
-    bot = TelegramBot(token=token, chat_id=int(chat))
+    bot = (
+        TelegramBot(token=token, chat_id=int(chat))
+        if settings.alerts.telegram.enabled and token and chat
+        else None
+    )
     for c in calls:
         body = (
             f"{c['symbol']}  BUY above {c['entry']}\n"
             f"stop {c['stop']}   T1 {c['t1']}   T2 {c['t2']}\n"
             f"qty {c['qty']}  (risk Rs {c['risk_rupees']})\n{c['setup']}\n{c['label']}"
         )
-        await bot.send(OutboundMessage(title="PROBATION call", body=body))
+        alert("PROBATION call", body)  # the phone (ntfy); Telegram too when it is set up
+        if bot is not None:
+            await bot.send(OutboundMessage(title="PROBATION call", body=body))
 
 
 def main() -> None:

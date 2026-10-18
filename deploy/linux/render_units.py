@@ -72,7 +72,7 @@ def on_calendar(trigger: Mapping[str, Any]) -> list[str]:
 # leading "-" can never change the job's own result; the sender skips non-close digests when
 # the job did not succeed (the hourly health check already reports that failure).
 DIGEST_HOOKS: dict[str, list[tuple[str, str]]] = {
-    "tradedesk-after-close": [("close", "nse"), ("drift", "nse")],
+    "tradedesk-after-close": [("close", "nse"), ("drift", "nse"), ("review", "")],
     "tradedesk-bse-after-close": [("close", "bse")],
     "tradedesk-crypto-eod-learning": [("close", "crypto"), ("eod", "crypto")],
     "tradedesk-research-tracker": [("eod", "nse")],
@@ -83,6 +83,14 @@ DIGEST_HOOKS: dict[str, list[tuple[str, str]]] = {
     "tradedesk-multiday-hold-study": [("multiday", "")],
     # NSE/BSE picks are announced inside the equity collector; crypto's through this hook.
     "tradedesk-crypto-pre-takeoff-watch": [("picks", "crypto")],
+    # Self-review swap proposals (and anything else added to the review queue), each once.
+    "tradedesk-nse-self-review": [("review", "")],
+    "tradedesk-bse-self-review": [("review", "")],
+    "tradedesk-crypto-self-review": [("review", "")],
+    "tradedesk-mover-study-nightly": [("review", "")],
+    "tradedesk-potential-movers-nse": [("movers", "nse")],
+    "tradedesk-potential-movers-bse": [("movers", "bse")],
+    "tradedesk-potential-movers-crypto": [("movers", "crypto")],
 }
 
 
