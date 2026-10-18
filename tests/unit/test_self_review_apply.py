@@ -428,3 +428,52 @@ def test_apply_new_detector_refuses_without_a_pre_generated_source(tmp_path: Pat
             lab_output=tmp_path / "empty_lab_output",
             review_path=review_path,
         )
+
+
+def _approved_detector(tmp_path: Path, market: str, replaces: list[str], tag: str) -> str:
+    review_path = tmp_path / "queue.jsonl"
+    payload = NewDetectorCode(
+        setup_kind="mean_reversion_v1", market=market,
+        lab_module_path="tradedesk_lab/candidates/mean_reversion_v1.py",
+        lab_experiment_id="exp1", lab_candidate_id="cand1",
+        target_files=["config/setups.yaml"], replaces=replaces,
+    )  # fmt: skip
+    proposal = new_proposal(
+        ProposalKind.NEW_DETECTOR, payload,
+        gauntlet_report={"stopped_at": None, "kill_criteria": {"passed": True}},
+        gauntlet_artifact_path="x", gauntlet_artifact_sha256="y", evidence_summary=tag,
+    )  # fmt: skip
+    item = rq.add_item(market, f"NEW DETECTOR {tag}", "d", "p", path=review_path)
+    path = write_proposal(proposal, item_id=item.id, directory=tmp_path / f"proposals-{tag}")
+    rows = rq.load_queue(review_path)
+    rows[item.id].proposal_ref = str(path)
+    rq.save_queue(rows, review_path)
+    rq.decide(item.id, "approved", path=review_path)
+    return item.id
+
+
+def test_a_setup_installed_for_nse_is_enabled_on_bse_as_a_swap(tmp_path: Path) -> None:
+    root = _init_repo(tmp_path)
+    lab_output = tmp_path / "lab_output"
+    (lab_output / "candidates" / "exp1").mkdir(parents=True)
+    (lab_output / "candidates" / "exp1" / "production_setup.py").write_text(
+        GENERATED_SOURCE, encoding="utf-8"
+    )
+    kw = dict(root=root, lab_output=lab_output, review_path=tmp_path / "queue.jsonl",
+              applied_dir=tmp_path / "applied", applied_log=tmp_path / "log.md")  # fmt: skip
+    ap.apply(_approved_detector(tmp_path, "nse", [], "first"), **kw)
+    source_before = (root / "src/tradedesk/setups/mean_reversion_v1.py").read_text("utf-8")
+
+    ap.apply(_approved_detector(tmp_path, "bse", ["nr7_breakout"], "second"), **kw)
+
+    yaml_text = (root / "config" / "setups.yaml").read_text(encoding="utf-8")
+    block = yaml_text.split("  mean_reversion_v1:")[1]
+    assert "markets: [nse, bse]" in block and "research_only_markets: [nse, bse]" in block
+    assert "retired_markets: [bse]" in yaml_text.split("  nr7_breakout:")[1][:200]
+    assert (root / "src/tradedesk/setups/mean_reversion_v1.py").read_text("utf-8") == source_before
+    subject = subprocess.run(
+        ["git", "log", "-1", "--format=%s"], cwd=root, check=True, capture_output=True, text=True
+    ).stdout
+    assert "enable mean_reversion_v1 on bse, replacing nr7_breakout" in subject
+    with pytest.raises(ap.ApplyRefused, match="already installed on bse"):
+        ap.apply(_approved_detector(tmp_path, "bse", [], "third"), **kw)

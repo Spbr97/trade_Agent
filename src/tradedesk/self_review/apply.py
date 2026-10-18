@@ -258,6 +258,60 @@ def _append_setup_block(path: Path, setup: str, market: str) -> None:
     path.write_text("".join(lines), encoding="utf-8")
 
 
+def _setup_markets(setups_yaml: Path, setup: str) -> list[str] | None:
+    import yaml
+
+    block = (yaml.safe_load(setups_yaml.read_text(encoding="utf-8")) or {}).get("setups", {})
+    if setup not in block:
+        return None
+    return list((block[setup] or {}).get("markets") or [])
+
+
+def _enable_on_market(
+    payload: NewDetectorCode, item_id: str, *, root: Path, setups_yaml: Path
+) -> ApplyResult:
+    """Add an installed detector to one more market (it passed there too) and, in the same
+    commit, take the setups it beat off that market. Code files are not touched."""
+
+    markets = _setup_markets(setups_yaml, payload.setup_kind)
+    if markets is None:
+        raise ApplyRefused(f"{payload.setup_kind!r} has a module but no config block")
+    if not markets or payload.market in markets:
+        raise ApplyRefused(
+            f"detector {payload.setup_kind!r} is already installed on {payload.market}"
+        )
+    before = digest(setups_yaml)
+    _add_to_flow_list(setups_yaml, payload.setup_kind, "markets", payload.market)
+    _add_to_flow_list(setups_yaml, payload.setup_kind, "research_only_markets", payload.market)
+    today = datetime.now(UTC).date().isoformat()
+    for old in payload.replaces:
+        _insert_comment_above_setup(
+            setups_yaml,
+            old,
+            f"REPLACED on {payload.market} {today} by {payload.setup_kind} "
+            f"(self-review item {item_id}); still shadow-tracked on {payload.market}",
+        )
+        _add_to_flow_list(setups_yaml, old, "retired_markets", payload.market)
+    swap = f", replacing {', '.join(payload.replaces)}" if payload.replaces else ""
+    sha = _commit(
+        [setups_yaml],
+        f"[self-review] enable {payload.setup_kind} on {payload.market}{swap} (item {item_id})",
+        root=root,
+    )
+    return ApplyResult(
+        item_id=item_id,
+        files_changed=[
+            {
+                "path": str(setups_yaml.relative_to(root)),
+                "sha256_before": before,
+                "sha256_after": digest(setups_yaml),
+            }
+        ],
+        git_commit_sha=sha,
+        applied_at=datetime.now(UTC).isoformat(),
+    )
+
+
 def _apply_new_detector(
     payload: NewDetectorCode, item_id: str, *, root: Path, lab_output: Path = OUTPUT
 ) -> ApplyResult:
@@ -271,8 +325,10 @@ def _apply_new_detector(
     # A repeated approval used to insert the same enum member, import, registry entry and
     # YAML block twice, leaving Python unable to import SetupKind at all. Detector install
     # is deliberately one-shot; an already-present module must be reviewed, not re-added.
+    # A detector already installed for ANOTHER market that has now passed on this one is
+    # extended to this market instead (2026-10-18: BSE's two best setups were stuck on NSE).
     if new_setup_py.exists():
-        raise ApplyRefused(f"detector {payload.setup_kind!r} is already installed")
+        return _enable_on_market(payload, item_id, root=root, setups_yaml=setups_yaml)
 
     production_source_path = (
         lab_output / "candidates" / payload.lab_experiment_id / "production_setup.py"
