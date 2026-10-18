@@ -24,7 +24,9 @@
 # the header above); it stops giving away 0.11R on every trade that is taken.
 setups:
   # (restored 2026-10-18, owner's rule: replace with better, never retire into a blank) was retired on crypto 2026-09-30 by self-review item crypto:2026-09-29T00:20:21.604586+05:30: sustained failure; still enabled elsewhere and shadow-tracked on crypto (see docs/self-review-applied-log.md)
+  # REPLACED on bse 2026-10-18 by r_high52_break_strong_trend_trend_trail and r_tsmom20_strong_trend_trend_trail (owner-approved swap: both beat it on BSE history after costs, +0.26R/trade); still shadow-tracked on bse
   base_breakout:
+    retired_markets: [bse]
     enabled: true
     base_len_sessions: {min: 5, max: 25}
     close_within_pct_of_base_high: 0.03
@@ -35,7 +37,9 @@ setups:
     trail: ema10_close
   # (restored 2026-10-18, owner's rule: replace with better, never retire into a blank) was retired on crypto 2026-09-30 by self-review item crypto:2026-09-29T00:20:22.555511+05:30: sustained failure; still enabled elsewhere and shadow-tracked on crypto (see docs/self-review-applied-log.md)
   # (restored 2026-10-18, owner's rule: replace with better, never retire into a blank) was retired on nse 2026-09-30 by self-review item nse:2026-09-30T16:25:05.246791+05:30: sustained failure; still enabled elsewhere and shadow-tracked on nse (see docs/self-review-applied-log.md)
+  # REPLACED on bse 2026-10-18 by r_high52_break_strong_trend_trend_trail and r_tsmom20_strong_trend_trend_trail (owner-approved swap: both beat it on BSE history after costs, +0.26R/trade); still shadow-tracked on bse
   trend_pullback:
+    retired_markets: [bse]
     enabled: true
     pullback_len_sessions: {min: 2, max: 5}
     rs_percentile_min: 75
@@ -44,7 +48,9 @@ setups:
     trail: ema10_close
   # (restored 2026-10-18, owner's rule: replace with better, never retire into a blank) was retired on crypto 2026-09-30 by self-review item crypto:2026-09-29T00:20:22.236687+05:30: sustained failure; still enabled elsewhere and shadow-tracked on crypto (see docs/self-review-applied-log.md)
   # (restored 2026-10-18, owner's rule: replace with better, never retire into a blank) was retired on nse 2026-09-30 by self-review item nse:2026-09-30T16:25:05.240258+05:30: sustained failure; still enabled elsewhere and shadow-tracked on nse (see docs/self-review-applied-log.md)
+  # REPLACED on bse 2026-10-18 by r_high52_break_strong_trend_trend_trail and r_tsmom20_strong_trend_trend_trail (owner-approved swap: both beat it on BSE history after costs, +0.26R/trade); still shadow-tracked on bse
   nr7_breakout:
+    retired_markets: [bse]
     enabled: true
     within_pct_of_recent_high: 0.05
     partial_at_r: 2.0
@@ -62,12 +68,12 @@ setups:
     research_only_markets: [nse]
   r_high52_break_strong_trend_trend_trail:
     enabled: true
-    markets: [nse]
-    research_only_markets: [nse]
+    markets: [nse, bse]
+    research_only_markets: [nse, bse]
   r_tsmom20_strong_trend_trend_trail:
     enabled: true
-    markets: [nse]
-    research_only_markets: [nse]
+    markets: [nse, bse]
+    research_only_markets: [nse, bse]
   r_adx_thrust_tsmom_up_trend_trail:
     enabled: true
     markets: [crypto]

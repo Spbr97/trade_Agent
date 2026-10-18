@@ -140,3 +140,8 @@ Nothing is written here by hand; this file is append-only from `apply()`'s own c
 ## Restored 2026-10-18 (owner decision)
 
 - base_breakout (crypto), trend_pullback (crypto, nse), nr7_breakout (crypto, nse): `retired_markets` removed. The owner's rule: a setup is only ever replaced by a better one in the same step, never retired into a blank.
+
+## BSE swap 2026-10-18 (owner-approved)
+
+- added on bse: r_high52_break_strong_trend_trend_trail (+0.263R/trade after costs, 1,091 BSE trades) and r_tsmom20_strong_trend_trend_trail (+0.26R, 595 trades); both passed the gauntlet on BSE history but were installed for NSE only.
+- replaced on bse (moved to retired_markets, still shadow-tracked): nr7_breakout (-0.34R live), trend_pullback (-0.45R), base_breakout (-0.44R).
