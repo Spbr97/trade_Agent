@@ -1,0 +1,14 @@
+# tradedesk job logs (data/logs/*.log): rotate weekly, keep 4 weeks compressed. copytruncate
+# because run_hidden.py appends to the same file on every run. The dashboard link is read
+# from cloudflare_tunnel.log, but scripts/send_digest.py keeps the last link it saw, so a
+# rotated tunnel log never loses it.
+/opt/tradedesk/data/logs/*.log {
+    weekly
+    rotate 4
+    compress
+    delaycompress
+    missingok
+    notifempty
+    copytruncate
+    su tradedesk tradedesk
+}

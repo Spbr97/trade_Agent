@@ -164,3 +164,14 @@ def test_every_hooked_job_exists_in_the_schedule() -> None:
         and "$SERVICE_RESULT" in line
         and "close --market nse" in line
     )
+
+
+def test_the_dashboard_link_is_sent_once_per_change(tmp_path: Path) -> None:
+    log = tmp_path / "data/logs/cloudflare_tunnel.log"
+    log.parent.mkdir(parents=True)
+    log.write_text("x https://old-one.trycloudflare.com\ny https://new-two.trycloudflare.com\n")
+    title, body = digests.dashboard_link(root=tmp_path) or ("", "")
+    assert "https://new-two.trycloudflare.com" in body
+    assert digests.dashboard_link(root=tmp_path) is None  # unchanged: nothing to send
+    log.write_text("")  # rotated log: the last link is remembered, nothing re-sent
+    assert digests.dashboard_link(root=tmp_path) is None

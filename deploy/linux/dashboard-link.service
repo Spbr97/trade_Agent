@@ -1,0 +1,11 @@
+[Unit]
+Description=Push the dashboard link to the phone when the Cloudflare tunnel URL changes
+
+[Service]
+Type=oneshot
+User=tradedesk
+WorkingDirectory=/opt/tradedesk
+Environment=TZ=Asia/Kolkata
+EnvironmentFile=-/etc/tradedesk/env
+ExecStart=/opt/tradedesk/.venv/bin/python /opt/tradedesk/scripts/send_digest.py link
+TimeoutStartSec=2min

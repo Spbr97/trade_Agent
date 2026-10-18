@@ -1,0 +1,10 @@
+[Unit]
+Description=Check the dashboard link every 5 minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+Unit=dashboard-link.service
+
+[Install]
+WantedBy=timers.target

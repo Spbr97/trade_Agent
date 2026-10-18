@@ -1,0 +1,10 @@
+[Unit]
+Description=Nightly backup of tradedesk data/ for the laptop to pull (deploy/linux/backup.py)
+
+[Service]
+Type=oneshot
+User=root
+Nice=15
+IOSchedulingClass=idle
+ExecStart=/opt/tradedesk/.venv/bin/python /opt/tradedesk/deploy/linux/backup.py --data /opt/tradedesk/data --out /home/ubuntu/backups --owner ubuntu
+TimeoutStartSec=90min

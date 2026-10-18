@@ -102,6 +102,15 @@ install -m 0644 "$ROOT"/deploy/linux/digest-weekly.service "$ROOT"/deploy/linux/
 systemctl daemon-reload
 systemctl enable --now digest-weekly.timer
 
+echo "== nightly backup (pulled by the laptop), log rotation, dashboard-link push"
+install -d -m 0700 -o ubuntu -g ubuntu /home/ubuntu/backups
+install -m 0644 "$ROOT"/deploy/linux/logrotate-tradedesk /etc/logrotate.d/tradedesk
+for unit in tradedesk-backup dashboard-link; do
+  install -m 0644 "$ROOT/deploy/linux/$unit.service" "$ROOT/deploy/linux/$unit.timer" /etc/systemd/system/
+done
+systemctl daemon-reload
+systemctl enable --now tradedesk-backup.timer dashboard-link.timer
+
 echo "== Oracle billing guard (second watcher, on the always-on machine)"
 # Not named tradedesk-*, so the cleanup above never removes it. The timer starts only once the
 # owner has put the Oracle API config and key in /etc/tradedesk/oci (docs/cloud-deploy.md).

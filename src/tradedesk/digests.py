@@ -100,6 +100,35 @@ def _resolved_on(rows: list[dict[str, Any]], day: date) -> list[dict[str, Any]]:
     return [r for r in rows if r.get("outcome") and _day(r.get("resolved_at")) == day]
 
 
+TUNNEL_LOG = Path("data/logs/cloudflare_tunnel.log")
+LINK_STATE = Path("data/reports/dashboard_link.json")
+
+
+def dashboard_link(*, root: Path = Path(".")) -> tuple[str, str] | None:
+    """(title, body) when the Cloudflare quick-tunnel URL differs from the last one sent,
+    else None. The last link is kept in LINK_STATE, so a rotated log never loses it."""
+
+    import re
+
+    try:
+        text = (root / TUNNEL_LOG).read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return None
+    found = re.findall(r"https://[a-z0-9-]+\.trycloudflare\.com", text)
+    if not found:
+        return None
+    url = found[-1]
+    state_path = root / LINK_STATE
+    if _json(state_path).get("url") == url:
+        return None
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    state_path.write_text(json.dumps({"url": url, "seen_at": datetime.now(IST).isoformat()}))
+    return (
+        "tradedesk dashboard link",
+        f"Dashboard: {url}\n(The link changes when the tunnel restarts.)",
+    )
+
+
 def round_trip(market: str, *, root: Path = Path(".")) -> float:
     study = _json(root / LAB / "multiday_hold_study" / market / "latest.json")
     try:

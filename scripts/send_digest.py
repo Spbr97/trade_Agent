@@ -54,7 +54,9 @@ def _send(key: str, title: str, body: str, *, urgent: bool = False, force: bool 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
-    parser.add_argument("kind", choices=["close", "eod", "intraday", "multiday", "weekly", "picks"])
+    parser.add_argument(
+        "kind", choices=["close", "eod", "intraday", "multiday", "weekly", "picks", "link"]
+    )
     parser.add_argument("--market", choices=sorted(digests.CALLS))
     parser.add_argument("--job", default="")
     parser.add_argument("--result", default="success")
@@ -67,6 +69,12 @@ def main(argv: list[str] | None = None) -> int:
     now = datetime.now(IST)
     day = now.date().isoformat()
     root = ROOT
+    if args.kind == "link":
+        built = digests.dashboard_link(root=root)
+        if built:
+            alert(*built)  # sent every time the link changes; dashboard_link keeps the last one
+            print(f"link pushed: {built[1].splitlines()[0]}")
+        return 0
     if args.kind == "picks":
         # Consensus paper picks, each announced once (pick_announcer keeps its own record).
         from tradedesk.pick_announcer import announce_new_picks

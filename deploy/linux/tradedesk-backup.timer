@@ -1,0 +1,10 @@
+[Unit]
+Description=Back up tradedesk data/ every night
+
+[Timer]
+OnCalendar=*-*-* 02:40:00 Asia/Kolkata
+Persistent=true
+Unit=tradedesk-backup.service
+
+[Install]
+WantedBy=timers.target
