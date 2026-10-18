@@ -136,3 +136,7 @@ Nothing is written here by hand; this file is append-only from `apply()`'s own c
 - files: config\setups.yaml
 
 - REVERTED 2026-10-18: the owner does not want a setup retired without a better replacement put in its place at the same time. `retired_markets: [bse]` removed; the setup is back on the BSE roster.
+
+## Restored 2026-10-18 (owner decision)
+
+- base_breakout (crypto), trend_pullback (crypto, nse), nr7_breakout (crypto, nse): `retired_markets` removed. The owner's rule: a setup is only ever replaced by a better one in the same step, never retired into a blank.
