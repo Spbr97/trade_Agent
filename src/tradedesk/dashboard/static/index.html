@@ -117,12 +117,12 @@
 </header>
 
 <nav class="tabs">
-  <button class="tab-btn active" data-tab="calls">Today</button>
-  <button class="tab-btn" data-tab="scoreboard">Scoreboard</button>
-  <button class="tab-btn" data-tab="movers">Movers</button>
+  <button class="tab-btn active" data-tab="calls">Today (NSE / BSE)</button>
   <button class="tab-btn" data-tab="crypto">Crypto</button>
-  <button class="tab-btn" data-tab="reportresearch">Report</button>
-  <button class="tab-btn" data-tab="learningreview">Learning<span id="review-badge" class="badge" hidden></span></button>
+  <button class="tab-btn" data-tab="scoreboard">Scoreboard</button>
+  <button class="tab-btn" data-tab="movers">Markets</button>
+  <button class="tab-btn" data-tab="review">Review<span id="review-badge" class="badge" hidden></span></button>
+  <button class="tab-btn" data-tab="research">Research</button>
 </nav>
 
 <details id="status-banner" class="banner">
@@ -202,6 +202,11 @@
   </section>
 
   <div id="tab-today-inner" class="subtab">
+    <section id="drift-section">
+    <h2>Earnings drift calls <span class="info-ic" title="Buy a liquid stock (Rs 20 crore+ a day) that rose 5%+ more than the market on its results, on 2x+ volume; hold 20 sessions. 2016-2026 history: beat the market by +1.6% on average over 1,520 calls, about half winning. Rs 10,000 per call, no stop. Stops issuing calls automatically if live results fall below the market.">&#9432;</span>
+      <span class="muted headline-inline" id="drift-meta"></span></h2>
+    <table id="drift-table"></table>
+    </section>
     <details class="filters">
       <summary>Filters <span class="muted" id="today-filter-count"></span></summary>
       <div class="perf-controls">
@@ -251,21 +256,6 @@
       </div>
     </section>
 
-    <section class="fold folded">
-      <h2>BSE accuracy · B1 quick-profit <span class="info-ic" title="Prospective BSE evidence only. Historical transport diagnostics are shown separately and cannot qualify or promote a rule.">ⓘ</span></h2>
-      <div class="cards">
-        <div class="card"><div class="label">B1 status</div><div class="value" id="bse-b1-status">-</div></div>
-        <div class="card"><div class="label">Prospective sessions</div><div class="value" id="bse-b1-sessions">-</div></div>
-        <div class="card"><div class="label">Sample-ready rules</div><div class="value" id="bse-b1-ready">-</div></div>
-        <div class="card"><div class="label">First-look decision</div><div class="value" id="bse-b1-first-look">-</div></div>
-        <div class="card"><div class="label">Collector health</div><div class="value" id="bse-collector-health">-</div></div>
-        <div class="card"><div class="label">Collected source session</div><div class="value" id="bse-collector-session">-</div></div>
-        <div class="card"><div class="label">Prospective accuracy</div><div class="value" id="bse-b1-accuracy">-</div></div>
-        <div class="card"><div class="label">Development-only best</div><div class="value" id="bse-b1-development-best">-</div></div>
-        <div class="card"><div class="label">Development-only net R</div><div class="value" id="bse-b1-development-netr">-</div></div>
-      </div>
-      <div class="muted" id="bse-b1-detail" style="margin-top:8px;"></div>
-    </section>
 
     <div id="bse-view-live">
       <details class="filters">
@@ -303,11 +293,6 @@
         </div>
       </details>
       <section><h2><span id="bsetoday-calls-heading">Today's calls (BSE)</span> <span class="info-ic" title="full-universe live session, same as NSE's Calls tab; triggers are journaled but there's no BSE paper book to grade them yet">ⓘ</span></h2><div class="scroll-box"><table id="bsetoday-calls"></table></div></section>
-      <section id="probation-section"><h2>Probation calls (BSE) <span class="info-ic" title="Small, capped calls from detectors that passed the backtest gauntlet but have no forward record yet. Risk 0.25% of the pot per call, at most 2 a day. The desk stops itself at -3R per detector, -5R overall, or after 15 resolved calls if net money is not positive. You place every order.">ⓘ</span></h2>
-        <div class="muted" id="probation-summary">not run yet</div>
-        <table id="probation-calls" style="margin-top:6px;"></table>
-        <table id="probation-resolved" style="margin-top:6px;"></table>
-      </section>
       <section><h2>Open positions (BSE)</h2><table id="bsetoday-positions"></table></section>
     </div>
 
@@ -421,25 +406,6 @@
           </section>
         </div>
 
-      <section>
-        <h2>Backfill P&amp;L <span class="info-ic" title="historical replay, summarised over a timeframe rather than browsable row by row">ⓘ</span>
-          <span style="margin-left:auto; display:flex; align-items:center; gap:6px;">
-            <label for="bse-backfill-days" class="muted" style="text-transform:none; font-size:12px;">over</label>
-            <select id="bse-backfill-days">
-              <option value="30">30d</option>
-              <option value="90">90d</option>
-              <option value="365">1y</option>
-              <option value="" selected>All time</option>
-            </select>
-          </span>
-        </h2>
-        <div class="cards">
-          <div class="card"><div class="label">Resolved</div><div class="value" id="bse-backfill-n">-</div></div>
-          <div class="card"><div class="label">Win rate</div><div class="value" id="bse-backfill-winrate">-</div></div>
-          <div class="card"><div class="label">Avg R</div><div class="value" id="bse-backfill-avgr">-</div></div>
-          <div class="card"><div class="label">P&amp;L %</div><div class="value" id="bse-backfill-pnl">-</div></div>
-        </div>
-      </section>
 
       <section>
         <h2>Stock confidence <span class="info-ic" title="live agent calls only, not backfill. Wilson lower-bound confidence, not raw win rate">ⓘ</span></h2>
@@ -454,9 +420,6 @@
     <h2>Which setups win, after costs, on live calls <span class="info-ic" title="Every setup that runs on a market, judged daily on its LIVE calls only (backfilled history excluded), in R after real costs. TRADEABLE: the lowest plausible average is above +0.05R per trade (at least 50 calls) - may alert at full size. PROVISIONAL: proven on history (500+ trades, +0.20R or better after costs, NSE/BSE) - may alert at a quarter size until live proof, and is stopped automatically if live results fall below break-even or it loses 12 in a row. NO EDGE / STOPPED: live results are below break-even. Quick twin: the same stock bought at the next open and sold 5 sessions later, against the average stock over the same days - an early read on whether the entry picks winners.">&#9432;</span>
       <span class="muted headline-inline" id="scoreboard-meta"></span></h2>
     <table id="scoreboard-table"></table>
-    <h2 style="margin-top:22px;">Earnings drift calls <span class="info-ic" title="Buy a liquid stock (Rs 20 crore+ a day) that rose 5%+ more than the market on its results, on 2x+ volume; hold 20 sessions. 2016-2026 history: beat the market by +1.6% on average over 1,520 calls, about half winning. Rs 10,000 per call, no stop. Stops issuing calls automatically if live results fall below the market.">&#9432;</span>
-      <span class="muted headline-inline" id="drift-meta"></span></h2>
-    <table id="drift-table"></table>
     <p class="muted" style="margin-top:8px;">R = the call's risk (entry to stop). +0.25R on a call risking Rs 1,000 is +Rs 250. Research numbers, not advice.</p>
   </section>
 </main>
@@ -480,11 +443,6 @@
     <details class="filters inline"><summary>All material filings</summary>
       <table id="filings-table"></table>
     </details>
-  </section>
-  <section id="news-trial-section" class="fold folded">
-    <h2>News source trial <span class="info-ic" title="Candidate news feeds are compared side by side before any is chosen. Each stays off until you have read that publisher's terms and enabled it in config/news_sources.yaml. Enabled sources are scored nightly on how many of the day's +5% movers they mentioned before the open. Information only - never a call.">&#9432;</span>
-      <span class="muted headline-inline" id="news-trial-headline"></span></h2>
-    <table id="news-trial-table"></table>
   </section>
   <section id="my-picks-section">
     <h2>My picks <span class="info-ic" title="Log a stock you expect to move BEFORE it moves. The server stamps the time and nothing can edit it later. Each pick is priced from the first 15-minute bar that starts after you log it, and compared with every other liquid stock bought at that same bar. One pick per stock per direction per session. About 30 picks are needed before the score means anything. Advisory only - nothing here places or suggests an order.">&#9432;</span></h2>
@@ -519,65 +477,6 @@
 
 
 <main id="tab-crypto" hidden>
-  <section>
-    <h2>Monitoring universe <span class="info-ic" title="All active CoinDCX INR pairs are monitored; liquidity, data quality and profitability gates still decide whether a call is allowed.">ⓘ</span></h2>
-    <div class="cards">
-      <div class="card"><div class="label">Active INR pairs</div><div class="value" id="crypto-universe-active">-</div></div>
-      <div class="card"><div class="label">Scanned pairs</div><div class="value" id="crypto-universe-scanned">-</div></div>
-      <div class="card"><div class="label">Closed-session coverage</div><div class="value" id="crypto-universe-fresh">-</div></div>
-      <div class="card"><div class="label">Fetch errors</div><div class="value" id="crypto-universe-errors">-</div></div>
-    </div>
-    <div class="muted" id="crypto-universe-detail" style="margin-top:8px;"></div>
-  </section>
-  <section>
-    <h2>Crypto accuracy program <span class="info-ic" title="Crypto-only evidence. Forward calls and historical backfill remain separate and are never pooled with NSE or BSE.">ⓘ</span></h2>
-    <div class="cards">
-      <div class="card"><div class="label">Checkpoint</div><div class="value" id="crypto-accuracy-checkpoint">-</div></div>
-      <div class="card"><div class="label">Forward accuracy</div><div class="value" id="crypto-accuracy-forward">-</div></div>
-      <div class="card"><div class="label">Forward confidence</div><div class="value" id="crypto-accuracy-confidence">-</div></div>
-      <div class="card"><div class="label">Next checkpoint</div><div class="value" id="crypto-accuracy-next">-</div></div>
-    </div>
-    <div class="muted" id="crypto-accuracy-detail" style="margin-top:8px;"></div>
-    <div class="cards" style="margin-top:12px;">
-      <div class="card"><div class="label">Forward timing control</div><div class="value" id="crypto-timing-status">-</div></div>
-      <div class="card"><div class="label">Registered future calls</div><div class="value" id="crypto-timing-calls">-</div></div>
-      <div class="card"><div class="label">Setups independently monitored</div><div class="value" id="crypto-timing-setups">-</div></div>
-      <div class="card"><div class="label">Timing-qualified setups</div><div class="value" id="crypto-timing-qualified">-</div></div>
-    </div>
-    <div class="muted" id="crypto-timing-detail" style="margin-top:8px;"></div>
-    <div class="cards" style="margin-top:12px;">
-      <div class="card"><div class="label">C1 dataset integrity</div><div class="value" id="crypto-dataset-status">-</div></div>
-      <div class="card"><div class="label">Materialized pairs</div><div class="value" id="crypto-dataset-pairs">-</div></div>
-      <div class="card"><div class="label">Closed daily rows</div><div class="value" id="crypto-dataset-rows">-</div></div>
-      <div class="card"><div class="label">Duplicate rows removed</div><div class="value" id="crypto-dataset-duplicates">-</div></div>
-      <div class="card"><div class="label">Minimum pair PIT sessions</div><div class="value" id="crypto-dataset-sessions">-</div></div>
-      <div class="card"><div class="label">Pairs at minimum</div><div class="value" id="crypto-dataset-pair-readiness">-</div></div>
-      <div class="card"><div class="label">Resolved quick-profit labels</div><div class="value" id="crypto-dataset-labels">-</div></div>
-    </div>
-    <div class="muted" id="crypto-dataset-detail" style="margin-top:8px;"></div>
-    <div class="cards" style="margin-top:12px;">
-      <div class="card"><div class="label">C2 mechanism race</div><div class="value" id="crypto-mechanisms-status">-</div></div>
-      <div class="card"><div class="label">Evaluated trials</div><div class="value" id="crypto-mechanisms-evaluated">-</div></div>
-      <div class="card"><div class="label">Passing trials</div><div class="value" id="crypto-mechanisms-passing">-</div></div>
-      <div class="card"><div class="label">First-look decision</div><div class="value" id="crypto-mechanisms-first-look">-</div></div>
-      <div class="card"><div class="label">Collector health</div><div class="value" id="crypto-collector-health">-</div></div>
-      <div class="card"><div class="label">Collected source session</div><div class="value" id="crypto-collector-session">-</div></div>
-      <div class="card"><div class="label">Best observed accuracy</div><div class="value" id="crypto-mechanisms-accuracy">-</div></div>
-      <div class="card"><div class="label">Best Wilson lower</div><div class="value" id="crypto-mechanisms-wilson">-</div></div>
-    </div>
-    <div class="muted" id="crypto-mechanisms-detail" style="margin-top:8px;"></div>
-    <div class="cards" style="margin-top:12px;">
-      <div class="card"><div class="label">R3 accuracy recovery</div><div class="value" id="crypto-recovery-status">-</div></div>
-      <div class="card"><div class="label">Registered geometry trials</div><div class="value" id="crypto-recovery-trials">-</div></div>
-      <div class="card"><div class="label">Best diagnostic setup</div><div class="value" id="crypto-recovery-setup">-</div></div>
-      <div class="card"><div class="label">Best diagnostic geometry</div><div class="value" id="crypto-recovery-geometry">-</div></div>
-      <div class="card"><div class="label">Walk-forward accuracy</div><div class="value" id="crypto-recovery-wf-accuracy">-</div></div>
-      <div class="card"><div class="label">Live-cohort accuracy</div><div class="value" id="crypto-recovery-live-accuracy">-</div></div>
-      <div class="card"><div class="label">Live-cohort Wilson lower</div><div class="value" id="crypto-recovery-live-wilson">-</div></div>
-      <div class="card"><div class="label">Live-cohort mean net R</div><div class="value" id="crypto-recovery-live-net">-</div></div>
-    </div>
-    <div class="muted" id="crypto-recovery-detail" style="margin-top:8px;"></div>
-  </section>
   <section class="perf-controls">
     <div class="group">
       <label for="crypto-live-view-select">View</label>
@@ -687,29 +586,98 @@
       </section>
     </div>
 
-  <section>
-    <h2>Backfill P&amp;L <span class="info-ic" title="the one-shot 2018-2026 historical replay, summarised over a timeframe rather than browsable row by row">ⓘ</span>
-      <span style="margin-left:auto; display:flex; align-items:center; gap:6px;">
-        <label for="crypto-backfill-days" class="muted" style="text-transform:none; font-size:12px;">over</label>
-        <select id="crypto-backfill-days">
-          <option value="30">30d</option>
-          <option value="90">90d</option>
-          <option value="365">1y</option>
-          <option value="" selected>All time</option>
-        </select>
-      </span>
-    </h2>
-    <div class="cards">
-      <div class="card"><div class="label">Resolved</div><div class="value" id="crypto-backfill-n">-</div></div>
-      <div class="card"><div class="label">Win rate</div><div class="value" id="crypto-backfill-winrate">-</div></div>
-      <div class="card"><div class="label">Avg R</div><div class="value" id="crypto-backfill-avgr">-</div></div>
-      <div class="card"><div class="label">P&amp;L %</div><div class="value" id="crypto-backfill-pnl">-</div></div>
-    </div>
-  </section>
 
   <section>
     <h2>Coin confidence <span class="info-ic" title="live agent calls only, not backfill. Wilson lower-bound confidence, not raw win rate: a coin with 1 resolved call and a win reads LOW, not 100% until there's enough evidence to trust it">ⓘ</span></h2>
     <table id="crypto-symbol-confidence"></table>
+  </section>
+</main>
+
+<main id="tab-researchextra" hidden>
+  <section class="perf-controls"><div class="group"><strong>Research</strong> <span class="muted">evidence, experiments and diagnostics - nothing on this tab is a call. Tap a title to open it.</span></div></section>
+    <section class="fold folded">
+      <h2>BSE accuracy · B1 quick-profit <span class="info-ic" title="Prospective BSE evidence only. Historical transport diagnostics are shown separately and cannot qualify or promote a rule.">ⓘ</span></h2>
+      <div class="cards">
+        <div class="card"><div class="label">B1 status</div><div class="value" id="bse-b1-status">-</div></div>
+        <div class="card"><div class="label">Prospective sessions</div><div class="value" id="bse-b1-sessions">-</div></div>
+        <div class="card"><div class="label">Sample-ready rules</div><div class="value" id="bse-b1-ready">-</div></div>
+        <div class="card"><div class="label">First-look decision</div><div class="value" id="bse-b1-first-look">-</div></div>
+        <div class="card"><div class="label">Collector health</div><div class="value" id="bse-collector-health">-</div></div>
+        <div class="card"><div class="label">Collected source session</div><div class="value" id="bse-collector-session">-</div></div>
+        <div class="card"><div class="label">Prospective accuracy</div><div class="value" id="bse-b1-accuracy">-</div></div>
+        <div class="card"><div class="label">Development-only best</div><div class="value" id="bse-b1-development-best">-</div></div>
+        <div class="card"><div class="label">Development-only net R</div><div class="value" id="bse-b1-development-netr">-</div></div>
+      </div>
+      <div class="muted" id="bse-b1-detail" style="margin-top:8px;"></div>
+    </section>
+      <section id="probation-section"><h2>Probation calls (BSE) <span class="info-ic" title="Small, capped calls from detectors that passed the backtest gauntlet but have no forward record yet. Risk 0.25% of the pot per call, at most 2 a day. The desk stops itself at -3R per detector, -5R overall, or after 15 resolved calls if net money is not positive. You place every order.">ⓘ</span></h2>
+        <div class="muted" id="probation-summary">not run yet</div>
+        <table id="probation-calls" style="margin-top:6px;"></table>
+        <table id="probation-resolved" style="margin-top:6px;"></table>
+      </section>
+  <section>
+    <h2>Monitoring universe <span class="info-ic" title="All active CoinDCX INR pairs are monitored; liquidity, data quality and profitability gates still decide whether a call is allowed.">ⓘ</span></h2>
+    <div class="cards">
+      <div class="card"><div class="label">Active INR pairs</div><div class="value" id="crypto-universe-active">-</div></div>
+      <div class="card"><div class="label">Scanned pairs</div><div class="value" id="crypto-universe-scanned">-</div></div>
+      <div class="card"><div class="label">Closed-session coverage</div><div class="value" id="crypto-universe-fresh">-</div></div>
+      <div class="card"><div class="label">Fetch errors</div><div class="value" id="crypto-universe-errors">-</div></div>
+    </div>
+    <div class="muted" id="crypto-universe-detail" style="margin-top:8px;"></div>
+  </section>
+  <section>
+    <h2>Crypto accuracy program <span class="info-ic" title="Crypto-only evidence. Forward calls and historical backfill remain separate and are never pooled with NSE or BSE.">ⓘ</span></h2>
+    <div class="cards">
+      <div class="card"><div class="label">Checkpoint</div><div class="value" id="crypto-accuracy-checkpoint">-</div></div>
+      <div class="card"><div class="label">Forward accuracy</div><div class="value" id="crypto-accuracy-forward">-</div></div>
+      <div class="card"><div class="label">Forward confidence</div><div class="value" id="crypto-accuracy-confidence">-</div></div>
+      <div class="card"><div class="label">Next checkpoint</div><div class="value" id="crypto-accuracy-next">-</div></div>
+    </div>
+    <div class="muted" id="crypto-accuracy-detail" style="margin-top:8px;"></div>
+    <div class="cards" style="margin-top:12px;">
+      <div class="card"><div class="label">Forward timing control</div><div class="value" id="crypto-timing-status">-</div></div>
+      <div class="card"><div class="label">Registered future calls</div><div class="value" id="crypto-timing-calls">-</div></div>
+      <div class="card"><div class="label">Setups independently monitored</div><div class="value" id="crypto-timing-setups">-</div></div>
+      <div class="card"><div class="label">Timing-qualified setups</div><div class="value" id="crypto-timing-qualified">-</div></div>
+    </div>
+    <div class="muted" id="crypto-timing-detail" style="margin-top:8px;"></div>
+    <div class="cards" style="margin-top:12px;">
+      <div class="card"><div class="label">C1 dataset integrity</div><div class="value" id="crypto-dataset-status">-</div></div>
+      <div class="card"><div class="label">Materialized pairs</div><div class="value" id="crypto-dataset-pairs">-</div></div>
+      <div class="card"><div class="label">Closed daily rows</div><div class="value" id="crypto-dataset-rows">-</div></div>
+      <div class="card"><div class="label">Duplicate rows removed</div><div class="value" id="crypto-dataset-duplicates">-</div></div>
+      <div class="card"><div class="label">Minimum pair PIT sessions</div><div class="value" id="crypto-dataset-sessions">-</div></div>
+      <div class="card"><div class="label">Pairs at minimum</div><div class="value" id="crypto-dataset-pair-readiness">-</div></div>
+      <div class="card"><div class="label">Resolved quick-profit labels</div><div class="value" id="crypto-dataset-labels">-</div></div>
+    </div>
+    <div class="muted" id="crypto-dataset-detail" style="margin-top:8px;"></div>
+    <div class="cards" style="margin-top:12px;">
+      <div class="card"><div class="label">C2 mechanism race</div><div class="value" id="crypto-mechanisms-status">-</div></div>
+      <div class="card"><div class="label">Evaluated trials</div><div class="value" id="crypto-mechanisms-evaluated">-</div></div>
+      <div class="card"><div class="label">Passing trials</div><div class="value" id="crypto-mechanisms-passing">-</div></div>
+      <div class="card"><div class="label">First-look decision</div><div class="value" id="crypto-mechanisms-first-look">-</div></div>
+      <div class="card"><div class="label">Collector health</div><div class="value" id="crypto-collector-health">-</div></div>
+      <div class="card"><div class="label">Collected source session</div><div class="value" id="crypto-collector-session">-</div></div>
+      <div class="card"><div class="label">Best observed accuracy</div><div class="value" id="crypto-mechanisms-accuracy">-</div></div>
+      <div class="card"><div class="label">Best Wilson lower</div><div class="value" id="crypto-mechanisms-wilson">-</div></div>
+    </div>
+    <div class="muted" id="crypto-mechanisms-detail" style="margin-top:8px;"></div>
+    <div class="cards" style="margin-top:12px;">
+      <div class="card"><div class="label">R3 accuracy recovery</div><div class="value" id="crypto-recovery-status">-</div></div>
+      <div class="card"><div class="label">Registered geometry trials</div><div class="value" id="crypto-recovery-trials">-</div></div>
+      <div class="card"><div class="label">Best diagnostic setup</div><div class="value" id="crypto-recovery-setup">-</div></div>
+      <div class="card"><div class="label">Best diagnostic geometry</div><div class="value" id="crypto-recovery-geometry">-</div></div>
+      <div class="card"><div class="label">Walk-forward accuracy</div><div class="value" id="crypto-recovery-wf-accuracy">-</div></div>
+      <div class="card"><div class="label">Live-cohort accuracy</div><div class="value" id="crypto-recovery-live-accuracy">-</div></div>
+      <div class="card"><div class="label">Live-cohort Wilson lower</div><div class="value" id="crypto-recovery-live-wilson">-</div></div>
+      <div class="card"><div class="label">Live-cohort mean net R</div><div class="value" id="crypto-recovery-live-net">-</div></div>
+    </div>
+    <div class="muted" id="crypto-recovery-detail" style="margin-top:8px;"></div>
+  </section>
+  <section id="news-trial-section" class="fold folded">
+    <h2>News source trial <span class="info-ic" title="Candidate news feeds are compared side by side before any is chosen. Each stays off until you have read that publisher's terms and enabled it in config/news_sources.yaml. Enabled sources are scored nightly on how many of the day's +5% movers they mentioned before the open. Information only - never a call.">&#9432;</span>
+      <span class="muted headline-inline" id="news-trial-headline"></span></h2>
+    <table id="news-trial-table"></table>
   </section>
 </main>
 
@@ -851,7 +819,6 @@
         <option value="learning" selected>Learning</option>
         <option value="predictions">Predictions</option>
         <option value="lab">Research Lab</option>
-        <option value="review">Review</option>
       </select>
     </div>
   </section>
@@ -1302,7 +1269,10 @@
   </section>
 </div>
 
-<div id="tab-review" class="subtab" hidden>
+</main>
+
+<main id="tab-reviewtab" hidden>
+<div id="tab-review" class="subtab">
   <section>
     <h2>Replacement research <span class="info-ic" title="Every self-review run tests improved versions of failing/retired setups and new methods through the full gauntlet, continuing where the last run stopped. A candidate is only proposed once it beats random timing, survives walk-forward and kill criteria, and beats the retired setup's own result.">ⓘ</span></h2>
     <div id="review-research"><div class="empty-note">no replacement search has run yet</div></div>
@@ -1546,7 +1516,7 @@ const KEEP_OPEN = new Set(['Pending review', 'Decided', 'Ongoing',
 function foldTitle(h) { return (h.childNodes[0] ? h.childNodes[0].textContent : h.textContent).trim(); }
 function readFolds() { try { return JSON.parse(localStorage.getItem(FOLD_STORE) || '{}'); } catch (e) { return {}; } }
 function setupFolds() {
-  document.querySelectorAll('#tab-learningreview section, #tab-crypto > section, #tab-research > section, #tab-performance > section')
+  document.querySelectorAll('#tab-learningreview section, #tab-researchextra > section, #tab-crypto > section, #tab-research > section, #tab-performance > section')
     .forEach(sec => {
       const h = sec.querySelector(':scope > h2');
       if (!h || sec.classList.contains('fold')) return;
@@ -1695,19 +1665,25 @@ fetch('/api/state/bse').then(r => r.ok ? r.json() : null).then(s => { if (s) { r
 // with the two original tab bodies inside it as .subtab divs, toggled by a "View"/"Show"
 // dropdown instead of top-level nav buttons - deliberately keeping every inner id, render
 // function and filter untouched so "same UI" holds exactly, not just approximately.
-const TAB_IDS = ['calls', 'scoreboard', 'movers', 'crypto', 'reportresearch', 'learningreview'];
+const TAB_IDS = ['calls', 'crypto', 'scoreboard', 'movers', 'review', 'research'];
+// 2026-10-18 cleanup: which <main> blocks each top-level tab shows. Research gathers every
+// evidence and experiment panel; Review (approvals) is its own tab.
+const TAB_MAINS = {
+  calls: ['calls'], crypto: ['crypto'], scoreboard: ['scoreboard'], movers: ['movers'],
+  review: ['reviewtab'], research: ['researchextra', 'reportresearch', 'learningreview'],
+};
 // Which perf-strip card(s), if any, belong to the current view - keyed by the active
 // top-level tab PLUS, for the two merged tabs, whichever sub-view is currently selected
 // within it (a dropdown change can switch this without a tab click). Per standing feedback,
 // each market gets its own card only where relevant, never all three shown everywhere.
 const PERF_CARDS_BY_VIEW = {
   'calls-nse': ['nse'], 'calls-bse': ['bse'], crypto: ['crypto'], scoreboard: [],
-  'reportresearch-report': ['nse'], 'reportresearch-research': [], learningreview: [],
+  'reportresearch-report': ['nse'], 'reportresearch-research': [], review: [],
 };
 function currentView() {
   const tab = document.querySelector('.tab-btn.active')?.dataset.tab || 'calls';
   if (tab === 'calls') return `calls-${$('calls-market-select').value}`;
-  if (tab === 'reportresearch') return `reportresearch-${$('reportresearch-view-select').value}`;
+  if (tab === 'research') return `reportresearch-${$('reportresearch-view-select').value}`;
   return tab;
 }
 function updatePerfStrip() {
@@ -1777,11 +1753,9 @@ function showLearningReviewView(view) {
   $('tab-learning').hidden = view !== 'learning';
   $('tab-predictions').hidden = view !== 'predictions';
   $('tab-lab').hidden = view !== 'lab';
-  $('tab-review').hidden = view !== 'review';
   if (view === 'learning') loadLearning();
   if (view === 'predictions') loadPredictions();
   if (view === 'lab') loadLab();
-  if (view === 'review') loadReview();
 }
 async function loadLab() {
   try {
@@ -1805,13 +1779,14 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     const target = btn.dataset.tab;
-    TAB_IDS.forEach(id => { $('tab-' + id).hidden = target !== id; });
+    Object.values(TAB_MAINS).flat().forEach(id => { $('tab-' + id).hidden = true; });
+    (TAB_MAINS[target] || []).forEach(id => { $('tab-' + id).hidden = false; });
     if (target === 'calls') showCallsMarket($('calls-market-select').value);
     if (target === 'scoreboard') { loadScoreboard(); loadEarningsDrift(); }
     if (target === 'movers') { loadMoverStudy(); loadFilings(); loadMyPicks(); }
     if (target === 'crypto') { showLiveView('crypto', $('crypto-live-view-select').value); loadBackfillPnl('crypto'); loadSymbolConfidence('crypto'); }
-    if (target === 'reportresearch') showReportResearchView($('reportresearch-view-select').value);
-    if (target === 'learningreview') showLearningReviewView($('learningreview-view-select').value);
+    if (target === 'research') { showReportResearchView($('reportresearch-view-select').value); showLearningReviewView($('learningreview-view-select').value); }
+    if (target === 'review') loadReview();
     updatePerfStrip();
   });
 });
@@ -1856,6 +1831,8 @@ async function loadScoreboard() {
   }
 }
 
+loadEarningsDrift();
+setInterval(loadEarningsDrift, 60000);
 async function loadEarningsDrift() {
   try {
     const r = await fetch('/api/earnings-drift');
@@ -2516,7 +2493,9 @@ async function loadCalls(market) {
     const all = r.ok ? await r.json() : [];
     const live = all.filter(d => d.source === 'live');
     callsData[`${prefix}-ongoing`] = live.filter(d => d.outcome_state === 'pending_call');
-    callsData[`${prefix}-passfail`] = live.filter(d => d.outcome_state === 'resolved_call');
+    const cutoff = Date.now() - 30 * 864e5;  // the dashboard shows the last 30 days; history stays in the logs
+    callsData[`${prefix}-passfail`] = live.filter(d => d.outcome_state === 'resolved_call'
+      && (!d.resolved_at || new Date(d.resolved_at).getTime() >= cutoff));
   } else {
     const r = await fetch(`/api/${market}/calls?limit=2000`);
     callsData[market] = r.ok ? await r.json() : [];
@@ -2627,6 +2606,7 @@ function showLiveView(prefix, view) {
 // summary over a selectable timeframe (/api/reliability/backfill-pnl) plus a per-symbol
 // Wilson-lower-bound confidence table (/api/reliability/symbols) for both crypto and BSE.
 async function loadBackfillPnl(prefix) {
+  if (!$(`${prefix}-backfill-days`)) return;  // section removed 2026-10-18 (history off the dashboard)
   const days = $(`${prefix}-backfill-days`).value;
   const qs = days ? `?market=${prefix}&days=${days}` : `?market=${prefix}`;
   const r = await fetch(`/api/reliability/backfill-pnl${qs}`);
@@ -2648,7 +2628,7 @@ async function loadSymbolConfidence(prefix) {
     data.map(s => `<tr><td>${s.symbol}</td><td class="num">${s.n}</td><td class="num">${s.wins}</td><td class="num">${pct(s.win_rate)}</td><td class="num">${pct(s.confidence)}</td></tr>`));
 }
 ['crypto', 'bse'].forEach(prefix => {
-  $(`${prefix}-backfill-days`).addEventListener('change', () => loadBackfillPnl(prefix));
+  if ($(`${prefix}-backfill-days`)) $(`${prefix}-backfill-days`).addEventListener('change', () => loadBackfillPnl(prefix));
 });
 
 // ---------------------------------------------------------------- Research tab
