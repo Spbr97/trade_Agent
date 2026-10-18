@@ -2,11 +2,14 @@
 real revisions, and carry freezes written under the old 10-decimal rule forward without
 losing their original fingerprint (2026-10-18: the crypto audit failed every day from the
 00:00 UTC candle because CDX_DOGEINR's avg_turnover_20 moved from 7202109.513440001 to
-7202109.51344)."""
+7202109.51344). When today's rows miss the seal, the session is rebuilt as of the freeze's own
+time: that rebuild must reproduce the seal exactly and today's rows must agree with it to a part
+per billion (the 2026-10-11 crypto freeze: rebuilt exactly, worst drift 9e-15)."""
 
 from __future__ import annotations
 
 import json
+import math
 from datetime import date, datetime
 from pathlib import Path
 
@@ -107,3 +110,93 @@ def test_a_legacy_freeze_that_fails_its_own_rule_is_left_untouched(
     with pytest.raises(ValueError, match="changed at immutable field causal_rows_sha256"):
         run(13)
     assert path.read_text() == before  # never re-sealed from unverified rows
+
+
+SEAL_TIME = datetime(2026, 10, 14, 12, tzinfo=IST)
+
+
+def _setup_as_of(tmp_path: Path, monkeypatch, first: float = SEALED):
+    """A store that answers as of a time: up to the seal it holds the sealed values, later it
+    holds ``current`` (what today's moved window produces)."""
+
+    sealed = _frame(date(2026, 10, 10))
+    sealed["avg_turnover_20"] = [first, 50_000_000.0, 9_000_000.0]
+    current = sealed.copy()
+    asked: list[datetime | None] = []
+
+    def extract(*args, now=None, **kwargs):
+        asked.append(now)
+        return ((sealed if now is not None and now <= SEAL_TIME else current).copy(), META)
+
+    monkeypatch.setattr(ld, "extract_causal_universe", extract)
+    tracker = tmp_path / "tracker.jsonl"
+    tracker.write_text(
+        json.dumps(_tracker()[0] | {"armed_on": "2026-10-10"}) + "\n", encoding="utf-8"
+    )
+
+    def run(hour: int) -> dict:
+        return ld.run_missed_leader_audit(
+            market="nse", db_path=tmp_path / "test.duckdb", tracker_path=tracker,
+            output_root=tmp_path / "audit", now=datetime(2026, 10, 14, hour, tzinfo=IST),
+            session_count=1,
+        )  # fmt: skip
+
+    return current, run, tmp_path / "audit" / "nse" / "sessions" / "2026-10-10.json", asked
+
+
+def test_a_legacy_freeze_missed_by_window_noise_is_verified_by_a_rebuild_as_of_its_seal(
+    tmp_path: Path, monkeypatch
+) -> None:
+    current, run, path, asked = _setup_as_of(tmp_path, monkeypatch)
+    legacy = _make_legacy(path, monkeypatch, run)
+    current.loc[0, "avg_turnover_20"] = DRIFTED  # today's rows no longer meet the old rule
+
+    run(13)
+    assert SEAL_TIME in asked  # rebuilt as of the seal, which reproduced it exactly
+    migrated = json.loads(path.read_text())
+    assert migrated["causal_rows_sha256"] == legacy["causal_rows_sha256"]  # original kept
+    assert migrated["float_rounding"] == ld.FREEZE_ROUNDING
+
+    asked.clear()
+    assert len(run(14)["prospective_session_freezes"]) == 1
+    assert SEAL_TIME not in asked  # carried forward: no rebuild needed any more
+
+
+def test_a_rebuild_does_not_excuse_a_real_revision(tmp_path: Path, monkeypatch) -> None:
+    current, run, path, asked = _setup_as_of(tmp_path, monkeypatch)
+    _make_legacy(path, monkeypatch, run)
+    before = path.read_text()
+    current.loc[0, "avg_turnover_20"] = DRIFTED
+    current.loc[0, "return_5"] = 9.9  # the sealed rebuild matches, today's data does not
+
+    with pytest.raises(ValueError, match="changed at immutable field causal_rows_sha256"):
+        run(13)
+    assert SEAL_TIME in asked
+    assert path.read_text() == before
+
+
+def _straddle(value: float) -> tuple[float, float]:
+    """Two adjacent floats that round to different 12-significant-digit values."""
+
+    for a, b in ((math.nextafter(value, 0), value), (value, math.nextafter(value, math.inf))):
+        if ld._stable_floats(a) != ld._stable_floats(b):
+            return a, b
+    raise AssertionError(f"{value} is not at a rounding boundary")
+
+
+def test_a_new_freeze_survives_noise_across_a_rounding_boundary(
+    tmp_path: Path, monkeypatch
+) -> None:
+    sealed, drifted = _straddle(7202109.513445)
+    current, run, path, asked = _setup_as_of(tmp_path, monkeypatch, first=sealed)
+    run(12)
+    before = path.read_text()
+
+    current.loc[0, "avg_turnover_20"] = drifted  # one unit in the last place
+    assert len(run(13)["prospective_session_freezes"]) == 1
+    assert SEAL_TIME in asked
+    assert path.read_text() == before  # nothing to migrate on a new freeze
+
+    current.loc[0, "avg_turnover_20"] = drifted + 1.0  # a real revision of one rupee
+    with pytest.raises(ValueError, match="changed at immutable field causal_rows_sha256"):
+        run(14)

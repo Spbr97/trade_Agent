@@ -29,7 +29,7 @@ import math
 import os
 import time
 from collections import Counter, defaultdict
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import asdict, dataclass
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -753,6 +753,79 @@ def _legacy_pending_masks(rows: Sequence[Mapping[str, Any]]) -> list[list[str]]:
     return [[], sorted(f"{row.get('scrip_code')}:forward_close_return_5" for row in rows)]
 
 
+# A rebuild may differ from the sealed rows by float noise only: ~1e-14 relative was measured on
+# 2026-10-18; a real candle revision is about a million times larger than this tolerance.
+FREEZE_REBUILD_REL_TOLERANCE = 1e-9
+FREEZE_REBUILD_ABS_TOLERANCE = 1e-12
+
+
+def _immutable_projection(rows: Sequence[Mapping[str, Any]], session: str) -> list[dict[str, Any]]:
+    projected = []
+    for row in rows:
+        if row.get("session") != session:
+            continue
+        tracking = dict(row.get("tracking") or {})
+        tracking.pop("execution_state", None)
+        projected.append(
+            {
+                "market": row.get("market"),
+                "session": row.get("session"),
+                "scrip_code": row.get("scrip_code"),
+                "symbol": row.get("symbol"),
+                "features": row.get("features"),
+                "opportunity": row.get("opportunity"),
+                "tracking_at_prediction": tracking,
+            }
+        )
+    return projected
+
+
+def _freeze_masks(recorded: Any, rows: Sequence[Mapping[str, Any]]) -> list[list[str]]:
+    return [recorded] if isinstance(recorded, list) else _legacy_pending_masks(rows)
+
+
+def _seal_mask(
+    rows: Sequence[Mapping[str, Any]],
+    masks: Sequence[Sequence[str]],
+    sealed_hash: Any,
+    *,
+    legacy: bool,
+) -> list[str] | None:
+    """The pending-outcome mask under which ``rows`` reproduce the seal exactly, if any."""
+
+    return next(
+        (
+            list(mask)
+            for mask in masks
+            if _rows_hash(_mask_pending(rows, mask), legacy=legacy) == sealed_hash
+        ),
+        None,
+    )
+
+
+def _same_values(current: Any, sealed: Any) -> bool:
+    """Equal apart from float noise: floats within a part per billion, all else exact."""
+
+    if isinstance(current, float) and isinstance(sealed, float):
+        if math.isnan(current) and math.isnan(sealed):
+            return True
+        return math.isclose(
+            current,
+            sealed,
+            rel_tol=FREEZE_REBUILD_REL_TOLERANCE,
+            abs_tol=FREEZE_REBUILD_ABS_TOLERANCE,
+        )
+    if isinstance(current, Mapping) and isinstance(sealed, Mapping):
+        return current.keys() == sealed.keys() and all(
+            _same_values(current[key], sealed[key]) for key in current
+        )
+    if isinstance(current, (list, tuple)) and isinstance(sealed, (list, tuple)):
+        return len(current) == len(sealed) and all(
+            _same_values(a, b) for a, b in zip(current, sealed, strict=True)
+        )
+    return bool(current == sealed)
+
+
 def _freeze_prospective_sessions(
     rows: Sequence[Mapping[str, Any]],
     summaries: Sequence[Mapping[str, Any]],
@@ -760,6 +833,7 @@ def _freeze_prospective_sessions(
     market: str,
     market_root: Path,
     generated_at: datetime,
+    rebuild: Callable[[datetime], Sequence[Mapping[str, Any]]] | None = None,
 ) -> list[dict[str, Any]]:
     """Freeze each observed post-activation cross-section before later model work.
 
@@ -767,6 +841,12 @@ def _freeze_prospective_sessions(
     from the immutable projection.  Decision-time features, opportunity labels, candidate
     presence and prediction-time rejection reasons are included.  A candle correction or
     ledger rewrite therefore raises instead of replacing prospective evidence.
+
+    ``rebuild(as_of)`` re-runs the extraction as of an earlier time.  The extraction window
+    starts 520 days back, so it moves a day each day and rolling means pick up last-place
+    float noise that can flip a rounded digit of unchanged data.  When today's rows miss the
+    seal, the session is rebuilt as of the freeze's own ``created_at``; it passes only if that
+    rebuild reproduces the seal exactly and today's rows agree with it value by value.
     """
 
     contract_sha256 = canonical_sha256(
@@ -779,27 +859,24 @@ def _freeze_prospective_sessions(
             "outcomes": OUTCOME_COLUMNS,
         }
     )
+    rebuilt: dict[str, list[Mapping[str, Any]]] = {}
+
+    def as_sealed(created_at: str, session: str) -> list[dict[str, Any]]:
+        if rebuild is None:
+            return []
+        if created_at not in rebuilt:  # sessions frozen in one run share one rebuild
+            try:
+                rebuilt[created_at] = list(rebuild(datetime.fromisoformat(created_at)))
+            except ValueError:
+                rebuilt[created_at] = []
+        return _immutable_projection(rebuilt[created_at], session)
+
     freezes: list[dict[str, Any]] = []
     for summary in summaries:
         session = str(summary["session"])
         if date.fromisoformat(session) <= ACTIVATION_DATE or not summary["tracker_observed"]:
             continue
-        session_rows = [row for row in rows if row.get("session") == session]
-        immutable_rows = []
-        for row in session_rows:
-            tracking = dict(row.get("tracking") or {})
-            tracking.pop("execution_state", None)
-            immutable_rows.append(
-                {
-                    "market": row.get("market"),
-                    "session": row.get("session"),
-                    "scrip_code": row.get("scrip_code"),
-                    "symbol": row.get("symbol"),
-                    "features": row.get("features"),
-                    "opportunity": row.get("opportunity"),
-                    "tracking_at_prediction": tracking,
-                }
-            )
+        immutable_rows = _immutable_projection(rows, session)
         payload: dict[str, Any] = {
             "version": "missed-leader-prospective-freeze-v1",
             "market": market,
@@ -829,51 +906,37 @@ def _freeze_prospective_sessions(
                         f"prospective freeze {session} changed at immutable field {key}"
                     )
             recorded = existing.get("pending_outcomes")
-            masks = (
-                [recorded]
-                if isinstance(recorded, list)
-                else (_legacy_pending_masks(immutable_rows))
-            )
-            if existing.get("float_rounding") == FREEZE_ROUNDING:
-                expected = existing.get(SIGNIFICANT_HASH_FIELD) or existing.get(
-                    "causal_rows_sha256"
+            # A legacy freeze is verified under the 10-decimal rule it was written with.
+            legacy = existing.get("float_rounding") != FREEZE_ROUNDING
+            sealed_hash = existing.get("causal_rows_sha256")
+            if not legacy:
+                sealed_hash = existing.get(SIGNIFICANT_HASH_FIELD) or sealed_hash
+            basis = immutable_rows
+            mask = _seal_mask(basis, _freeze_masks(recorded, basis), sealed_hash, legacy=legacy)
+            created_at = existing.get("created_at")
+            if mask is None and isinstance(created_at, str):
+                sealed_rows = as_sealed(created_at, session)
+                sealed_mask = _seal_mask(
+                    sealed_rows, _freeze_masks(recorded, sealed_rows), sealed_hash, legacy=legacy
                 )
-                matched = any(
-                    _rows_hash(_mask_pending(immutable_rows, mask)) == expected for mask in masks
-                )
-                migrated = None
-            else:
-                # Legacy freeze: verify under the rule it was written with. Only after it
-                # verifies, record the same rows' significant-digit hash next to the
-                # original (which stays), so later checks are immune to last-place noise.
-                legacy_mask = next(
-                    (
-                        mask
-                        for mask in masks
-                        if _rows_hash(_mask_pending(immutable_rows, mask), legacy=True)
-                        == existing.get("causal_rows_sha256")
-                    ),
-                    None,
-                )
-                matched = legacy_mask is not None
-                migrated = (
-                    {
-                        **_report_without_hash(existing),
-                        "float_rounding": FREEZE_ROUNDING,
-                        SIGNIFICANT_HASH_FIELD: _rows_hash(
-                            _mask_pending(immutable_rows, legacy_mask)
-                        ),
-                        "float_rounding_recorded_at": generated_at.isoformat(),
-                    }
-                    if matched
-                    else None
-                )
-            if not matched:
+                if sealed_mask is not None and _same_values(
+                    _mask_pending(immutable_rows, _pending_outcomes(sealed_rows)), sealed_rows
+                ):
+                    mask, basis = sealed_mask, sealed_rows
+            if mask is None:
                 raise ValueError(
                     f"prospective freeze {session} changed at immutable field causal_rows_sha256"
                 )
             payload = existing
-            if migrated is not None:
+            if legacy:
+                # Only after it verifies, record the sealed rows' significant-digit hash next
+                # to the original (which stays), so later checks are immune to last-place noise.
+                migrated = {
+                    **_report_without_hash(existing),
+                    "float_rounding": FREEZE_ROUNDING,
+                    SIGNIFICANT_HASH_FIELD: _rows_hash(_mask_pending(basis, mask)),
+                    "float_rounding_recorded_at": generated_at.isoformat(),
+                }
                 migrated["artifact_sha256"] = canonical_sha256(migrated)
                 _atomic_text(path, json.dumps(migrated, indent=2, sort_keys=True) + "\n")
                 payload = migrated
@@ -960,6 +1023,11 @@ def run_missed_leader_audit(
         market=market,
         market_root=market_root,
         generated_at=generated_at,
+        rebuild=lambda as_of: build_audit_rows(
+            extract_causal_universe(db_path, market, now=as_of, session_count=session_count)[0],
+            market=market,
+            tracker_records=tracker_records,
+        ),
     )
     # Write the mutable aggregate only after every existing immutable session freeze has
     # validated.  A mismatch cannot leave latest.json bound to a newly rewritten dataset.
