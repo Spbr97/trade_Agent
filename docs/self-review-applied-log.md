@@ -145,3 +145,10 @@ Nothing is written here by hand; this file is append-only from `apply()`'s own c
 
 - added on bse: r_high52_break_strong_trend_trend_trail (+0.263R/trade after costs, 1,091 BSE trades) and r_tsmom20_strong_trend_trend_trail (+0.26R, 595 trades); both passed the gauntlet on BSE history but were installed for NSE only.
 - replaced on bse (moved to retired_markets, still shadow-tracked): nr7_breakout (-0.34R live), trend_pullback (-0.45R), base_breakout (-0.44R).
+
+## NEW DETECTOR r_donchian20_strong_trend_trend_trail on nse
+
+- item: `nse:2026-10-18T16:45:51.939110+05:30`
+- applied: 2026-10-18T20:33:20.105027+00:00
+- commit: `d2a95c32b5f30af8b4eb9becf91fe5260177977d`
+- files: config\setups.yaml
