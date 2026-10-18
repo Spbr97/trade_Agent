@@ -1718,6 +1718,20 @@ def create_app(
 
         return JSONResponse(await asyncio.to_thread(load))
 
+    @app.get("/api/earnings-drift")
+    async def api_earnings_drift() -> JSONResponse:
+        """Earnings-drift calls with their live entries, exits and results (earnings_drift.py)."""
+
+        def load() -> dict[str, Any]:
+            from tradedesk import earnings_drift as ed
+
+            ledger = ed.read_ledger()
+            calls = sorted(ed.positions(ledger).values(), key=lambda c: c.get("at", ""), reverse=True)  # noqa: E501
+            return {"calls": calls, "verdict": ed.verdict(ledger), "history": ed.HISTORY,
+                    "amount_inr": ed.AMOUNT_INR, "hold_sessions": ed.HOLD_SESSIONS}  # fmt: skip
+
+        return JSONResponse(await asyncio.to_thread(load))
+
     @app.get("/api/news-trial")
     async def api_news_trial() -> JSONResponse:
         """The news-source trial: which sources are candidates, which the user has enabled,

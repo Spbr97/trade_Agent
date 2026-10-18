@@ -55,7 +55,8 @@ def _send(key: str, title: str, body: str, *, urgent: bool = False, force: bool 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
     parser.add_argument(
-        "kind", choices=["close", "eod", "intraday", "multiday", "weekly", "picks", "link"]
+        "kind",
+        choices=["close", "eod", "intraday", "multiday", "weekly", "picks", "link", "drift"],
     )
     parser.add_argument("--market", choices=sorted(digests.CALLS))
     parser.add_argument("--job", default="")
@@ -74,6 +75,15 @@ def main(argv: list[str] | None = None) -> int:
         if built:
             alert(*built)  # sent every time the link changes; dashboard_link keeps the last one
             print(f"link pushed: {built[1].splitlines()[0]}")
+        return 0
+    if args.kind == "drift":
+        # Earnings-drift calls (src/tradedesk/earnings_drift.py): issue, enter, exit, judge.
+        from tradedesk import earnings_drift
+
+        result = earnings_drift.run()
+        print(json.dumps({k: v for k, v in result.items() if k != "verdict"}, default=str)[:2000])
+        for n, (title, body) in enumerate(earnings_drift.messages(result)):
+            _send(f"drift:{result['last_session']}:{n}", title, body)
         return 0
     if args.kind == "picks":
         # Consensus paper picks, each announced once (pick_announcer keeps its own record).

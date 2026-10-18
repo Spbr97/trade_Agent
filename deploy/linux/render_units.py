@@ -72,7 +72,7 @@ def on_calendar(trigger: Mapping[str, Any]) -> list[str]:
 # leading "-" can never change the job's own result; the sender skips non-close digests when
 # the job did not succeed (the hourly health check already reports that failure).
 DIGEST_HOOKS: dict[str, list[tuple[str, str]]] = {
-    "tradedesk-after-close": [("close", "nse")],
+    "tradedesk-after-close": [("close", "nse"), ("drift", "nse")],
     "tradedesk-bse-after-close": [("close", "bse")],
     "tradedesk-crypto-eod-learning": [("close", "crypto"), ("eod", "crypto")],
     "tradedesk-research-tracker": [("eod", "nse")],
