@@ -78,7 +78,10 @@ regime, filters and risk limits still apply; a missing or stale status allows no
 results beat the market over 20 sessions, 2016-2026 - by +1.6% BEFORE costs, about +0.7% after
 the real 0.564% round trip of a Rs 10,000 call; +1.8% net a call; better above NIFTY's 200-day
 average, +2.2%, than below, +0.8% - tradedesk_lab/earnings_drift_timing.py): calls after each NSE close, Rs
-10,000 each, fixed 20-session hold, no stop, stops issuing if live results trail the market.
+10,000 each, sold at +10% or the 20th close (from 2026-10-19, tradedesk_lab/takeoff_capture.py: ~32% more
+rupees a year on Rs 1 lakh), no stop, stops issuing if live results trail the market. The owner's real
+fills are read after each close (read-only order book, src/tradedesk/owner_trades.py) and matched
+to the calls; each call says how many of the ten Rs 10,000 slots are in use.
 Tested and failed on 2026-10-18 (do not re-test without new data): the intraday playbook (ORB,
 VWAP pullback, breakout-retest, first-hour momentum - tradedesk_lab/intraday_playbook.py), daily
 setups' entries held 5 sessions (daily_twin_test.py), NIFTY 50 trend rules and sector rotation

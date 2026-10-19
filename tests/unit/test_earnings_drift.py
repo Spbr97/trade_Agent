@@ -5,6 +5,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from tradedesk import earnings_drift as ed
 from tradedesk.broker.indstocks.models import IST
@@ -115,6 +116,45 @@ def test_each_call_says_whether_the_market_is_above_its_200_day_average() -> Non
                         _pd.Series([400.0 - i for i in range(250)], index=days))  # fmt: skip
     assert ed.market_state(falling, days[-1]) == "below"
     line = ed._state_line([{"nifty_vs_200dma": "below"}])
-    assert "below its 200-day average" in line and "+0.8% after costs" in line
+    assert "below its 200-day average" in line and "+0.4% after costs" in line
     assert ed._state_line([{}]) == ""
     assert ed.HISTORY["mean_excess"] < 0.01  # the corrected, after-cost figure
+
+
+def _with_highs(gap_open: float | None) -> tuple[ed.Panels, list[date]]:
+    p = _panels()
+    extra, d = [], p.sessions[-1] + timedelta(days=1)
+    while len(extra) < 20:
+        if d.weekday() < 5:
+            extra.append(d)
+        d += timedelta(days=1)
+    close = pd.concat([p.close, pd.DataFrame(500.0, index=extra, columns=p.close.columns)])
+    close.loc[extra, "NSE_J"] = 560.0
+    opens, high = close.copy(), close.copy()
+    high.loc[extra[5], "NSE_J"] = 620.0  # the +10% target (616) is reached on day 6
+    if gap_open is not None:
+        opens.loc[extra[5], "NSE_J"] = gap_open
+    volume = pd.concat([p.volume, p.volume.iloc[-20:].set_axis(extra)])
+    return ed.Panels(opens, close, volume, p.symbols, p.events, None, high), extra
+
+
+def test_a_call_is_sold_when_it_first_reaches_the_10_percent_target(tmp_path: Path) -> None:
+    for gap_open, expected in ((None, 616.0), (630.0, 630.0)):
+        p, extra = _with_highs(gap_open)
+        ledger = tmp_path / f"calls{gap_open}.jsonl"
+        ed._append([{"event": "call", "call_id": "JUMPY:x", "at": "t", **ed.candidates(
+            ed.Panels(p.open.iloc[:30], p.close.iloc[:30], p.volume.iloc[:30], p.symbols, p.events)
+        )[0]}], ledger)  # fmt: skip
+        exited = next(m for m in ed.advance(p, ed.read_ledger(ledger), datetime.now(IST))
+                      if m["event"] == "exited")  # fmt: skip
+        assert exited["exit_on"] == extra[5].isoformat() and exited["exit_reason"] == "+10% target"
+        assert exited["exit_price"] == pytest.approx(expected)  # a gap fills at the open
+
+
+def test_the_call_message_says_where_to_sell() -> None:
+    result = {"issued": [{"symbol": "TECHM", "reference_close": 1790.0, "jump_vs_market": 0.144,
+                          "volume_x": 8.1}], "exit_tomorrow": [], "exited": [],
+              "verdict": {"status": "live"}}  # fmt: skip
+    body = ed.messages(result)[0][1]
+    assert "sell at +10% (~Rs 1,969.00) or the close of the 20th session" in body
+    assert "place a sell order (GTT) at 1.10x your buy price" in body

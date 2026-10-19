@@ -1,4 +1,4 @@
-"""Earnings-drift calls: buy a liquid stock that jumped on its results, hold 20 sessions.
+"""Earnings-drift calls: buy a liquid stock that jumped on its results; sell at +10% or day 20.
 
 Owner-approved 2026-10-18 after tradedesk_lab/edge_hunt.py found the only edge in this
 project to clear a pre-registered bar after costs: over 2016-2026, liquid NSE stocks
@@ -11,10 +11,13 @@ equal-weight market by about +0.7% (1,605 calls, 9 of 11 years). Calls made whil
 above its 200-day average did better (+2.2% net) than those made below it (+0.8% net, still
 ahead of the market); each call message says which state the market is in. Roughly half the
 calls win; the edge is in the average. No stop in the tested rule: each call is Rs 10,000.
+From 2026-10-19 a call is sold when its price first reaches +10% over the entry, or else at the
+20th close (tradedesk_lab/takeoff_capture.py): +1.2% net a call, +0.8% over the market, 58% win,
+40% reach the target, and ~32% more rupees a year on Rs 1 lakh because slots free sooner.
 
 Each evening after the NSE close (hooked to tradedesk-after-close): issue calls whose
 reaction closed today (buy at the next open), record entries at the real open, close calls at
-the close of their 20th session, and say which exit tomorrow. The ledger
+the +10% target or the close of their 20th session, and say which exit tomorrow. The ledger
 (data/reports/earnings_drift_calls.jsonl) is append-only. Live results are judged with the
 profit gate's time-uniform range on excess return: if even the most favourable plausible
 live average is below zero (80% range, >= 20 closed calls), new calls stop - fail closed.
@@ -49,14 +52,20 @@ HOLD_SESSIONS = 20
 AMOUNT_INR = 10_000.0
 LOOKBACK_DAYS = 90
 STOP_MIN_CLOSED = 20
-HISTORY = {
+# Sell when the price first reaches +10% over the entry (tradedesk_lab/takeoff_capture.py,
+# 2026-10-19: on Rs 1 lakh in ten slots it earns ~32% more a year than always holding 20
+# sessions, because a slot frees sooner; +5% and +7% targets cut too many big winners).
+TARGET_PCT = 0.10
+HISTORY = {  # the live rule (+10% target or the 20th close) at the real 0.564% cost
     "calls": 1605,
-    "mean_excess": 0.0073,
-    "mean_net": 0.0179,
+    "mean_excess": 0.0083,
+    "mean_net": 0.0119,
+    "win_rate": 0.583,
+    "hit_target": 0.40,
     "years": "2016-2026",
-    "net_above_200dma": 0.0220,
-    "net_below_200dma": 0.0076,
-}  # at the real 0.564% cost
+    "net_above_200dma": 0.0148,
+    "net_below_200dma": 0.0043,
+}
 NIFTY = "NSE_40000001"
 NIFTY_LOOKBACK_DAYS = 330  # enough sessions for a 200-day average
 
@@ -69,6 +78,7 @@ class Panels:
     symbols: dict[str, str]  # trading symbol -> scrip code
     events: pd.DataFrame  # symbol, event_date
     nifty: pd.Series | None = None  # NIFTY 50 closes by date, ~330 days
+    high: pd.DataFrame | None = None  # daily highs, for the +10% target
 
     @property
     def sessions(self) -> list[date]:
@@ -90,7 +100,7 @@ def load(db: Path = DB, *, now: datetime | None = None, tries: int = 40) -> Pane
             time.sleep(15)
     try:
         frame = con.execute(
-            "SELECT c.scrip_code, c.ts, c.open, c.close, c.volume FROM candles c "
+            "SELECT c.scrip_code, c.ts, c.open, c.high, c.close, c.volume FROM candles c "
             "JOIN instruments i ON i.scrip_code = c.scrip_code "
             "WHERE c.interval = '1day' AND i.series = 'EQ' AND c.ts >= ?",
             [since],
@@ -113,11 +123,14 @@ def load(db: Path = DB, *, now: datetime | None = None, tries: int = 40) -> Pane
         k: frame.pivot_table(
             index="day", columns="scrip_code", values=k, aggfunc="last"
         ).sort_index()
-        for k in ("open", "close", "volume")
+        for k in ("open", "high", "close", "volume")
     }
     index["day"] = pd.to_datetime(index["ts"], unit="s", utc=True).dt.tz_convert(IST).dt.date
     nifty = index.set_index("day")["close"].sort_index() if len(index) else None
-    return Panels(panels["open"], panels["close"], panels["volume"], symbols, events, nifty)
+    return Panels(
+        panels["open"], panels["close"], panels["volume"], symbols, events, nifty,
+        panels["high"],
+    )  # fmt: skip
 
 
 def market_state(p: Panels, day: date) -> str | None:
@@ -256,8 +269,23 @@ def advance(p: Panels, ledger: Sequence[Mapping[str, Any]], now: datetime) -> li
                            "entry_on": sessions[e].isoformat(), "entry_price": price, "qty": qty})  # fmt: skip  # noqa: E501
             c = {**c, "entry_price": price, "qty": qty, "entry_on": sessions[e].isoformat()}
         x = e + HOLD_SESSIONS - 1
-        if "exit_price" not in c and x < len(sessions):
+        if "exit_price" in c:
+            continue
+        exit_price, reason = None, f"close of session {HOLD_SESSIONS}"
+        if p.high is not None and code in p.high.columns:
+            # The +10% target: the first session whose high reaches it sells at the target,
+            # or at that session's open if it gapped past (a resting sell order fills there).
+            level = c["entry_price"] * (1 + TARGET_PCT)
+            for k in range(e, min(x, len(sessions) - 1) + 1):
+                high = float(p.high.iat[k, p.high.columns.get_loc(code)])
+                if math.isfinite(high) and high >= level:
+                    opened = float(p.open.iat[k, p.open.columns.get_loc(code)]) if k > e else 0.0
+                    exit_price = max(level, opened if math.isfinite(opened) else 0.0)
+                    x, reason = k, f"+{100 * TARGET_PCT:.0f}% target"
+                    break
+        if exit_price is None and x < len(sessions):
             exit_price = float(p.close.iat[x, p.close.columns.get_loc(code)])
+        if exit_price is not None:
             market = p.close.iloc[x] / p.open.iloc[e] - 1
             turnover = (p.close * p.volume).rolling(20).mean().shift(1).iloc[e]
             mkt = float(market[(turnover >= MARKET_MIN_TURNOVER) & market.notna()].mean())
@@ -266,6 +294,7 @@ def advance(p: Panels, ledger: Sequence[Mapping[str, Any]], now: datetime) -> li
             cost_pct = _cost(c["entry_price"], exit_price, qty) / max(1.0, qty * c["entry_price"])
             events.append({
                 "event": "exited", "call_id": cid, "at": now.isoformat(), "exit_on": sessions[x].isoformat(),  # noqa: E501
+                "exit_reason": reason,
                 "exit_price": exit_price, "net_return": gross - cost_pct, "market_return": mkt,
                 "excess_return": gross - mkt, "net_inr": qty * c["entry_price"] * (gross - cost_pct),  # noqa: E501
             })  # fmt: skip
@@ -365,15 +394,19 @@ def messages(
             qty = int(AMOUNT_INR // c["reference_close"])
             lines.append(
                 f"{n}. {c['symbol']} BUY at next open (last close Rs {c['reference_close']:,.2f}, "
-                f"~{qty} sh for Rs {AMOUNT_INR:,.0f}) | exit: close of the {HOLD_SESSIONS}th session | "  # noqa: E501
+                f"~{qty} sh for Rs {AMOUNT_INR:,.0f}) | sell at +{100 * TARGET_PCT:.0f}% "
+                f"(~Rs {c['reference_close'] * (1 + TARGET_PCT):,.2f}) or the close of the "
+                f"{HOLD_SESSIONS}th session | "
                 f"results +{100 * c['jump_vs_market']:.1f}% vs market on {c['volume_x']:.1f}x volume"  # noqa: E501
             )
         out.append((
             f"EARNINGS DRIFT: {len(result['issued'])} call(s) for the next open",
-            "\n".join(lines) + "\nNo stop (fixed 20-session hold). History after costs: "
+            "\n".join(lines) + f"\nAfter buying, place a sell order (GTT) at {1 + TARGET_PCT:.2f}x "
+            "your buy price. No stop. History after costs: "
             f"+{100 * HISTORY['mean_net']:.1f}% a call, +{100 * HISTORY['mean_excess']:.1f}% over "
-            "the market; about half win." + _state_line(result["issued"]) + " Advisory only."
-            + _slots_line(held, slots),
+            f"the market, {100 * HISTORY['win_rate']:.0f}% win, "
+            f"{100 * HISTORY['hit_target']:.0f}% reach the target."
+            + _state_line(result["issued"]) + " Advisory only." + _slots_line(held, slots),
         ))  # fmt: skip
     if result["exit_tomorrow"]:
         out.append(
@@ -382,7 +415,7 @@ def messages(
     if result["exited"]:
         body = "\n".join(
             f"{m['call_id'].split(':')[0]}: net {100 * m['net_return']:+.2f}% (Rs {m['net_inr']:+,.0f}), "  # noqa: E501
-            f"vs market {100 * m['excess_return']:+.2f}%"
+            f"vs market {100 * m['excess_return']:+.2f}% ({m.get('exit_reason', 'session 20')})"
             for m in result["exited"]
         )
         out.append(("EARNINGS DRIFT: closed today", body))
