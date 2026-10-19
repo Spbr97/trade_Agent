@@ -1,0 +1,11 @@
+# Charges for NSE index-option orders, used only by the option-income PAPER test
+# (tradedesk_lab/option_income.py). Statutory rates are NSE/SEBI's published figures;
+# brokerage_per_order is PROVISIONAL - confirm it against a real INDmoney F&O contract note,
+# then update this file (and the paper results are recomputed from the stored chains).
+option_costs:
+  stt_sell_pct: 0.001          # STT on options: 0.1% of the sell premium (from 2024-10-01)
+  exchange_pct: 0.0003503      # NSE exchange transaction charge on option premium, both sides
+  sebi_pct: 0.000001           # Rs 10 per crore, both sides
+  stamp_buy_pct: 0.00003       # stamp duty 0.003% on the buy side
+  gst_pct: 0.18                # on brokerage + exchange + SEBI
+  brokerage_per_order: 20.0    # PROVISIONAL (flat per executed order)
