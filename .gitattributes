@@ -1,7 +1,11 @@
 * text=auto eol=lf
 *.png binary
 *.pdf binary
-# Sealed research contracts (M8, forward, AEM) hashed these two files with CRLF endings
+# Sealed research contracts (M8, forward, AEM) hashed these files with CRLF endings
 # on 2026-10-03; deploy them byte-identical or those cohorts fail closed.
 src/tradedesk/markets/costs.py text eol=crlf
 src/tradedesk/risk/costs.py text eol=crlf
+config/risk.yaml text eol=crlf
+src/tradedesk/backtest/fills.py text eol=crlf
+src/tradedesk/backtest/null_baseline.py text eol=crlf
+src/tradedesk/markets/market.py text eol=crlf
