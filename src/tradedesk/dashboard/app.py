@@ -1727,8 +1727,13 @@ def create_app(
 
             ledger = ed.read_ledger()
             calls = sorted(ed.positions(ledger).values(), key=lambda c: c.get("at", ""), reverse=True)  # noqa: E501
+            try:  # written by the evening run, so the page never reloads every price itself
+                card = json.loads(ed.SCORECARD.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                card = None
             return {"calls": calls, "verdict": ed.verdict(ledger), "history": ed.HISTORY,
-                    "amount_inr": ed.AMOUNT_INR, "hold_sessions": ed.HOLD_SESSIONS}  # fmt: skip
+                    "amount_inr": ed.AMOUNT_INR, "hold_sessions": ed.HOLD_SESSIONS,
+                    "scorecard": card}  # fmt: skip
 
         return JSONResponse(await asyncio.to_thread(load))
 

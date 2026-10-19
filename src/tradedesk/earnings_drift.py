@@ -65,7 +65,10 @@ HISTORY = {  # the live rule (+10% target or the 20th close) at the real 0.564% 
     "years": "2016-2026",
     "net_above_200dma": 0.0148,
     "net_below_200dma": 0.0043,
+    "sd_net": 0.0888,  # spread of one call's result
+    "round_trip": 0.00564,
 }
+SCORECARD = Path("data/reports/earnings_drift_scorecard.json")
 NIFTY = "NSE_40000001"
 NIFTY_LOOKBACK_DAYS = 330  # enough sessions for a 200-day average
 
@@ -350,6 +353,10 @@ def run(
             done = sum(1 for s in sessions if s >= date.fromisoformat(c["entry_on"]))
             if done == HOLD_SESSIONS - 1:
                 exit_tomorrow.append(c["symbol"])
+    latest = {str(k): float(v) for k, v in p.close.iloc[-1].items()} if len(p.close) else {}
+    card = scorecard(ledger, latest, as_of=sessions[-1].isoformat() if sessions else None)
+    SCORECARD.parent.mkdir(parents=True, exist_ok=True)
+    SCORECARD.write_text(json.dumps(card, indent=1, default=str), encoding="utf-8")
     return {
         "last_session": sessions[-1].isoformat() if sessions else None,
         "issued": issued,
@@ -357,7 +364,98 @@ def run(
         "exited": [m for m in moves if m["event"] == "exited"],
         "exit_tomorrow": sorted(exit_tomorrow),
         "verdict": judged,
+        "scorecard": card,
     }
+
+
+def scorecard(
+    ledger: Sequence[Mapping[str, Any]], latest_close: Mapping[str, float], *, as_of: str | None
+) -> dict[str, Any]:
+    """The paper record of every call as if each had been taken with Rs 10,000, next to what
+    history says is normal for that many closed calls - so a short run of losses (normal: ten
+    calls average a loss about one time in three even with the edge intact) is not mistaken for
+    failure, and a lucky run is not mistaken for proof."""
+
+    calls = positions(ledger)
+    open_now, closed = [], []
+    for c in calls.values():
+        if "exit_price" in c:
+            closed.append(c)
+        elif "entry_price" in c:
+            px = latest_close.get(c["scrip_code"])
+            if px is not None and math.isfinite(px) and px > 0:
+                net = px / float(c["entry_price"]) - 1 - HISTORY["round_trip"]
+                inr = net * float(c["entry_price"]) * c["qty"]
+                open_now.append(
+                    {"symbol": c.get("symbol"), "entry": c["entry_price"], "now": px,
+                     "net": net, "inr": inr}
+                )  # fmt: skip
+    n = len(closed)
+    mean = sum(float(c["net_return"]) for c in closed) / n if n else None
+    band = None
+    status = "no closed calls yet"
+    if n:
+        half = 1.2816 * HISTORY["sd_net"] / math.sqrt(n)
+        band = [HISTORY["mean_net"] - half, HISTORY["mean_net"] + half]
+        if n < 10:
+            status = "too early to judge"
+        elif mean is not None and mean < band[0]:
+            status = "worse than history - watch closely"
+        elif mean is not None and mean > band[1]:
+            status = "better than history"
+        else:
+            status = "in line with history"
+    judged = verdict(ledger)
+    lower = (judged.get("range_80") or [None])[0]
+    needed = math.ceil((1.2816 * HISTORY["sd_net"] / HISTORY["mean_net"]) ** 2)
+    return {
+        "as_of": as_of,
+        "calls": len(calls),
+        "waiting_entry": sum(1 for c in calls.values() if "entry_price" not in c),
+        "open": len(open_now),
+        "open_mean_net": sum(r["net"] for r in open_now) / len(open_now) if open_now else None,
+        "open_inr": sum(r["inr"] for r in open_now),
+        "open_positions": open_now,
+        "closed": n,
+        "closed_won": sum(1 for c in closed if float(c["net_return"]) > 0),
+        "closed_mean_net": mean,
+        "closed_inr": sum(float(c.get("net_inr") or 0) for c in closed),
+        "normal_range_80": band,
+        "status": status,
+        "proven": bool(lower is not None and lower > 0),
+        "closed_calls_for_proof": needed,
+    }
+
+
+def scorecard_message(card: Mapping[str, Any]) -> tuple[str, str] | None:
+    if not card or not card.get("calls"):
+        return None
+    lines = [
+        f"Calls so far: {card['calls']} ({card['waiting_entry']} waiting to enter, "
+        f"{card['open']} open, {card['closed']} closed)"
+    ]
+    if card["open"]:
+        lines.append(
+            f"Open now: {100 * card['open_mean_net']:+.1f}% on average after costs "
+            f"(Rs {card['open_inr']:+,.0f} on Rs {card['open'] * AMOUNT_INR:,.0f})"
+        )
+    if card["closed"]:
+        lines.append(
+            f"Closed: {card['closed_won']} of {card['closed']} won, average "
+            f"{100 * card['closed_mean_net']:+.1f}% after costs, "
+            f"Rs {card['closed_inr']:+,.0f} total"
+        )
+        low, high = card["normal_range_80"]
+        lines.append(
+            f"Normal for {card['closed']} closed calls: {100 * low:+.1f}% to {100 * high:+.1f}% "
+            f"on average - {card['status']}"
+        )
+    lines.append(
+        "PROVEN live: results beat the market" if card["proven"] else
+        f"Proof needs about {card['closed_calls_for_proof']} closed calls; losing runs are "
+        "normal (10 calls average a loss about 1 time in 3 even when the edge is real)."
+    )  # fmt: skip
+    return "Earnings-drift paper record (as if Rs 10,000 each)", "\n".join(lines)
 
 
 def _state_line(calls: Sequence[Mapping[str, Any]]) -> str:
@@ -426,4 +524,7 @@ def messages(
                 "Live results are below the market after costs; no new calls.",
             )
         )
+    card = scorecard_message(result.get("scorecard") or {})
+    if card:
+        out.append(card)
     return out

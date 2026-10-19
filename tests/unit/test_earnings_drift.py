@@ -158,3 +158,44 @@ def test_the_call_message_says_where_to_sell() -> None:
     body = ed.messages(result)[0][1]
     assert "sell at +10% (~Rs 1,969.00) or the close of the 20th session" in body
     assert "place a sell order (GTT) at 1.10x your buy price" in body
+
+
+def _closed(i: int, net: float) -> list[dict]:
+    cid = f"S{i}:d"
+    return [
+        {"event": "call", "call_id": cid, "at": "t", "symbol": f"S{i}", "scrip_code": f"C{i}"},
+        {"event": "entered", "call_id": cid, "at": "t", "entry_price": 100.0, "qty": 100},
+        {"event": "exited", "call_id": cid, "at": "t", "exit_on": f"2026-11-{1 + i % 28:02d}",
+         "exit_price": 100 * (1 + net), "net_return": net, "excess_return": net,
+         "net_inr": 10_000 * net},
+    ]  # fmt: skip
+
+
+def test_the_scorecard_compares_the_paper_record_with_what_is_normal() -> None:
+    techm = {"call_id": "TECHM:d", "at": "t", "symbol": "TECHM", "scrip_code": "NSE_T"}
+    wipro = {"call_id": "WIPRO:d", "at": "t", "symbol": "WIPRO", "scrip_code": "NSE_W"}
+    open_call = [
+        {"event": "call", **techm},
+        {"event": "entered", "call_id": "TECHM:d", "at": "t", "entry_price": 1790.0, "qty": 5},
+        {"event": "call", **wipro},
+    ]
+    early = ed.scorecard(open_call + _closed(1, -0.05), {"NSE_T": 1850.0}, as_of="x")
+    assert early["calls"] == 3 and early["waiting_entry"] == 1 and early["open"] == 1
+    assert early["open_mean_net"] == pytest.approx(1850 / 1790 - 1 - 0.00564)
+    assert early["status"] == "too early to judge"  # one losing call says nothing
+
+    # realistic swings: half the calls +10%, half -8% (average +1%, about history's spread)
+    normal = [row for i in range(30) for row in _closed(i, 0.10 if i % 2 else -0.08)]
+    card = ed.scorecard(normal, {}, as_of="x")
+    low, high = card["normal_range_80"]
+    assert low < card["closed_mean_net"] < high and card["status"] == "in line with history"
+    assert card["closed_calls_for_proof"] > 50 and not card["proven"]
+
+    bad = [row for i in range(30) for row in _closed(i, -0.05)]
+    assert ed.scorecard(bad, {}, as_of="x")["status"] == "worse than history - watch closely"
+
+    title, body = ed.scorecard_message(card)
+    assert title == "Earnings-drift paper record (as if Rs 10,000 each)"
+    assert "Closed: 15 of 30 won" in body and "Normal for 30 closed calls" in body
+    assert "losing runs are normal" in body
+    assert ed.scorecard_message({}) is None
