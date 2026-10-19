@@ -16,7 +16,6 @@ from tradedesk.engine.signals import SetupKind, Signal
 from tradedesk.journal import Journal
 from tradedesk.markets import EquityCostModel
 from tradedesk.reliability_sources import (
-    crypto_bse_backfill_pnl,
     crypto_bse_live_counts,
     crypto_bse_symbol_confidence,
     evaluated_reliability_now,
@@ -76,38 +75,6 @@ def test_crypto_bse_live_counts_ignores_backfill_and_unresolved(tmp_path: Path) 
 
 def test_crypto_bse_live_counts_empty_log_is_zero_zero(tmp_path: Path) -> None:
     assert crypto_bse_live_counts(tmp_path / "missing.jsonl") == (0, 0)
-
-
-def test_backfill_pnl_summary_only_counts_backfill_rows(tmp_path: Path) -> None:
-    log = tmp_path / "calls.jsonl"
-    _write_jsonl(log, [
-        _call_row("BTC", label=1, source="backfill", r_multiple=2.0),
-        _call_row("BTC", label=0, source="backfill", r_multiple=-1.0),
-        _call_row("BTC", label=1, source="live", r_multiple=3.0),  # excluded: not backfill
-    ])  # fmt: skip
-    summary = crypto_bse_backfill_pnl(log)
-    assert summary["n"] == 2
-    assert summary["sum_r"] == 1.0
-    assert summary["avg_r"] == 0.5
-    assert summary["win_rate"] == 0.5
-    assert summary["pnl_pct"] == 1.0 * 0.0025 * 100
-
-
-def test_backfill_pnl_summary_respects_the_timeframe_window(tmp_path: Path) -> None:
-    log = tmp_path / "calls.jsonl"
-    _write_jsonl(log, [
-        _call_row("BTC", label=1, source="backfill", r_multiple=1.0, resolved_at="2020-01-01T00:00:00"),  # noqa: E501
-        _call_row("BTC", label=1, source="backfill", r_multiple=1.0, resolved_at=date.today().isoformat()),  # noqa: E501
-    ])  # fmt: skip
-    all_time = crypto_bse_backfill_pnl(log, days=None)
-    recent = crypto_bse_backfill_pnl(log, days=7)
-    assert all_time["n"] == 2
-    assert recent["n"] == 1
-
-
-def test_backfill_pnl_summary_empty_log(tmp_path: Path) -> None:
-    summary = crypto_bse_backfill_pnl(tmp_path / "missing.jsonl")
-    assert summary == {"n": 0, "sum_r": 0.0, "avg_r": None, "win_rate": None, "pnl_pct": 0.0, "days": None}  # noqa: E501
 
 
 def _closed_paper_trade(j: Journal, i: int, symbol: str, r: float, *, entry_on: date = date(2026, 1, 5)) -> None:  # noqa: E501

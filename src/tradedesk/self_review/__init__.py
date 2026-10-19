@@ -7,7 +7,7 @@ the exact guard. Every module in this package is production-side orchestration; 
 authoring of genuinely new detector code lives in `tradedesk_lab/candidates/` instead,
 mirroring that package's existing isolation contract.
 
-Several submodules (`config_tuning.py`, `retire_replace.py`, `detector_authoring.py`,
+Several submodules (`config_tuning.py`, `replacement_search.py`, `detector_authoring.py`,
 `apply.py`, `orchestrate.py`) import `tradedesk_lab` at module level - a top-level package
 outside `src/`, not part of the installed `tradedesk` package. `python -m`/pytest add the
 repo root to `sys.path` automatically; the `tradedesk` console script does not (same gap

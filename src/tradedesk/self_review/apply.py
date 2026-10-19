@@ -491,9 +491,9 @@ def apply(
         assert isinstance(proposal.payload, ConfigPatch)
         result = _apply_config_patch(proposal.payload, item_id, root=root)
     elif proposal.kind == ProposalKind.RETIRE_SETUP:
-        # `replacement_source`, if set, is informational only (a pointer for a human to
-        # follow up on separately - see retire_replace.py's docstring). Applying this item
-        # only ever retires; it never auto-promotes a replacement.
+        # Only items created before 2026-10-18 can be retire-only (the loop now proposes a
+        # replacement that `replaces` the failing setups instead). `replacement_source`, if
+        # set, is informational only; applying this item only ever retires.
         assert isinstance(proposal.payload, RetireSetup)
         result = _apply_retire_setup(proposal.payload, item_id, root=root)
     elif proposal.kind == ProposalKind.NEW_DETECTOR:

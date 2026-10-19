@@ -99,16 +99,15 @@ judge after 60 straddle sessions / 12 condor weeks. Paper only, one lot; F&O bro
 **Scope limits, by design, not oversight**: paper trading and the live risk manager remain
 NSE-only (crypto/BSE have no paper book to grade against). Crypto/BSE calls are
 research/paper-only. The review-queue's self-analysis loop (`rolling_failure_monitor.py` ->
-`self_review/orchestrate.py` -> `config_tuning.py`/`retire_replace.py`/`detector_authoring.py`
+`self_review/orchestrate.py` -> `config_tuning.py`/`replacement_search.py`/`detector_authoring.py`
 -> the harness gauntlet -> one human approval -> `apply()`) was NSE-only through 2026-09-26;
 from 2026-09-27 it covers all three markets - crypto first (explicit user decision: the
 loop's own validation path never depended on a paper book, only on the harness gauntlet's
 backtest-based rigor, already market-generic), then BSE the same day on the same reasoning
 (it runs the identical daily engine as NSE/crypto, so the earlier crypto exception applied
-equally to it). Scheduled daily for NSE and crypto (`tradedesk-nse-*`/`tradedesk-crypto-*`
-rolling-check/self-review-run tasks - crypto's run twice daily, 00:00/12:00 IST plus 20
-minutes, matching its 24/7 data; NSE's run once, after `tradedesk-after-close`); BSE is
-eligible but not yet scheduled - run-on-request only for now.
+equally to it). Scheduled daily for all three (`tradedesk-nse-self-review` 16:25, after
+`tradedesk-after-close`; `tradedesk-bse-self-review` 16:40; `tradedesk-crypto-self-review` twice,
+00:20 and 13:45, matching its 24/7 data).
 **Retirement is per-market and never leaves a market with nothing being worked on**
 (2026-09-29): `config/setups.yaml` serves every market, so an approved retirement adds the
 market to that setup's `retired_markets` (never flips `enabled`, which would also switch it
@@ -177,7 +176,7 @@ Full spec and milestone list: PLAN.md.
 - engine/engine.py::scan_day is THE daily scan; engine/intraday_engine.py::scan_bar is its intraday sibling. Signals are created ONLY by these two functions. scan_bar takes an IntradaySnapshot and slices every frame to the last CLOSED bar itself via engine/mtf.py::last_closed_bar before any setup sees it.
 - Entry confirmation is live/confirmation.py::confirm_trigger (15-minute CLOSE above the level; the 09:15 bar never triggers; bars starting >= 15:00 defer to the daily close). The backtester falls back to daily bars when no 15-minute candles exist (open beyond trigger+1 ATR = chased; open past the stop = out at the open; a bar touching both stop and target = stop).
 - live/trigger_monitor.py fails closed: no ticks for 120s pauses alerts (DATA STALE); alerts raised while paused are delivered marked [delayed] on resume; after a WebSocket reconnect `resync()` checks triggers/stops against REST day high/low before alerts resume.
-- Alerts (M8): alerts/router.py routes by the entry's grade (A -> desktop+Telegram+dashboard, B -> dashboard, C -> log only). Telegram sends are queued and drained by AlertRouter.worker so the monitor never blocks. Dashboard = FastAPI + SSE on 127.0.0.1 only; DashboardState.publish() pushes every change. "Took it"/"Skip" -> live/session.py::apply_decision moves TRIGGERED -> TAKEN/SKIPPED. httpx's ASGITransport buffers responses: test SSE against a real uvicorn server on a free port.
+- Alerts (M8): alerts/router.py routes by the entry's grade (A -> desktop+Telegram+ntfy phone push+dashboard, B -> dashboard, C -> log only; config/alerts.yaml). Telegram sends are queued and drained by AlertRouter.worker so the monitor never blocks. Dashboard = FastAPI + SSE on 127.0.0.1 only; DashboardState.publish() pushes every change. "Took it"/"Skip" -> live/session.py::apply_decision moves TRIGGERED -> TAKEN/SKIPPED. httpx's ASGITransport buffers responses: test SSE against a real uvicorn server on a free port.
 - Journal (M9) is SQLite at data/journal.sqlite. Real fills are entered by hand or via Telegram; the broker order-updates feed is only captured raw (messages carry no instrument).
 - Paper book (paper/book.py) simulates EVERY triggered signal with the live exit rules and full costs, sized per risk.yaml against its own equity, deliberately WITHOUT portfolio crowding limits. A setup with a negative rolling-30 paper expectancy is benched (never alerts).
 - Claude (M10) lives in claude/: output schemas in claude/models.py are TEXT ONLY (tests assert no int/float field exists); claude/chart_read.py::apply_reads can only add a note, lower a grade or reject an entry - never a price, level, quantity or score. Spend is logged to data/claude_usage.jsonl and capped by claude.yaml monthly_spend_limit_usd.

@@ -126,8 +126,8 @@
 </nav>
 
 <details id="status-banner" class="banner">
-  <summary class="banner-summary">Profitability-qualified alerts: <b>off</b> - no setup has proven an after-cost edge <span class="muted" style="margin-left:auto; text-transform:none;">details</span></summary>
-  <div class="banner-full">The 80% accuracy gate was retired on 13 October 2026. Win rate remains visible but cannot pass or fail a setup. Live review requires sufficient total and out-of-sample evidence, at least <b>+0.05R mean after-cost expectancy</b>, and at least <b>+0.10R versus matched random timing</b>. Existing losing setups remain blocked by those profitability tests.</div>
+  <summary class="banner-summary">What can alert: <b>earnings-drift calls</b> and <b>quarter-size provisional setups</b> - both still being proven on paper <span class="muted" style="margin-left:auto; text-transform:none;">details</span></summary>
+  <div class="banner-full"><b>Earnings drift</b> (top of Today): the one strategy that passed a pre-set bar after costs on 2016-2026 history - buy a liquid stock after a results jump, sell at +10% or at the close of the 20th session. About +1.2% a call after costs, roughly half the calls lose; its paper record is judged every evening against what is normal for that many calls. <b>Provisional setups</b> (Scoreboard): 500+ historical trades at +0.20R or better after costs; they alert at a quarter size and are stopped automatically below break-even or after 12 losses in a row, reaching full size only once live calls prove an edge (lower bound above +0.05R over 50+ calls). The original setups (base breakout, trend pullback, NR7) stay blocked - they lose to random entry timing. Everything on the Research tab is research only and never alerts.</div>
 </details>
 
 <details id="health-banner" class="banner" hidden style="background:#3a1d22; border-color:#6b2b33;">
@@ -144,31 +144,6 @@
 </div>
 
 <main id="tab-calls">
-  <section class="fold folded" id="personal-calls-section">
-    <h2>Qualified personal calls <span class="muted headline-inline" id="personal-calls-headline">checking...</span></h2>
-    <div class="perf-controls">
-      <div class="group">
-        <label for="personal-calls-market">Market</label>
-        <select id="personal-calls-market">
-          <option value="nse" selected>NSE</option>
-          <option value="bse">BSE</option>
-          <option value="crypto">Crypto</option>
-        </select>
-      </div>
-      <span class="info-ic" title="Fail-closed: research, rejected, shadow, pending-evidence and unapproved models can never appear here. They remain visible in Learning > Predictions.">ⓘ</span>
-    </div>
-    <div class="banner-full" id="personal-calls-status">NO QUALIFIED PERSONAL CALL TODAY</div>
-    <div class="cards" style="margin-top:10px;">
-      <div class="card"><div class="label">Qualified calls</div><div class="value" id="personal-calls-count">0</div></div>
-      <div class="card"><div class="label">Approved contract</div><div class="value" id="personal-calls-contract">NONE</div></div>
-      <div class="card"><div class="label">Evidence stage</div><div class="value" id="personal-calls-evidence">not available</div></div>
-      <div class="card"><div class="label">Locked accuracy</div><div class="value" id="personal-calls-accuracy">not available</div></div>
-      <div class="card"><div class="label">Wilson lower bound</div><div class="value" id="personal-calls-wilson">not available</div></div>
-      <div class="card"><div class="label">Promotion authority</div><div class="value" id="personal-calls-authority">NO</div></div>
-    </div>
-    <div class="muted" id="personal-calls-blockers" style="margin-top:8px;"></div>
-    <table id="personal-calls-table" style="margin-top:10px;"></table>
-  </section>
 
   <section class="fold folded" id="lookup-section">
     <h2>Analyze a symbol</h2>
@@ -596,6 +571,31 @@
 
 <main id="tab-researchextra" hidden>
   <section class="perf-controls"><div class="group"><strong>Research</strong> <span class="muted">evidence, experiments and diagnostics - nothing on this tab is a call. Tap a title to open it.</span></div></section>
+  <section class="fold folded" id="personal-calls-section">
+    <h2>Qualified personal calls <span class="muted headline-inline" id="personal-calls-headline">checking...</span></h2>
+    <div class="perf-controls">
+      <div class="group">
+        <label for="personal-calls-market">Market</label>
+        <select id="personal-calls-market">
+          <option value="nse" selected>NSE</option>
+          <option value="bse">BSE</option>
+          <option value="crypto">Crypto</option>
+        </select>
+      </div>
+      <span class="info-ic" title="Fail-closed: research, rejected, shadow, pending-evidence and unapproved models can never appear here. They remain visible in Learning > Predictions.">ⓘ</span>
+    </div>
+    <div class="banner-full" id="personal-calls-status">NO QUALIFIED PERSONAL CALL TODAY</div>
+    <div class="cards" style="margin-top:10px;">
+      <div class="card"><div class="label">Qualified calls</div><div class="value" id="personal-calls-count">0</div></div>
+      <div class="card"><div class="label">Approved contract</div><div class="value" id="personal-calls-contract">NONE</div></div>
+      <div class="card"><div class="label">Evidence stage</div><div class="value" id="personal-calls-evidence">not available</div></div>
+      <div class="card"><div class="label">Locked accuracy</div><div class="value" id="personal-calls-accuracy">not available</div></div>
+      <div class="card"><div class="label">Wilson lower bound</div><div class="value" id="personal-calls-wilson">not available</div></div>
+      <div class="card"><div class="label">Promotion authority</div><div class="value" id="personal-calls-authority">NO</div></div>
+    </div>
+    <div class="muted" id="personal-calls-blockers" style="margin-top:8px;"></div>
+    <table id="personal-calls-table" style="margin-top:10px;"></table>
+  </section>
     <section class="fold folded">
       <h2>BSE accuracy · B1 quick-profit <span class="info-ic" title="Prospective BSE evidence only. Historical transport diagnostics are shown separately and cannot qualify or promote a rule.">ⓘ</span></h2>
       <div class="cards">
@@ -1736,7 +1736,6 @@ function showCallsMarket(market) {
   loadCallsSymbolConfidence(market === 'nse' ? 'today' : 'bsetoday');
   if (market === 'bse') {
     if (!$('bse-view-history').hidden) showLiveView('bse', $('bse-live-view-select').value);
-    loadBackfillPnl('bse');
     loadSymbolConfidence('bse');
   }
   updatePerfStrip();
@@ -1785,7 +1784,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     if (target === 'calls') showCallsMarket($('calls-market-select').value);
     if (target === 'scoreboard') { loadScoreboard(); loadEarningsDrift(); }
     if (target === 'movers') { loadMoverStudy(); loadFilings(); loadMyPicks(); }
-    if (target === 'crypto') { showLiveView('crypto', $('crypto-live-view-select').value); loadBackfillPnl('crypto'); loadSymbolConfidence('crypto'); }
+    if (target === 'crypto') { showLiveView('crypto', $('crypto-live-view-select').value); loadSymbolConfidence('crypto'); }
     if (target === 'research') { showReportResearchView($('reportresearch-view-select').value); showLearningReviewView($('learningreview-view-select').value); }
     if (target === 'review') loadReview();
     updatePerfStrip();
@@ -1867,11 +1866,6 @@ async function loadEarningsDrift() {
     $('drift-meta').textContent = 'failed to load';
   }
 }
-
-// ---------------------------------------------------------------- status banner
-// Collapsed by default (native <details>/<summary>, no JS needed to toggle) - the summary
-// line alone carries the actionable fact ("live alerts are off"); the full explanation is a
-// click away instead of permanently occupying space on every tab.
 
 // ---------------------------------------------------------------- agent performance strip
 // Visible on every tab (not nested inside one), so "how is the agent actually doing" is a
@@ -2615,23 +2609,8 @@ function showLiveView(prefix, view) {
   $(`${prefix}-live-view-select`).addEventListener('change', () => showLiveView(prefix, $(`${prefix}-live-view-select`).value));
 });
 
-// ---------------------------------------------------------------- Backfill P&L + symbol confidence
-// Replaces the removed row-by-row "Past (backfill)" table (2026-09-14): a compact P&L
-// summary over a selectable timeframe (/api/reliability/backfill-pnl) plus a per-symbol
-// Wilson-lower-bound confidence table (/api/reliability/symbols) for both crypto and BSE.
-async function loadBackfillPnl(prefix) {
-  if (!$(`${prefix}-backfill-days`)) return;  // section removed 2026-10-18 (history off the dashboard)
-  const days = $(`${prefix}-backfill-days`).value;
-  const qs = days ? `?market=${prefix}&days=${days}` : `?market=${prefix}`;
-  const r = await fetch(`/api/reliability/backfill-pnl${qs}`);
-  const d = r.ok ? await r.json() : { n: 0 };
-  $(`${prefix}-backfill-n`).textContent = d.n;
-  $(`${prefix}-backfill-winrate`).textContent = d.win_rate != null ? pct(d.win_rate) : '-';
-  $(`${prefix}-backfill-avgr`).textContent = d.avg_r != null ? fmt(d.avg_r, 2) : '-';
-  const pnlEl = $(`${prefix}-backfill-pnl`);
-  pnlEl.textContent = d.n ? `${d.pnl_pct >= 0 ? '+' : ''}${d.pnl_pct.toFixed(2)}%` : '-';
-  pnlEl.className = 'value ' + (d.n && d.pnl_pct >= 0 ? 'pos' : (d.n ? 'neg' : ''));
-}
+// ---------------------------------------------------------------- per-symbol confidence
+// Wilson-lower-bound confidence per coin/stock from the live calls (/api/reliability/symbols).
 async function loadSymbolConfidence(prefix) {
   // Live agent calls only - the whole point of a per-symbol "how much should I trust this"
   // read is knowing what THIS agent has actually done, not diluting it with the historical
@@ -2641,9 +2620,6 @@ async function loadSymbolConfidence(prefix) {
   rows($(`${prefix}-symbol-confidence`), [prefix === 'crypto' ? 'Coin' : 'Stock', '#N', '#Wins', '#Win rate', '#Confidence'],
     data.map(s => `<tr><td>${s.symbol}</td><td class="num">${s.n}</td><td class="num">${s.wins}</td><td class="num">${pct(s.win_rate)}</td><td class="num">${pct(s.confidence)}</td></tr>`));
 }
-['crypto', 'bse'].forEach(prefix => {
-  if ($(`${prefix}-backfill-days`)) $(`${prefix}-backfill-days`).addEventListener('change', () => loadBackfillPnl(prefix));
-});
 
 // ---------------------------------------------------------------- Research tab
 // tradedesk.research_tracker's forward, out-of-sample candidate log - separate from

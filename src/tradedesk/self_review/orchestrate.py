@@ -1,6 +1,7 @@
 """The end-to-end entry point that was the last real gap in this feature: ties
-`rolling_failure_monitor.py`'s real output to `config_tuning.py`/`retire_replace.py`
-and submits any resulting real proposal via `decision_packet.submit_for_review`.
+`rolling_failure_monitor.py`'s real output to `config_tuning.py` and the replacement search
+(retire-only proposals were dropped 2026-10-18: replace, never retire into a blank) and
+submits any resulting real proposal via `decision_packet.submit_for_review`.
 
 Never applies anything itself and never approves anything - a human still has to click
 Approve (which, per this session's dashboard wiring, is when it actually applies). This

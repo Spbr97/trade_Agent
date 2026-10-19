@@ -16,7 +16,7 @@ both excluded - see reliability.py::overall_reliability's docstring for why.
 from __future__ import annotations
 
 import json
-from datetime import date, datetime, timedelta
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -34,7 +34,6 @@ from tradedesk.reliability import (
 # calls were never actually sized against real capital, so this is a documented, stated
 # assumption for turning an R-multiple into a % figure - not a real ledger number, the same
 # honesty standard as research_tracker.py's own cost_r_for approximation.
-RISK_PER_TRADE_PCT = 0.0025
 
 
 def _read_jsonl(path: Path) -> list[dict[str, Any]]:
@@ -43,12 +42,6 @@ def _read_jsonl(path: Path) -> list[dict[str, Any]]:
     return [
         json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()
     ]
-
-
-def _cutoff_iso(days: int | None) -> str | None:
-    if days is None:
-        return None
-    return (datetime.now().date() - timedelta(days=days)).isoformat()
 
 
 def crypto_bse_symbol_confidence(
@@ -78,34 +71,6 @@ def crypto_bse_live_counts(log_path: Path) -> tuple[int, int]:
     ]
     wins = sum(1 for r in resolved if r["label"] == 1)
     return wins, len(resolved)
-
-
-def crypto_bse_backfill_pnl(log_path: Path, *, days: int | None = None) -> dict[str, Any]:
-    """Backfill P&L summary over a timeframe (days=None -> all time) - replaces the removed
-    row-by-row "Past (backfill)" browsing table with one compact stat. R-multiples are what
-    this project actually grades calls in (signal_tracker.py); pnl_pct is that R-multiple
-    total scaled by risk.yaml's own per-trade risk assumption - see RISK_PER_TRADE_PCT."""
-    cutoff = _cutoff_iso(days)
-    resolved = [
-        r
-        for r in _read_jsonl(log_path)
-        if r.get("source", "backfill") == "backfill"
-        and r.get("r_multiple") is not None
-        and (cutoff is None or (r.get("resolved_at") or "") >= cutoff)
-    ]
-    n = len(resolved)
-    if n == 0:
-        return {"n": 0, "sum_r": 0.0, "avg_r": None, "win_rate": None, "pnl_pct": 0.0, "days": days}
-    sum_r = sum(float(r["r_multiple"]) for r in resolved)
-    wins = sum(1 for r in resolved if r.get("label") == 1)
-    return {
-        "n": n,
-        "sum_r": sum_r,
-        "avg_r": sum_r / n,
-        "win_rate": wins / n,
-        "pnl_pct": sum_r * RISK_PER_TRADE_PCT * 100,
-        "days": days,
-    }
 
 
 def nse_symbol_confidence(journal_path: Path = NSE_JOURNAL) -> list[SymbolConfidence]:

@@ -9,7 +9,7 @@ and shows up in the health check, as before.
 
 The file list is the deployed source tree (a `git archive` of a commit, so the same set
 `protect()` takes from `git ls-files`), with protect()'s own exclusions. The previous record is
-kept as base_manifest.deploy-<UTC time>.bak.json.
+kept as base_manifest.deploy-<UTC time>.bak.json; only the newest KEEP_BACKUPS are kept.
 
 Usage: python deploy/linux/refresh_base_manifest.py --src ~/tradedesk --root /opt/tradedesk
 """
@@ -25,6 +25,7 @@ from pathlib import Path
 
 EXCLUDED_PREFIXES = ("tradedesk_lab/", "tests_lab/", "docs/m14-m18-")
 SKIPPED_TOP = {"data", ".venv", ".git"}
+KEEP_BACKUPS = 5  # one is written per deploy; older ones are deleted
 
 
 def deployed_names(src: Path) -> list[str]:
@@ -38,6 +39,16 @@ def deployed_names(src: Path) -> list[str]:
     return sorted(names)
 
 
+def prune_backups(folder: Path, keep: int = KEEP_BACKUPS) -> list[str]:
+    """Delete all but the newest `keep` deploy backups (their UTC stamps sort by time)."""
+
+    backups = sorted(folder.glob("base_manifest.deploy-*.bak.json"))
+    removed = backups[:-keep] if keep > 0 else backups
+    for path in removed:
+        path.unlink()
+    return [path.name for path in removed]
+
+
 def refresh(src: Path, root: Path) -> dict[str, object]:
     sys.path.insert(0, str(root))
     from tradedesk_lab.artifacts import OUTPUT, digest, verify_base, write_json
@@ -48,6 +59,7 @@ def refresh(src: Path, root: Path) -> dict[str, object]:
         stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
         backup = record.with_name(f"base_manifest.deploy-{stamp}.bak.json")
         shutil.copy2(record, backup)
+        prune_backups(record.parent)
     manifest = {
         name: digest(root / name) for name in deployed_names(src) if (root / name).is_file()
     }

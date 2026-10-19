@@ -2,7 +2,7 @@
 cooldown that keeps a rejected proposal from being silently re-proposed.
 
 Only a fully gauntlet-passed candidate ever reaches `submit_for_review` - callers in
-`config_tuning.py` (and, later, `retire_replace.py`/`detector_authoring.py`) are responsible
+`config_tuning.py` and `detector_authoring.py` (via the replacement search) are responsible
 for running the harness and discarding anything that didn't clear it; this module never
 re-checks that itself, it only turns an already-validated result into a decision packet.
 """

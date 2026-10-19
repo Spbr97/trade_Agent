@@ -80,22 +80,3 @@ async def test_reliability_symbols_endpoint_filters_by_source(tmp_path: Path, mo
         ).json()
         btc_live = next(s for s in live_only if s["symbol"] == "BTC")
         assert btc_live["n"] == 1
-
-
-async def test_reliability_backfill_pnl_endpoint(tmp_path: Path, monkeypatch) -> None:  # noqa: ANN001
-    import tradedesk.analysis as an
-
-    bse_log = tmp_path / "bse.jsonl"
-    rows = [
-        {"symbol": "SENSEX", "label": 1, "source": "backfill", "r_multiple": 2.0, "resolved_at": "2026-01-01T00:00:00"},  # noqa: E501
-        {"symbol": "SENSEX", "label": 0, "source": "backfill", "r_multiple": -1.0, "resolved_at": "2026-01-02T00:00:00"},  # noqa: E501
-    ]
-    bse_log.write_text("\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8")
-    monkeypatch.setattr(an, "BSE_LOG", bse_log)
-
-    app = create_app(DashboardState())
-    transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
-        summary = (await c.get("/api/reliability/backfill-pnl", params={"market": "bse"})).json()
-        assert summary["n"] == 2
-        assert summary["sum_r"] == 1.0

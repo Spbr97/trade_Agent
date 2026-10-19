@@ -2451,8 +2451,17 @@ def create_app(
             runs: list[dict[str, Any]] = []
             if reg_path.exists():
                 with Registry(reg_path, readonly=True) as registry:
-                    runs = registry.runs()
-            report = next((r["report"] for r in runs if r["status"] == "completed"), None)
+                    runs = registry.runs(limit=500)
+            # The registry also holds the self-review searches' runs, whose reports carry only
+            # {"passed": ...}; the summary is about the M14-M18 historical run, so take the
+            # latest completed run that has that report's shape (2026-10-19: the newest 100 were
+            # all searches and the page answered 500 on report["id"]).
+            lab_run = next(
+                (r for r in runs if r["status"] == "completed"
+                 and isinstance(r.get("report"), dict) and "metadata" in r["report"]),
+                None,
+            )  # fmt: skip
+            report = lab_run["report"] if lab_run else None
             portfolio = None
             eligibility = None
             if report:
@@ -2466,7 +2475,9 @@ def create_app(
             forward = json.loads(fwd_path.read_text(encoding="utf-8")) if fwd_path.exists() else None  # noqa: E501
             return {
                 "n_runs": len(runs),
-                "latest_run_id": report["id"] if report else None,
+                "latest_run_id": (
+                    (report.get("id") or lab_run["id"]) if report and lab_run else None
+                ),
                 "latest_run_market": report["metadata"]["market"] if report else None,
                 "latest_run_range": (
                     f"{report['metadata']['from']} to {report['metadata']['to']}" if report else None  # noqa: E501
@@ -2538,19 +2549,6 @@ def create_app(
         else:
             rows = crypto_bse_symbol_confidence(CRYPTO_LOG if market == "crypto" else BSE_LOG, source=src)  # noqa: E501
         return JSONResponse([asdict(r) for r in rows])
-
-    @app.get("/api/reliability/backfill-pnl")
-    async def api_reliability_backfill_pnl(
-        market: Literal["crypto", "bse"] = "crypto",
-        days: int | None = None,
-    ) -> JSONResponse:
-        """Compact P&L summary over a timeframe for the removed "Past (backfill)" browsing
-        table - days=None is all-time."""
-        from tradedesk.analysis import BSE_LOG, CRYPTO_LOG
-        from tradedesk.reliability_sources import crypto_bse_backfill_pnl
-
-        log = CRYPTO_LOG if market == "crypto" else BSE_LOG
-        return JSONResponse(crypto_bse_backfill_pnl(log, days=days))
 
     @app.get("/api/review")
     async def api_review_list() -> JSONResponse:

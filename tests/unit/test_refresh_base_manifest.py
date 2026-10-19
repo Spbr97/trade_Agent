@@ -29,3 +29,20 @@ def test_names_match_protects_rules(tmp_path: Path) -> None:
         "config/setups.yaml",
         "src/tradedesk/engine/engine.py",
     ]
+
+
+def test_only_the_newest_deploy_backups_are_kept(tmp_path: Path) -> None:
+    for stamp in ("20261018T001419Z", "20261018T002817Z", "20261018T003156Z", "20261019T081245Z"):
+        (tmp_path / f"base_manifest.deploy-{stamp}.bak.json").write_text("{}", encoding="utf-8")
+    (tmp_path / "base_manifest.json").write_text("{}", encoding="utf-8")
+    removed = refresh.prune_backups(tmp_path, keep=2)
+    assert removed == [
+        "base_manifest.deploy-20261018T001419Z.bak.json",
+        "base_manifest.deploy-20261018T002817Z.bak.json",
+    ]
+    left = sorted(p.name for p in tmp_path.iterdir())
+    assert left == [
+        "base_manifest.deploy-20261018T003156Z.bak.json",
+        "base_manifest.deploy-20261019T081245Z.bak.json",
+        "base_manifest.json",  # the live record is never touched
+    ]

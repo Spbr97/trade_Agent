@@ -278,12 +278,11 @@ def author_and_validate(
     any change to a production file - see module docstring.
 
     `replacement_for`, when given, registers the candidate under the exact
-    `<market>:<setup>:replacement` family `retire_replace.py::find_lab_replacement` already
-    looks up - the integration point that module's own docstring flagged as future work
-    ("it will pick up a genuine replacement the moment something ... starts registering
-    candidates under that family/metric convention"). Without it, the candidate is recorded
-    under `<market>:<candidate.name>:replacement` instead - still real, auditable, just not
-    linked to any one specific failing setup (standalone/manual authoring). `family`
+    `<market>:<setup>:replacement` family the self-review replacement search records its
+    candidates under, linking the candidate to the failing setup it would replace. Without
+    it, the candidate is recorded under `<market>:<candidate.name>:replacement` instead -
+    still real, auditable, just not linked to any one specific failing setup
+    (standalone/manual authoring). `family`
     overrides both (the replacement search registers everything it tries for a market under
     `<market>:replacement`).
 
