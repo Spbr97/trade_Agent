@@ -39,7 +39,9 @@ easily. A cheap paid VPS works the same way with the same steps.
    - On the server:
      `sudo rsync -a /tmp/tradedesk-data/ /opt/tradedesk/data/ && sudo chown -R tradedesk: /opt/tradedesk/data`
    - Leave the laptop's tasks disabled. It is the cold standby: to fall back, stop the
-     server's timers, copy `data/` back, and re-enable the tasks.
+     server's timers, copy `data/` back, and re-enable the tasks. The server's
+     `data/m14_m18/deps/catboost` is the Linux build (since 2026-10-20); on the laptop put the
+     Windows copy from `data/m14_m18/deps_windows/` back in its place.
 5. **Secrets.** This step is open: see "Decision needed" below. Whichever way is chosen,
    you enter the INDstocks Client ID, MPIN and TOTP secret yourself:
    `sudo -u tradedesk -H /opt/tradedesk/.venv/bin/tradedesk auth setup`, then

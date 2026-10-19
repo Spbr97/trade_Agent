@@ -20,6 +20,7 @@ from tradedesk.signal_tracker import (
     load_log,
     render_session_report,
     save_log,
+    wilson_upper,
 )
 
 
@@ -76,8 +77,8 @@ def test_invalid_resolution_is_not_reported_as_a_failed_call() -> None:
 def test_flag_setup_failures_flags_a_setup_below_the_hit_rate_floor(tmp_path: Path) -> None:
     review_path = tmp_path / "queue.jsonl"
     rows = {}
-    for i in range(6):
-        outcome = "stop" if i < 5 else "target"  # 1/6 = 17%, below a 30% floor
+    for i in range(20):
+        outcome = "stop" if i < 19 else "target"  # 1/20: clearly below a 30% floor
         rows[f"sig{i}"] = _row(i, "nr7_breakout", outcome)
 
     flagged = flag_setup_failures(
@@ -106,7 +107,7 @@ def test_flag_setup_failures_does_not_flag_below_the_minimum_sample(tmp_path: Pa
 
 def test_flag_setup_failures_does_not_duplicate_an_existing_flag(tmp_path: Path) -> None:
     review_path = tmp_path / "queue.jsonl"
-    rows = {f"sig{i}": _row(i, "nr7_breakout", "stop") for i in range(5)}
+    rows = {f"sig{i}": _row(i, "nr7_breakout", "stop") for i in range(10)}
 
     first = flag_setup_failures("crypto", rows, min_resolved=5, review_path=review_path)
     second = flag_setup_failures("crypto", rows, min_resolved=5, review_path=review_path)
@@ -138,23 +139,50 @@ def test_failure_flag_thresholds_do_not_pool_exit_contracts(tmp_path: Path) -> N
         swing.contract_version = "swing-v1"
         rows[quick.signal_id] = quick
         rows[swing.signal_id] = swing
-    assert flag_setup_failures(
-        "nse", rows, min_resolved=5, review_path=review_path
-    ) == []
+    assert flag_setup_failures("nse", rows, min_resolved=5, review_path=review_path) == []
 
 
 def test_failure_flag_names_the_underperforming_exit_contract(tmp_path: Path) -> None:
     review_path = tmp_path / "queue.jsonl"
     rows = {}
-    for i in range(5):
+    for i in range(10):
         quick = _row(i, "base_breakout", "stop")
         quick.signal_id = f"quick-{i}"
         quick.contract_version = "quick-profit-v1"
-        swing = _row(i + 10, "base_breakout", "target")
+        swing = _row(i + 20, "base_breakout", "target")
         swing.signal_id = f"swing-{i}"
         swing.contract_version = "swing-v1"
         rows[quick.signal_id] = quick
         rows[swing.signal_id] = swing
-    assert flag_setup_failures(
-        "nse", rows, min_resolved=5, review_path=review_path
-    ) == ["base_breakout [quick-profit-v1] underperforming on nse"]
+    assert flag_setup_failures("nse", rows, min_resolved=5, review_path=review_path) == [
+        "base_breakout [quick-profit-v1] underperforming on nse"
+    ]
+
+
+def test_a_small_sample_below_the_floor_is_noise_not_a_flag(tmp_path: Path) -> None:
+    # 0/5 happens 17% of the time at a true 30% hit rate; 2/9 is 22% but could be 50%.
+    review_path = tmp_path / "queue.jsonl"
+    rows = {f"a{i}": _row(i, "nr7_breakout", "stop") for i in range(5)}
+    rows |= {
+        f"b{i}": _row(i + 10, "base_breakout", "target" if i < 2 else "stop") for i in range(9)
+    }
+    assert flag_setup_failures("nse", rows, min_resolved=5, review_path=review_path) == []
+
+
+def test_a_setup_inactive_on_the_market_is_not_flagged(tmp_path: Path) -> None:
+    review_path = tmp_path / "queue.jsonl"
+    rows = {f"sig{i}": _row(i, "trend_pullback", "stop") for i in range(12)}
+    assert (
+        flag_setup_failures(
+            "nse", rows, review_path=review_path, inactive=frozenset({"trend_pullback"})
+        )
+        == []
+    )
+    assert flag_setup_failures("nse", rows, review_path=review_path) == [
+        "trend_pullback underperforming on nse"
+    ]
+
+
+def test_wilson_upper_bound() -> None:
+    assert wilson_upper(0, 5) > 0.3 > wilson_upper(0, 10)
+    assert wilson_upper(0, 0) == 1.0

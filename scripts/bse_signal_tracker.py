@@ -41,6 +41,7 @@ from tradedesk.scan import load_watchlist
 from tradedesk.self_learning_workflow import run_scheduled_challenger
 from tradedesk.signal_tracker import (
     flag_setup_failures,
+    inactive_setups,
     load_log,
     log_exit_contract_signals,
     render_session_report,
@@ -91,7 +92,7 @@ def main(*, strict_accuracy_refresh: bool = False) -> None:
         save_dashboard("bse", rows, DASHBOARD)
         report = render_session_report("BSE", day, new_rows, newly_resolved, rows)
         report_path = save_session_report(day, report, SESSIONS_DIR)
-        flagged = flag_setup_failures("bse", rows)
+        flagged = flag_setup_failures("bse", rows, inactive=inactive_setups("bse"))
         print(
             f"{day}: {len(wl.entries)} candidates evaluated "
             f"({len(wl.active)} would be tradeable, {len(new_rows)} new contract rows from "

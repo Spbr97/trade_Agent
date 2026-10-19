@@ -45,12 +45,16 @@ def _failure(setup: str, severity: FailureSeverity) -> SustainedFailure:
     )
 
 
-def _settings(retired: dict[str, list[str]] | None = None):
+def _settings(
+    retired: dict[str, list[str]] | None = None, installed: dict[str, list[str]] | None = None
+):
     retired = retired or {}
     setups = {
         name: SetupConfig(enabled=True, retired_markets=retired.get(name, []))
         for name in ("base_breakout", "trend_pullback", "nr7_breakout")
     }
+    for name, markets in (installed or {}).items():
+        setups[name] = SetupConfig(enabled=True, markets=markets)
     return SimpleNamespace(setups=SimpleNamespace(setups=setups))
 
 
@@ -113,7 +117,7 @@ def _passed_result(tmp_path: Path) -> CandidateResult:
     )
 
 
-def _wire(tmp_path: Path, monkeypatch, failures, *, retired=None, search=None):
+def _wire(tmp_path: Path, monkeypatch, failures, *, retired=None, search=None, installed=None):
     review_path = tmp_path / "queue.jsonl"
     proposals_dir = tmp_path / "proposals"
     search_calls: list[list[str]] = []
@@ -128,7 +132,7 @@ def _wire(tmp_path: Path, monkeypatch, failures, *, retired=None, search=None):
         return search(targets) if search else _outcome(targets)
 
     monkeypatch.setattr(orch, "run_daily_check", lambda market: failures)
-    monkeypatch.setattr(orch, "load_config", lambda root: _settings(retired))
+    monkeypatch.setattr(orch, "load_config", lambda root: _settings(retired, installed))
     monkeypatch.setattr(orch, "load_real_market_data", lambda market, **kw: _fake_market_data())
     monkeypatch.setattr(orch, "run_replacement_search", _search)
     monkeypatch.setattr(orch, "submit_for_review", _submit)
@@ -201,6 +205,38 @@ def test_a_better_candidate_is_one_swap_that_replaces_the_failing_setup(
     payload = load_proposal(Path(result.items[0].proposal_ref)).payload
     assert isinstance(payload, NewDetectorCode)
     assert payload.replaces == ["nr7_breakout"]  # one approval swaps them
+
+
+def test_a_candidate_already_installed_here_is_not_proposed_again(
+    tmp_path: Path, monkeypatch
+) -> None:
+    found = _passed_result(tmp_path)
+    failure = [_failure("nr7_breakout", FailureSeverity.SUSTAINED)]
+    outcome = lambda targets: _outcome(targets, passed=[found])  # noqa: E731
+    _wire(tmp_path, monkeypatch, failure, search=outcome, installed={found.name: ["nse"]})
+    assert orch.run_self_review("nse", root=tmp_path).items == []
+
+
+def test_a_candidate_mostly_taken_by_a_live_setup_is_not_proposed(
+    tmp_path: Path, monkeypatch
+) -> None:
+    found = _passed_result(tmp_path)
+    found.live_overlap = 0.9
+    failure = [_failure("nr7_breakout", FailureSeverity.SUSTAINED)]
+    outcome = lambda targets: _outcome(targets, passed=[found])  # noqa: E731
+    _wire(tmp_path, monkeypatch, failure, search=outcome)
+    assert orch.run_self_review("nse", root=tmp_path).items == []
+
+
+def test_a_candidate_live_on_another_market_can_still_be_proposed_here(
+    tmp_path: Path, monkeypatch
+) -> None:
+    found = _passed_result(tmp_path)
+    failure = [_failure("nr7_breakout", FailureSeverity.SUSTAINED)]
+    outcome = lambda targets: _outcome(targets, passed=[found])  # noqa: E731
+    _wire(tmp_path, monkeypatch, failure, search=outcome, installed={found.name: ["bse"]})
+    items = orch.run_self_review("nse", root=tmp_path).items
+    assert [i.title for i in items] == [f"NEW DETECTOR {found.name} on nse"]
 
 
 def test_a_setup_already_retired_here_keeps_being_researched(tmp_path: Path, monkeypatch) -> None:

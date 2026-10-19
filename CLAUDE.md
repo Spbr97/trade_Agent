@@ -55,7 +55,9 @@ via symlinks from `deploy/linux/link_windows_paths.py` - never edit modules that
 source into evidence (`digest(Path(__file__))`) to fix paths. Alerts reach the phone through ntfy
 (`task_health.alert`); `scripts/send_digest.py`, hooked as ExecStopPost on the jobs it reports
 on, sends close-job, end-of-day, intraday-check, multi-day-call, earnings-drift and weekly
-digests. Oracle cost safety: a `free-tier-only` quota policy, a SGD budget alert, and
+digests; drift calls go out whenever that day's price stages loaded, even if a later
+research-only stage fails the after-close job, and review items go out as one push per run.
+Six files deploy with CRLF bytes (.gitattributes) because sealed research cohorts hashed them so. Oracle cost safety: a `free-tier-only` quota policy, a SGD budget alert, and
 `deploy/oracle/billing_guard.py` every 5 min on both the server and the laptop (kill switch at
 SGD 0.30) - the owner cannot afford any Oracle charge. Memory safety: every batch job runs in
 `tradedesk-jobs.slice` (one shared cap at 85% of RAM, so a runaway job is stopped alone while the
@@ -121,7 +123,10 @@ thrusts, mean reversion), continuing from where the last run stopped and re-test
 results on fresh data after 14 days. A candidate becomes a NEW_DETECTOR proposal only if it
 clears the full gauntlet, +0.10R over random, a Bonferroni-adjusted random-benchmark p-value
 and beats the retired setups' own forward result - the bar is never lowered to produce a
-winner. The Review tab's "Replacement research" panel shows the plan and leaderboard.
+winner. A passing candidate already installed on that market, or whose entries a live rule
+setup already takes more than half the time (`replacement_search.MAX_LIVE_OVERLAP`, measured on
+the same history), is not proposed (2026-10-20: a Donchian-55 proposal was 100% inside the live
+Donchian-20). The Review tab's "Replacement research" panel shows the plan and leaderboard.
 **Replace, never retire into a blank** (owner's rule, 2026-10-18): the loop no longer raises retire-only items. A sustained failure stays on its market's roster (and stays a research target) until a candidate beats it; that candidate is one NEW_DETECTOR proposal whose `replaces` lists the setups it beat, and `apply()` adds it and moves those to `retired_markets` in a single commit. The 2026-09-30 retire-only changes were restored the same day.
 Full spec and milestone list: PLAN.md.
 

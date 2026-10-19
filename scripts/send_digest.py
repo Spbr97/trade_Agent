@@ -6,7 +6,7 @@
     python scripts/send_digest.py intraday --market nse
     python scripts/send_digest.py multiday            # every market
     python scripts/send_digest.py weekly
-    python scripts/send_digest.py review           # review items waiting, each once
+    python scripts/send_digest.py review           # review items waiting, each once, one push a run
     python scripts/send_digest.py movers --market nse
 
 systemd runs it as ExecStopPost of the job it reports on, so it can never change that job's
@@ -19,7 +19,8 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from datetime import datetime
+from collections.abc import Mapping, Sequence
+from datetime import date, datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -42,17 +43,72 @@ def _seen() -> dict[str, str]:
         return {}
 
 
-def _send(key: str, title: str, body: str, *, urgent: bool = False, force: bool = False) -> None:
+def _send(
+    key: str,
+    title: str,
+    body: str,
+    *,
+    urgent: bool = False,
+    force: bool = False,
+    also: Sequence[str] = (),
+) -> None:
+    """Send once per key; `also` names further keys the same message covers."""
     seen = _seen()
     if key in seen and not force:
         print(f"already sent: {key}")
         return
     delivered = alert(title, body, urgent=urgent)
-    print(f"{'sent' if delivered else 'NOT delivered'}: {key}")
+    print(f"{'sent' if delivered else 'NOT delivered'}: {key}{f' (+{len(also)})' if also else ''}")
     if delivered:
-        seen[key] = datetime.now(IST).isoformat(timespec="seconds")
+        stamp = datetime.now(IST).isoformat(timespec="seconds")
+        for k in (key, *also):
+            seen[k] = stamp
         STATE.parent.mkdir(parents=True, exist_ok=True)
-        STATE.write_text(json.dumps(dict(sorted(seen.items())[-KEEP_DAYS_OF_STATE:])), "utf-8")
+        STATE.write_text(json.dumps(dict(newest(seen, KEEP_DAYS_OF_STATE))), "utf-8")
+
+
+def newest(seen: dict[str, str], keep: int) -> list[tuple[str, str]]:
+    """The `keep` most recently sent keys. (Until 2026-10-20 the cut was by key name, so past
+    400 entries a new close:/drift: key - alphabetically first - was dropped as it was saved
+    and its same-day duplicate guard was lost.)"""
+    return sorted(seen.items(), key=lambda kv: (kv[1], kv[0]))[-keep:]
+
+
+COLLECTION_HEALTH = ROOT / "data" / "m14_m18" / "accuracy_collection_health"
+DATA_STAGES = ("data_load", "benchmark_load")
+
+
+def data_ready(market: str, day: date, *, health: Path = COLLECTION_HEALTH) -> bool:
+    """Whether `day`'s collection run for `market` loaded its prices - all the drift calls
+    read. On 2026-10-19 a research-only check later in after-close failed after every price
+    was in, and the job's failure held that evening's drift calls back until the next day."""
+    try:
+        report = json.loads((health / f"{market}.json").read_text(encoding="utf-8"))
+        started = datetime.fromisoformat(report["started_at"]).astimezone(IST).date()
+        status = {s["name"]: s["status"] for s in report["stages"]}
+    except (OSError, ValueError, KeyError, TypeError):
+        return False
+    return started == day and all(status.get(n) == "completed" for n in DATA_STAGES)
+
+
+def review_batch(
+    items: Sequence[tuple[str, str, str]], seen: Mapping[str, str]
+) -> tuple[list[str], str, str] | None:
+    """Every review item not yet announced, as one message: ``(keys, title, body)``. One push
+    per job run instead of one per item (2026-10-19 sent fifteen in an evening)."""
+    fresh = [item for item in items if item[0] not in seen]
+    if not fresh:
+        return None
+    if len(fresh) == 1:
+        key, title, body = fresh[0]
+        return [key], title, body
+    lines = [f"- {title.removeprefix('Review waiting ')}" for _, title, _ in fresh]
+    reasons = list(dict.fromkeys(b.splitlines()[0] for _, _, b in fresh if b.strip()))
+    body = "\n".join(
+        [*lines, "", *reasons[:4], "Approve or reject on the dashboard: Review tab. "
+         "Nothing changes until you do."]
+    )  # fmt: skip
+    return [key for key, _, _ in fresh], f"{len(fresh)} reviews waiting", body[:3500]
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -78,11 +134,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--exit", dest="exit_status", default="0")
     args = parser.parse_args(argv)
 
-    # Review items wait for the owner whatever the job that found them did next.
-    if args.kind not in {"close", "weekly", "review"} and args.result != "success":
-        print(f"{args.kind}: job result {args.result}, nothing sent (the health check reports it)")
-        return 0
     now = datetime.now(IST)
+    # Review items wait for the owner whatever the job that found them did next; drift calls
+    # need only the day's prices, so a later research-stage failure does not hold them back.
+    if args.kind not in {"close", "weekly", "review"} and args.result != "success":
+        if not (args.kind == "drift" and data_ready(args.market or "nse", now.date())):
+            print(f"{args.kind}: job result {args.result}, nothing sent (the health check reports it)")  # noqa: E501
+            return 0
+        print(f"drift: job result {args.result}, but today's prices loaded; sending the calls")
     day = now.date().isoformat()
     root = ROOT
     holiday = market_calendar.is_equity_holiday(
@@ -116,8 +175,12 @@ def main(argv: list[str] | None = None) -> int:
             _send(f"drift:{result['last_session']}:{n}", title, body)
         return 0
     if args.kind == "review":
-        for key, title, body in digests.review_items(root=root):
-            _send(key, title, body)
+        batch = review_batch(digests.review_items(root=root), _seen())
+        if batch is None:
+            print("review: nothing new waiting")
+        else:
+            keys, title, body = batch
+            _send(keys[0], title, body, also=keys[1:])
         return 0
     if args.kind == "movers":
         built = digests.potential_movers(args.market or "nse", root=root)

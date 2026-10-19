@@ -39,6 +39,7 @@ from tradedesk.scan import scan_config  # noqa: E402
 from tradedesk.signal_tracker import (  # noqa: E402
     backfill_watchlists,
     flag_setup_failures,
+    inactive_setups,
     load_log,
     resolve_outcomes,
     save_dashboard,
@@ -83,7 +84,7 @@ def backfill(market: str) -> None:
         resolved = resolve_outcomes(store, rows, mod.MAX_HOLD)
         save_log(rows, mod.LOG)
         save_dashboard(market, rows, mod.DASHBOARD)
-        flagged = flag_setup_failures(market, rows)
+        flagged = flag_setup_failures(market, rows, inactive=inactive_setups(market))
 
         print(
             f"{market}: {cfg.start} -> {cfg.end}, {len(new_rows)} new signals logged "

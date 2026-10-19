@@ -52,6 +52,7 @@ from tradedesk.self_review.decision_packet import submit_for_review
 from tradedesk.self_review.detector_authoring import detector_payload
 from tradedesk.self_review.replacement_search import (
     DEFAULT_TIME_BUDGET_S,
+    MAX_LIVE_OVERLAP,
     SearchOutcome,
     run_replacement_search,
 )
@@ -200,7 +201,22 @@ def run_self_review(
     # by beating the best of these setups' own results on this market, so it stands in for
     # the sustained failures in the same approval.
     beaten = [s for s in flagged if by_setup[s].severity == FailureSeverity.SUSTAINED]
-    for found in select_for_submission(search.passed, search.candidates_by_name):
+    # A candidate already installed on this market (live, retired or research-only here) is no
+    # new proposal: the 2026-10-19 crypto run re-proposed r_adx_thrust_tsmom_up_trend_trail,
+    # live on crypto since its own approval. Its slot goes to the next-best candidate.
+    # Nor is one whose entries a live rule setup mostly takes already (replacement_search.
+    # MAX_LIVE_OVERLAP): it would add a second position in the same stocks, not new calls.
+    installed = {k for k, v in settings.setups.setups.items() if v.runs_on(market)}
+    fresh = []
+    for found in search.passed:
+        overlap = getattr(found, "live_overlap", None)
+        if found.name in installed:
+            print(f"{market} {found.name}: already installed here; not proposed again")
+        elif overlap is not None and overlap > MAX_LIVE_OVERLAP:
+            print(f"{market} {found.name}: {overlap:.0%} of its entries are live already")
+        else:
+            fresh.append(found)
+    for found in select_for_submission(fresh, search.candidates_by_name):
         candidate = search.candidates_by_name[found.name]
         evidence = json.loads(Path(found.artifact_path).read_text(encoding="utf-8"))
         payload = detector_payload(candidate, market, found.experiment_id, found.candidate_id)

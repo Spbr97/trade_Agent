@@ -46,6 +46,7 @@ from tradedesk.scan import load_watchlist  # noqa: E402
 from tradedesk.self_learning_workflow import run_scheduled_challenger  # noqa: E402
 from tradedesk.signal_tracker import (  # noqa: E402
     flag_setup_failures,
+    inactive_setups,
     load_log,
     log_exit_contract_signals,
     render_session_report,
@@ -96,7 +97,7 @@ def main(*, strict_accuracy_refresh: bool = False) -> None:
         save_dashboard("nse", rows, DASHBOARD)
         report = render_session_report("NSE", day, new_rows, newly_resolved, rows)
         report_path = save_session_report(day, report, SESSIONS_DIR)
-        flagged = flag_setup_failures("nse", rows)
+        flagged = flag_setup_failures("nse", rows, inactive=inactive_setups("nse"))
         print(
             f"{day}: {len(wl.entries)} candidates evaluated "
             f"({len(wl.active)} would be tradeable, {len(new_rows)} new contract rows from "

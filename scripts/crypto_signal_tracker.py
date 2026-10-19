@@ -49,6 +49,7 @@ from tradedesk.scan import build_watchlist, scan_config
 from tradedesk.self_learning_workflow import run_scheduled_challenger
 from tradedesk.signal_tracker import (
     flag_setup_failures,
+    inactive_setups,
     load_log,
     log_exit_contract_signals,
     render_session_report,
@@ -194,7 +195,7 @@ def main(*, strict_accuracy_refresh: bool = False) -> None:
         run_at = datetime.now(IST).strftime("%H:%M IST")
         report = render_session_report("Crypto", day, new_rows, newly_resolved, rows, run_at=run_at)  # noqa: E501
         report_path = save_session_report(day, report, SESSIONS_DIR, append=True)
-        flagged = flag_setup_failures("crypto", rows)
+        flagged = flag_setup_failures("crypto", rows, inactive=inactive_setups("crypto"))
         print(
             f"{day} run at {run_at}: monitored {len(universe)} active INR pairs "
             f"({closed_on_day} with the closed session, {refreshed_pairs} needed refresh, "

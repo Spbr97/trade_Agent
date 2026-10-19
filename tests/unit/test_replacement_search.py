@@ -226,3 +226,31 @@ def test_is_repo_root_accepts_the_relative_root_the_cli_passes(tmp_path) -> None
     assert rs.is_repo_root(rs.ROOT)
     assert rs.is_repo_root(Path(os.path.relpath(rs.ROOT)))  # relative form, like "."
     assert not rs.is_repo_root(tmp_path)
+
+
+def _rising_frame(n: int = 80):
+    import pandas as pd
+
+    close = [100.0 + i for i in range(n)]
+    return pd.DataFrame(
+        {
+            "close": close,
+            "high": [c + 0.5 for c in close],
+            "adx14": 40.0,
+            "plus_di": 30.0,
+            "minus_di": 10.0,
+        },
+        index=pd.date_range("2025-01-01", periods=n, freq="B"),
+    )
+
+
+def test_a_candidate_whose_entries_a_live_setup_takes_already_overlaps_fully() -> None:
+    from tradedesk_lab.candidates.rules import RuleCandidate
+
+    d55 = RuleCandidate("donchian55", "strong_trend", "trend_trail")
+    d20 = RuleCandidate("donchian20", "strong_trend", "trend_trail")
+    frames = {"X": _rising_frame()}
+    assert rs.live_overlap(d55, [d20], frames) == 1.0  # a 55-day high is a 20-day high too
+    assert rs.live_overlap(d20, [d55], frames) < rs.MAX_LIVE_OVERLAP
+    assert rs.live_overlap(d55, [], frames) is None
+    assert rs.live_overlap(SimpleNamespace(name="library"), [d20], frames) is None

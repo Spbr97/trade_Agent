@@ -574,6 +574,27 @@ def backfill_watchlists(
     return new_rows
 
 
+def wilson_upper(wins: int, n: int, z: float = 1.96) -> float:
+    """Upper end of the 95% Wilson interval for a hit rate of wins/n."""
+    if n <= 0:
+        return 1.0
+    p = wins / n
+    denom = 1 + z * z / n
+    centre = (p + z * z / (2 * n)) / denom
+    half = z * ((p * (1 - p) / n + z * z / (4 * n * n)) ** 0.5) / denom
+    return min(1.0, centre + half)
+
+
+def inactive_setups(market: str, root: Path = Path(".")) -> set[str]:
+    """Setups retired on `market`: still scanned and shadow-tracked there, never a call, so
+    there is nothing to switch off. (Research-only setups are not inactive: a provisional
+    profit-gate verdict lets them alert.)"""
+    from tradedesk.config import load_config
+
+    setups = load_config(root).setups.setups
+    return {k for k, v in setups.items() if v.runs_on(market) and market in v.retired_markets}
+
+
 def flag_setup_failures(
     market: str,
     rows: dict[str, TrackedSignal],
@@ -581,12 +602,19 @@ def flag_setup_failures(
     min_resolved: int = 5,
     hit_rate_floor: float = 0.3,
     review_path: Path | None = None,
+    inactive: set[str] | frozenset[str] = frozenset(),
 ) -> list[str]:
     """Rule-based failure analysis (no Claude call - a hit rate crossing a floor is a fact
     code can check directly): for each setup with at least `min_resolved` resolved calls on
-    this market, flag it into review_queue.py if its hit rate has dropped below the floor.
-    One item per (market, setup) - re-running this daily does not re-flag a setup that
-    already has an open or decided item, so the queue doesn't fill with duplicates.
+    this market, flag it into review_queue.py if its hit rate is below the floor with 95%
+    confidence (Wilson upper bound under the floor). One item per (market, setup) -
+    re-running this daily does not re-flag a setup that already has an open or decided item,
+    so the queue doesn't fill with duplicates.
+
+    2026-10-20: the confidence test and `inactive` were added after six flags in one evening
+    were 0-2 hits out of 5-9 calls (0/5 happens 17% of the time at a true 30% rate) and three
+    named trend_pullback, already retired on both markets. Owner's rule: replace, never
+    retire into a blank, so a flag is information for the self-review, not a switch-off.
 
     This is the "self-analyse if a call fails" surface for crypto and BSE, which have no
     paper book to run `tradedesk review week`'s Claude-based analysis against.
@@ -604,11 +632,11 @@ def flag_setup_failures(
             by_setup.setdefault((r.setup, r.contract_version), []).append(r)
     flagged: list[str] = []
     for (setup, contract_version), done in by_setup.items():
-        if len(done) < min_resolved:
+        if len(done) < min_resolved or setup in inactive:
             continue
         wins = sum(1 for r in done if r.outcome == "target")
         rate = wins / len(done)
-        if rate >= hit_rate_floor:
+        if wilson_upper(wins, len(done)) >= hit_rate_floor:  # not clearly below: noise
             continue
         contract_label = (
             "" if contract_version == LEGACY_TRACKER_V1.version else f" [{contract_version}]"
@@ -623,7 +651,10 @@ def flag_setup_failures(
                 f"{wins}/{len(done)} {contract_version} calls hit target ({rate:.0%}), below the "
                 f"{hit_rate_floor:.0%} floor checked over the last {len(done)} resolved calls."
             ),
-            proposal=f"Consider disabling or re-tuning {setup} for {market} until it recovers.",
+            proposal=(
+                f"{setup} stays on the {market} roster; the daily self-review keeps searching "
+                "for a setup that beats it. Nothing is switched off by this flag."
+            ),
             path=path,
         )
         flagged.append(title)

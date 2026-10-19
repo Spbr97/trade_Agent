@@ -31,7 +31,7 @@ from typing import Any
 
 from tradedesk_lab.artifacts import OUTPUT, ROOT, verify_base, write_json
 from tradedesk_lab.candidates import candidate_space
-from tradedesk_lab.candidates.rules import clear_base_cache
+from tradedesk_lab.candidates.rules import RuleCandidate, clear_base_cache, rule_candidates
 from tradedesk_lab.registry import Registry
 
 from tradedesk.broker.indstocks.models import IST
@@ -102,6 +102,39 @@ class CandidateResult:
     candidate_id: str
     artifact_path: str
     tested_at: str
+    # Share of this candidate's entries that a rule setup already live on the market had
+    # also fired on (same stock, that day or the 4 sessions before); None = not measured.
+    live_overlap: float | None = None
+
+
+MAX_LIVE_OVERLAP = 0.5
+"""A passing candidate whose entries are mostly ones a live setup already takes adds no new
+calls, only a second position in the same stock (2026-10-19: r_donchian55_strong_trend_trend_trail
+on NSE, every entry of which is also an r_donchian20_strong_trend_trend_trail entry - a close
+above the 55-day high is above the 20-day high too). It is not proposed."""
+OVERLAP_SESSIONS = 5
+
+
+def live_overlap(
+    candidate: Any, live: list[RuleCandidate], frame_map: dict[str, Any]
+) -> float | None:
+    """Share of `candidate`'s entry days on which one of the `live` rule setups fired on the
+    same stock that day or in the previous OVERLAP_SESSIONS - 1 sessions. None for a
+    non-rule candidate, nothing live to compare with, or no entries."""
+    if not isinstance(candidate, RuleCandidate) or not live:
+        return None
+    total = shared = 0
+    for df in frame_map.values():
+        own = candidate.prepare(df)[candidate.gate_column]
+        if not own.any():
+            continue
+        others = own & False
+        for rule in live:
+            others = others | rule.prepare(df)[rule.gate_column]
+        recent = others.astype(int).rolling(OVERLAP_SESSIONS, min_periods=1).max().astype(bool)
+        total += int(own.sum())
+        shared += int((own & recent).sum())
+    return shared / total if total else None
 
 
 @dataclass
@@ -383,6 +416,17 @@ def run_replacement_search(
                 tested_at=now.isoformat(),
             )
         )
+
+    rules_by_name = {r.name: r for r in rule_candidates()}
+    live = [
+        rules_by_name[k]
+        for k, v in settings.setups.setups.items()
+        # research-only setups count: the profit gate's provisional verdict lets them alert
+        if k in rules_by_name and v.runs_on(market) and market not in v.retired_markets
+    ]
+    for found in outcome.tested_this_run:
+        if found.passed:
+            found.live_overlap = live_overlap(by_name.get(found.name), live, frames[0])
 
     history = _history(market, registry_path)
     outcome.tested_total = len([n for n in history if n in by_name])
