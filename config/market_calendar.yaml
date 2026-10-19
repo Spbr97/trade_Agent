@@ -46,3 +46,4 @@ equity_jobs:
   - intraday-study-nightly
   - intraday-study-bse-nightly
   - multiday-hold-study
+  - owner-trades

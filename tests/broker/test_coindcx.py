@@ -31,9 +31,15 @@ CANDLES = f"{BASE_URL}/market_data/candles"
 MARKETS = f"{BASE_URL}/exchange/v1/markets_details"
 
 
+async def _no_wait(_seconds: float) -> None:
+    return None
+
+
 @pytest.fixture
 async def client() -> CoinDcxClient:
-    async with CoinDcxClient(httpx.AsyncClient(base_url=BASE_URL, timeout=5.0)) as c:
+    async with CoinDcxClient(
+        httpx.AsyncClient(base_url=BASE_URL, timeout=5.0), sleep=_no_wait
+    ) as c:
         yield c
 
 
@@ -171,6 +177,35 @@ async def test_candles_raises_on_non_2xx(client: CoinDcxClient) -> None:
             datetime(2026, 1, 1, tzinfo=UTC),
             datetime(2026, 1, 2, tzinfo=UTC),
         )
+
+
+@respx.mock
+async def test_a_slow_reply_is_retried_then_succeeds(client: CoinDcxClient) -> None:
+    """2026-10-18: one ReadTimeout from CoinDCX failed the whole crypto tracker, twice."""
+
+    t0 = datetime(2026, 1, 1, tzinfo=UTC)
+    route = respx.get(CANDLES).mock(
+        side_effect=[httpx.ReadTimeout("slow"), httpx.Response(503, text="busy"),
+                     httpx.Response(200, json=[candle_row(t0)])]
+    )  # fmt: skip
+    candles = await client.candles(Interval.D1, "I-BTC_INR", t0, t0 + timedelta(days=1))
+    assert len(candles) == 1 and route.call_count == 3
+
+
+@respx.mock
+async def test_retries_are_bounded_and_client_errors_are_not_retried(
+    client: CoinDcxClient,
+) -> None:
+    t0 = datetime(2026, 1, 1, tzinfo=UTC)
+    slow = respx.get(CANDLES).mock(side_effect=httpx.ReadTimeout("slow"))
+    with pytest.raises(httpx.ReadTimeout):
+        await client.candles(Interval.D1, "I-BTC_INR", t0, t0 + timedelta(days=1))
+    assert slow.call_count == 3
+    respx.reset()
+    bad = respx.get(CANDLES).mock(return_value=httpx.Response(422, text="bad pair"))
+    with pytest.raises(CoinDcxError, match="422"):
+        await client.candles(Interval.D1, "I-BTC_INR", t0, t0 + timedelta(days=1))
+    assert bad.call_count == 1
 
 
 @respx.mock

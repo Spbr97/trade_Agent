@@ -733,7 +733,7 @@ def data_load(
 
     if market == "crypto":
         from tradedesk.broker.coindcx import CoinDcxClient
-        from tradedesk.broker.coindcx.rest import CoinDcxError
+        from tradedesk.broker.coindcx.rest import CoinDcxError, CoinDcxNetworkErrors
 
         async def go_crypto() -> None:
             async with CoinDcxClient() as c:
@@ -784,7 +784,7 @@ def data_load(
                     )
                     summary = await load_history(
                         c, store, targets, iv, start=start, end=now,
-                        max_codes_per_call=1, error_types=(CoinDcxError,),
+                        max_codes_per_call=1, error_types=(CoinDcxError, *CoinDcxNetworkErrors),
                         progress=make_progress(targets),
                     )  # fmt: skip
                     typer.echo(f"fetched {summary.fetched} bars; {len(summary.errors)} errors")

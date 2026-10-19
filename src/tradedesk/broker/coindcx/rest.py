@@ -7,7 +7,8 @@ hard rule; M12 only, and this adapter has no order module at all, not even a stu
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+import asyncio
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -25,6 +26,11 @@ from tradedesk.broker.indstocks.models import Candle, Instrument, Interval
 MARKETS_PATH = "/exchange/v1/markets_details"
 CANDLES_PATH = "/market_data/candles"
 MAX_CANDLES_PER_CALL = 1000  # documented ceiling; see models.py
+RETRY_ATTEMPTS = 3
+RETRY_BACKOFF_S = 2.0
+# What is still failing after the retries: the loader records it against that pair and moves on
+# (data/history_loader.py `error_types`) instead of crashing the whole load.
+CoinDcxNetworkErrors: tuple[type[Exception], ...] = (httpx.TransportError,)
 
 
 class CoinDcxError(RuntimeError):
@@ -39,10 +45,12 @@ class CoinDcxClient:
         http: httpx.AsyncClient | None = None,
         limiter: RateLimiter | None = None,
         pair_for_code: Mapping[str, str] | None = None,
+        sleep: Callable[[float], Awaitable[None]] | None = None,
     ) -> None:
         self.http = http or httpx.AsyncClient(base_url=BASE_URL, timeout=30.0)
         self.limiter = limiter or RateLimiter()
         self.pair_for_code: dict[str, str] = dict(pair_for_code or {})
+        self._sleep = sleep or asyncio.sleep
 
     def register_pairs(self, mapping: Mapping[str, str]) -> None:
         """scrip_code -> CoinDCX pair (e.g. "CDX_BTCINR" -> "I-BTC_INR"), needed by
@@ -63,11 +71,27 @@ class CoinDcxClient:
     async def _get_json(
         self, path: str, params: dict[str, str | int | float | bool | None]
     ) -> object:
-        await self.limiter.acquire()
-        resp = await self.http.get(path, params=params)
-        if resp.status_code // 100 != 2:
-            raise CoinDcxError(resp.status_code, resp.text[:300])
-        return resp.json()
+        """A timeout, a dropped connection, 429 or a 5xx is retried (RETRY_ATTEMPTS in all,
+        waits of 2 s then 4 s, each attempt through the rate limiter): on 2026-10-18 one slow
+        reply failed the whole crypto tracker twice. Any other error status raises at once."""
+
+        for attempt in range(1, RETRY_ATTEMPTS + 1):
+            await self.limiter.acquire()
+            try:
+                resp = await self.http.get(path, params=params)
+            except httpx.TransportError:
+                if attempt == RETRY_ATTEMPTS:
+                    raise
+                await self._sleep(RETRY_BACKOFF_S * attempt)
+                continue
+            retryable = resp.status_code == 429 or resp.status_code >= 500
+            if retryable and attempt < RETRY_ATTEMPTS:
+                await self._sleep(RETRY_BACKOFF_S * attempt)
+                continue
+            if resp.status_code // 100 != 2:
+                raise CoinDcxError(resp.status_code, resp.text[:300])
+            return resp.json()
+        raise AssertionError("unreachable")  # pragma: no cover
 
     # -------------------------------------------------------------- instruments
 

@@ -80,7 +80,7 @@ def main(*, strict_accuracy_refresh: bool = False) -> None:
         # request and means new/delisted pairs change the monitored population explicitly
         # instead of leaving a hard-coded ten-coin sample in place forever.
         from tradedesk.broker.coindcx import CoinDcxClient
-        from tradedesk.broker.coindcx.rest import CoinDcxError
+        from tradedesk.broker.coindcx.rest import CoinDcxError, CoinDcxNetworkErrors
 
         now = datetime.now(IST)
         start = default_start(Interval.D1, now)
@@ -102,7 +102,7 @@ def main(*, strict_accuracy_refresh: bool = False) -> None:
                 refresh_codes = crypto_codes_needing_daily_refresh(store, universe, now)
                 summary = await load_history(
                     c, store, refresh_codes, Interval.D1, start=start, end=now,
-                    max_codes_per_call=1, error_types=(CoinDcxError,),
+                    max_codes_per_call=1, error_types=(CoinDcxError, *CoinDcxNetworkErrors),
                 )  # fmt: skip
                 return universe, len(refresh_codes), len(summary.errors)
 

@@ -342,7 +342,22 @@ def _state_line(calls: Sequence[Mapping[str, Any]]) -> str:
     )
 
 
-def messages(result: Mapping[str, Any]) -> list[tuple[str, str]]:
+def _slots_line(held: int | None, slots: int | None) -> str:
+    """How many of the owner's Rs 10,000 slots are already in use (src/tradedesk/owner_trades.py
+    reads the real fills). Ranking calls by jump size or volume surge did not prove better than
+    taking them in order (tradedesk_lab/earnings_extensions.py), so the list order is a default."""
+
+    if held is None or not slots:
+        return ""
+    return (
+        f"\nYour slots: {held} of {slots} in use, {max(0, slots - held)} free. If there are more "
+        "calls than free slots, no ranking is proven better - take them in the order listed."
+    )
+
+
+def messages(
+    result: Mapping[str, Any], *, held: int | None = None, slots: int | None = None
+) -> list[tuple[str, str]]:
     out = []
     if result["issued"]:
         lines = []
@@ -357,7 +372,8 @@ def messages(result: Mapping[str, Any]) -> list[tuple[str, str]]:
             f"EARNINGS DRIFT: {len(result['issued'])} call(s) for the next open",
             "\n".join(lines) + "\nNo stop (fixed 20-session hold). History after costs: "
             f"+{100 * HISTORY['mean_net']:.1f}% a call, +{100 * HISTORY['mean_excess']:.1f}% over "
-            "the market; about half win." + _state_line(result["issued"]) + " Advisory only.",
+            "the market; about half win." + _state_line(result["issued"]) + " Advisory only."
+            + _slots_line(held, slots),
         ))  # fmt: skip
     if result["exit_tomorrow"]:
         out.append(

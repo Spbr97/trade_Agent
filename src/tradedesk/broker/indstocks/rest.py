@@ -205,6 +205,13 @@ class IndstocksClient:
         body = await self._get_json("/funds", category=Category.NON_TRADING)
         return Funds.model_validate(body["data"])
 
+    async def order_book(self) -> list[dict[str, Any]]:
+        """Today's orders (GET /order-book: order history, a Non-Trading API), raw rows.
+        READ-ONLY - nothing in this client places, modifies or cancels an order (CLAUDE.md
+        hard rule; order placement is Milestone M12)."""
+        body = await self._get_json("/order-book", category=Category.NON_TRADING)
+        return [dict(row) for row in body.get("data") or [] if isinstance(row, dict)]
+
     # --------------------------------------------------------------- instruments
 
     async def instruments_csv(self, source: str) -> str:

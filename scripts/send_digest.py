@@ -27,6 +27,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from tradedesk import digests, market_calendar  # noqa: E402
 from tradedesk.broker.indstocks.models import IST  # noqa: E402
+from tradedesk.config import load_config  # noqa: E402
 from tradedesk.task_health import alert  # noqa: E402
 
 STATE = ROOT / "data" / "reports" / "digests_sent.json"
@@ -102,7 +103,16 @@ def main(argv: list[str] | None = None) -> int:
 
         result = earnings_drift.run()
         print(json.dumps({k: v for k, v in result.items() if k != "verdict"}, default=str)[:2000])
-        for n, (title, body) in enumerate(earnings_drift.messages(result)):
+        from tradedesk import owner_trades
+
+        synced = ROOT / owner_trades.LEDGER
+        held = (
+            owner_trades.open_drift_positions(owner_trades.read(synced))
+            if synced.exists()
+            else None
+        )
+        slots = int(float(load_config(ROOT).risk.trading_capital) // earnings_drift.AMOUNT_INR)
+        for n, (title, body) in enumerate(earnings_drift.messages(result, held=held, slots=slots)):
             _send(f"drift:{result['last_session']}:{n}", title, body)
         return 0
     if args.kind == "review":
