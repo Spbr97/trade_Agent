@@ -86,6 +86,10 @@ rotation and Donchian-55 with a 3xATR trail (tradedesk_lab/multiday_rotation.py)
 Liquidity-sweep fades also fail (tradedesk_lab/sweep_and_reversion.py); its multi-day dip buy
 (RSI2<5 above EMA200) passes on paper but is erased by the real 0.56% round trip at Rs 10,000 a
 trade - it needs >= Rs 25,000 a trade. The Rs 10,000 delivery round trip is 0.56%, not 0.39%.
+Option income (9:20 straddle, Friday iron condor) cannot be backtested - INDstocks' expired-contract
+candles return nothing yet - so `tradedesk_lab/option_income.py` paper-trades both FORWARD on real
+Nifty quotes (scripts/option_income_watch.py, weekdays 09:17-15:20, saves every minute's chain);
+judge after 60 straddle sessions / 12 condor weeks. Paper only, one lot; F&O brokerage provisional.
 
 **Scope limits, by design, not oversight**: paper trading and the live risk manager remain
 NSE-only (crypto/BSE have no paper book to grade against). Crypto/BSE calls are
