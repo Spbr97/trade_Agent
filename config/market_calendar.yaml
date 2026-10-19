@@ -1,0 +1,48 @@
+# NSE/BSE equity-market holidays that fall on a weekday. On these days the scheduled equity jobs
+# listed under equity_jobs are skipped (scripts/run_hidden.py logs "market holiday ... skipped"
+# and exits 0) and their phone digests are not sent (scripts/send_digest.py), instead of running
+# against a closed market. Crypto, data-refresh, health and news jobs run as usual.
+#
+# Source: NSE's 2026 trading-holiday circular as listed by Upstox (upstox.com/stocks-market/
+# nse-holidays, read 2026-10-19). Every date up to 2026-10-16 was checked against the stored
+# NIFTY 50 daily candles - none has a bar - and the 2026 option-expiry calendar moves each weekly
+# expiry to the Monday before the Tuesday closures (19 Oct, 9 Nov, 23 Nov). 2026-01-15, the
+# Maharashtra civic-election closure some lists include, also has no stored bar.
+# Add the next year's dates when NSE publishes them. Muhurat trading (a Sunday) needs nothing here.
+equity_holidays:
+  - 2026-01-15  # Maharashtra municipal elections
+  - 2026-01-26  # Republic Day
+  - 2026-03-03  # Holi
+  - 2026-03-26  # Shri Ram Navami
+  - 2026-03-31  # Shri Mahavir Jayanti
+  - 2026-04-03  # Good Friday
+  - 2026-04-14  # Dr. Baba Saheb Ambedkar Jayanti
+  - 2026-05-01  # Maharashtra Day
+  - 2026-05-28  # Bakri Id
+  - 2026-06-26  # Muharram
+  - 2026-09-14  # Ganesh Chaturthi
+  - 2026-10-02  # Mahatma Gandhi Jayanti
+  - 2026-10-20  # Dussehra
+  - 2026-11-10  # Diwali - Balipratipada
+  - 2026-11-24  # Prakash Gurpurb Sri Guru Nanak Dev
+  - 2026-12-25  # Christmas
+
+# run_hidden log names (deploy/schedule.json command[0]) of the weekday-only equity jobs.
+equity_jobs:
+  - live-session
+  - bse-live-session
+  - equity-pre-takeoff-watch
+  - option-income-watch
+  - options-snapshot
+  - after-close
+  - bse-tracker
+  - bse-after-close
+  - research-tracker
+  - bse-research-tracker
+  - potential-movers-nse
+  - potential-movers-bse
+  - probation-desk-bse
+  - mover-study-nightly
+  - intraday-study-nightly
+  - intraday-study-bse-nightly
+  - multiday-hold-study

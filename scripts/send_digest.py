@@ -25,7 +25,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
-from tradedesk import digests  # noqa: E402
+from tradedesk import digests, market_calendar  # noqa: E402
 from tradedesk.broker.indstocks.models import IST  # noqa: E402
 from tradedesk.task_health import alert  # noqa: E402
 
@@ -84,6 +84,12 @@ def main(argv: list[str] | None = None) -> int:
     now = datetime.now(IST)
     day = now.date().isoformat()
     root = ROOT
+    holiday = market_calendar.is_equity_holiday(
+        now.date(), ROOT / "config" / "market_calendar.yaml"
+    )
+    if holiday and args.market in {"nse", "bse"} and args.kind != "review":
+        print(f"{args.kind} {args.market}: NSE/BSE holiday, nothing sent")
+        return 0
     if args.kind == "link":
         built = digests.dashboard_link(root=root)
         if built:
@@ -121,6 +127,8 @@ def main(argv: list[str] | None = None) -> int:
         _send(f"weekly:{now.isocalendar().year}-W{now.isocalendar().week}", title, body)
     elif args.kind == "multiday":
         for market in [args.market] if args.market else sorted(digests.CALLS):
+            if holiday and market in {"nse", "bse"}:
+                continue
             for n, (title, body) in enumerate(digests.multiday_calls(market, root=root)):
                 _send(f"multiday:{market}:{day}:{n}", title, body)
     else:

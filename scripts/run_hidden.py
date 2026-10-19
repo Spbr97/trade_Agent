@@ -18,6 +18,18 @@ ROOT = Path(__file__).resolve().parent.parent
 BATCH_DB_LOCK_WAIT_S = "300"  # see data/candle_store.py LOCK_WAIT_ENV
 
 
+def _market_holiday(log_name: str) -> bool:
+    """An equity job on an exchange holiday is skipped. Any problem reading the calendar runs
+    the job as usual - a missed skip costs a pointless run, a wrong skip would cost a session."""
+
+    try:
+        from tradedesk.market_calendar import skip_today
+
+        return skip_today(log_name, datetime.now().date(), ROOT / "config" / "market_calendar.yaml")
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def main() -> int:
     log_name, script, *args = sys.argv[1:]
     if not log_name.endswith("live-session"):
@@ -32,6 +44,9 @@ def main() -> int:
     with (log_dir / f"{log_name}.log").open("a", encoding="utf-8", buffering=1) as log:
         sys.stdout = sys.stderr = log
         log.write(f"\n=== {datetime.now().isoformat(timespec='seconds')} {target.name} {args}\n")
+        if _market_holiday(log_name):
+            log.write("NSE/BSE holiday (config/market_calendar.yaml): equity job skipped\n")
+            return 0
         sys.argv = [str(target), *args]
         try:
             if script == "tradedesk":
