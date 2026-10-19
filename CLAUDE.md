@@ -75,7 +75,9 @@ break-even or after 12 straight losses; `build_watchlist` takes these verdicts (
 regime, filters and risk limits still apply; a missing or stale status allows nothing).
 `earnings_drift.py` is the one strategy that passed a pre-registered bar after costs
 (tradedesk_lab/edge_hunt.py: liquid NSE stocks jumping 5%+ vs the market on 2x volume after
-results beat the market by +1.6% over 20 sessions, 2016-2026): calls after each NSE close, Rs
+results beat the market over 20 sessions, 2016-2026 - by +1.6% BEFORE costs, about +0.7% after
+the real 0.564% round trip of a Rs 10,000 call; +1.8% net a call; better above NIFTY's 200-day
+average, +2.2%, than below, +0.8% - tradedesk_lab/earnings_drift_timing.py): calls after each NSE close, Rs
 10,000 each, fixed 20-session hold, no stop, stops issuing if live results trail the market.
 Tested and failed on 2026-10-18 (do not re-test without new data): the intraday playbook (ORB,
 VWAP pullback, breakout-retest, first-hour momentum - tradedesk_lab/intraday_playbook.py), daily

@@ -96,3 +96,25 @@ def test_messages_name_the_stock_amount_and_exit_rule() -> None:
     body = msgs["EARNINGS DRIFT: 1 call(s) for the next open"]
     assert "TECHM BUY at next open" in body and "~5 sh for Rs 10,000" in body and "+14.4%" in body
     assert msgs["EARNINGS DRIFT: exit tomorrow at the close"] == "WIPRO"
+
+
+def test_each_call_says_whether_the_market_is_above_its_200_day_average() -> None:
+    from datetime import date as _date
+    from datetime import timedelta as _td
+
+    import pandas as _pd
+
+    from tradedesk import earnings_drift as ed
+
+    days = [_date(2026, 1, 1) + _td(days=i) for i in range(250)]
+    rising = _pd.Series([100.0 + i for i in range(250)], index=days)
+    p = ed.Panels(_pd.DataFrame(), _pd.DataFrame(), _pd.DataFrame(), {}, _pd.DataFrame(), rising)
+    assert ed.market_state(p, days[-1]) == "above"
+    assert ed.market_state(p, days[100]) is None  # fewer than 200 sessions
+    falling = ed.Panels(p.open, p.close, p.volume, {}, p.events,
+                        _pd.Series([400.0 - i for i in range(250)], index=days))  # fmt: skip
+    assert ed.market_state(falling, days[-1]) == "below"
+    line = ed._state_line([{"nifty_vs_200dma": "below"}])
+    assert "below its 200-day average" in line and "+0.8% after costs" in line
+    assert ed._state_line([{}]) == ""
+    assert ed.HISTORY["mean_excess"] < 0.01  # the corrected, after-cost figure

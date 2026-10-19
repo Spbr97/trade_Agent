@@ -4,9 +4,13 @@ Owner-approved 2026-10-18 after tradedesk_lab/edge_hunt.py found the only edge i
 project to clear a pre-registered bar after costs: over 2016-2026, liquid NSE stocks
 (20-session turnover >= Rs 20 crore) that rose >= 5% more than the equal-weight market from
 the last close before their results date to the first close after it, on >= 2x their usual
-volume, beat the market by +1.6% over the next 20 sessions (1,520 calls, z = 4.9, positive
-in 2025 and 2026), net of the delivery round trip. Roughly half the calls win; the edge is
-in the average. There is no stop in the tested rule, so each call is a fixed Rs 10,000.
+volume, beat the market over the next 20 sessions (1,520 calls, z = 4.9, positive in 2025
+and 2026). Corrected 2026-10-19 (tradedesk_lab/earnings_drift_timing.py): that +1.6% was BEFORE
+costs; at the real Rs 10,000 delivery round trip (0.564%) a call returned +1.8% and beat the
+equal-weight market by about +0.7% (1,605 calls, 9 of 11 years). Calls made while NIFTY 50 was
+above its 200-day average did better (+2.2% net) than those made below it (+0.8% net, still
+ahead of the market); each call message says which state the market is in. Roughly half the
+calls win; the edge is in the average. No stop in the tested rule: each call is Rs 10,000.
 
 Each evening after the NSE close (hooked to tradedesk-after-close): issue calls whose
 reaction closed today (buy at the next open), record entries at the real open, close calls at
@@ -45,7 +49,16 @@ HOLD_SESSIONS = 20
 AMOUNT_INR = 10_000.0
 LOOKBACK_DAYS = 90
 STOP_MIN_CLOSED = 20
-HISTORY = {"calls": 1520, "mean_excess": 0.0160, "mean_net": 0.0194, "years": "2016-2026"}
+HISTORY = {
+    "calls": 1605,
+    "mean_excess": 0.0073,
+    "mean_net": 0.0179,
+    "years": "2016-2026",
+    "net_above_200dma": 0.0220,
+    "net_below_200dma": 0.0076,
+}  # at the real 0.564% cost
+NIFTY = "NSE_40000001"
+NIFTY_LOOKBACK_DAYS = 330  # enough sessions for a 200-day average
 
 
 @dataclass(frozen=True)
@@ -55,6 +68,7 @@ class Panels:
     volume: pd.DataFrame
     symbols: dict[str, str]  # trading symbol -> scrip code
     events: pd.DataFrame  # symbol, event_date
+    nifty: pd.Series | None = None  # NIFTY 50 closes by date, ~330 days
 
     @property
     def sessions(self) -> list[date]:
@@ -88,6 +102,10 @@ def load(db: Path = DB, *, now: datetime | None = None, tries: int = 40) -> Pane
             "SELECT DISTINCT symbol, event_date FROM results_events WHERE event_date >= ?",
             [(now - timedelta(days=LOOKBACK_DAYS)).date()],
         ).df()
+        index = con.execute(
+            "SELECT ts, close FROM candles WHERE scrip_code = ? AND interval = '1day' AND ts >= ?",
+            [NIFTY, int((now - timedelta(days=NIFTY_LOOKBACK_DAYS)).timestamp())],
+        ).df()
     finally:
         con.close()
     frame["day"] = pd.to_datetime(frame["ts"], unit="s", utc=True).dt.tz_convert(IST).dt.date
@@ -97,7 +115,20 @@ def load(db: Path = DB, *, now: datetime | None = None, tries: int = 40) -> Pane
         ).sort_index()
         for k in ("open", "close", "volume")
     }
-    return Panels(panels["open"], panels["close"], panels["volume"], symbols, events)
+    index["day"] = pd.to_datetime(index["ts"], unit="s", utc=True).dt.tz_convert(IST).dt.date
+    nifty = index.set_index("day")["close"].sort_index() if len(index) else None
+    return Panels(panels["open"], panels["close"], panels["volume"], symbols, events, nifty)
+
+
+def market_state(p: Panels, day: date) -> str | None:
+    """Whether NIFTY 50 closed "above" or "below" its 200-day average on `day` (None: unknown)."""
+
+    if p.nifty is None:
+        return None
+    upto = p.nifty[p.nifty.index <= day]
+    if len(upto) < 200:
+        return None
+    return "above" if float(upto.iloc[-1]) > float(upto.iloc[-200:].mean()) else "below"
 
 
 def _market(p: Panels) -> pd.Series:
@@ -154,6 +185,7 @@ def candidates(p: Panels) -> list[dict[str, Any]]:
                 "reaction_close_on": sessions[i1].isoformat(), "reference_close": float(c1),
                 "jump_vs_market": float(jump), "volume_x": float(window_vol / usual),
                 "turnover_cr": float(turnover / 1e7),
+                "nifty_vs_200dma": market_state(p, sessions[i1]),
             })  # fmt: skip
     return sorted(out, key=lambda c: -c["jump_vs_market"])
 
@@ -299,6 +331,17 @@ def run(
     }
 
 
+def _state_line(calls: Sequence[Mapping[str, Any]]) -> str:
+    state = next((c.get("nifty_vs_200dma") for c in calls if c.get("nifty_vs_200dma")), None)
+    if state is None:
+        return ""
+    net = HISTORY[f"net_{state}_200dma"]
+    return (
+        f" Market: NIFTY {state} its 200-day average; calls made in this state averaged "
+        f"{100 * net:+.1f}% after costs."
+    )
+
+
 def messages(result: Mapping[str, Any]) -> list[tuple[str, str]]:
     out = []
     if result["issued"]:
@@ -312,8 +355,9 @@ def messages(result: Mapping[str, Any]) -> list[tuple[str, str]]:
             )
         out.append((
             f"EARNINGS DRIFT: {len(result['issued'])} call(s) for the next open",
-            "\n".join(lines) + "\nNo stop (fixed 20-session hold). History: beats the market by "
-            f"+{100 * HISTORY['mean_excess']:.1f}% on average; about half win. Advisory only.",
+            "\n".join(lines) + "\nNo stop (fixed 20-session hold). History after costs: "
+            f"+{100 * HISTORY['mean_net']:.1f}% a call, +{100 * HISTORY['mean_excess']:.1f}% over "
+            "the market; about half win." + _state_line(result["issued"]) + " Advisory only.",
         ))  # fmt: skip
     if result["exit_tomorrow"]:
         out.append(
