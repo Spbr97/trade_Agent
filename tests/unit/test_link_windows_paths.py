@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import sqlite3
 import sys
 from pathlib import Path
 
@@ -57,3 +58,24 @@ def test_dry_run_creates_nothing(tmp_path: Path) -> None:
     root = _repo(tmp_path)
     assert link.link_all(root, dry_run=True)[0] == 2
     assert not (root / "data\\crypto.duckdb").exists()
+
+
+def test_sqlite_registry_paths_link_inside_their_own_folder(tmp_path: Path) -> None:
+    lab = tmp_path / "data" / "m14_m18"
+    (lab / "runs" / "abc").mkdir(parents=True)
+    (lab / "runs" / "abc" / "model.joblib").write_text("m", encoding="utf-8")
+    con = sqlite3.connect(lab / "registry.sqlite")
+    con.execute("CREATE TABLE candidates (artifact_path TEXT)")
+    con.executemany(
+        "INSERT INTO candidates VALUES (?)",
+        [("runs\\abc\\model.joblib",), ("runs\\gone\\x.joblib",), ("runs/abc/model.joblib",)],
+    )
+    con.commit()
+    con.close()
+    try:
+        made, skipped = link.link_all(tmp_path)
+    except OSError:
+        pytest.skip("symlinks need privileges on this machine")
+    assert (made, skipped) == (1, 1)
+    assert (lab / "runs\\abc\\model.joblib").read_text(encoding="utf-8") == "m"
+    assert link.link_all(tmp_path) == (0, 1)

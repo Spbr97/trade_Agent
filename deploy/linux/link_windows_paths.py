@@ -5,6 +5,8 @@ Some evidence records its artifacts as ``data\crypto.duckdb`` or as an absolute
 that evidence, so it must stay byte-identical and cannot be patched. On Linux such a string is
 just a file name containing backslashes, so for each one found this script creates a symlink
 of that exact name in the repo root pointing at the real file. The evidence is never rewritten.
+SQLite registries (the lab's ``registry.sqlite``) also store paths relative to their own folder,
+like ``runs\<id>\logistic.joblib``; those are linked inside that folder the same way.
 
 Usage: python deploy/linux/link_windows_paths.py [--root /opt/tradedesk] [--dry-run]
 Idempotent; install.sh runs it after the data is in place.
@@ -15,6 +17,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import sqlite3
 from pathlib import Path
 
 DRIVE = re.compile(r"^[A-Za-z]:\\")
@@ -42,6 +45,36 @@ def target_for(value: str, root: Path) -> Path | None:
     return target if target.exists() else None
 
 
+def sqlite_paths(db: Path) -> set[str]:
+    """Relative backslash paths in any ``*path*`` column of one SQLite file, read-only."""
+    found: set[str] = set()
+    try:
+        con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+    except sqlite3.Error:
+        return found
+    try:
+        tables = [r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='table'")]
+        for table in tables:
+            for column in [r[1] for r in con.execute(f'PRAGMA table_info("{table}")')]:
+                if "path" not in column.lower():
+                    continue
+                rows = con.execute(f'SELECT DISTINCT "{column}" FROM "{table}"')
+                for (value,) in rows:
+                    if (
+                        isinstance(value, str)
+                        and "\\" in value
+                        and "/" not in value
+                        and not DRIVE.match(value)
+                        and len(value) < 400
+                    ):
+                        found.add(value)
+    except sqlite3.Error:
+        pass
+    finally:
+        con.close()
+    return found
+
+
 def link_all(root: Path, *, dry_run: bool = False) -> tuple[int, int]:
     found: set[str] = set()
     for path in (root / "data").rglob("*.json"):
@@ -50,10 +83,14 @@ def link_all(root: Path, *, dry_run: bool = False) -> tuple[int, int]:
                 windows_paths(json.loads(path.read_text(encoding="utf-8")), found)
         except (OSError, ValueError):
             continue
+    pairs = {(root, value) for value in found}
+    for db in (root / "data").rglob("*.sqlite"):
+        pairs |= {(db.parent, value) for value in sqlite_paths(db)}
     made = skipped = 0
-    for value in sorted(found):
-        target = target_for(value, root)
-        link = root / value
+    for base, value in sorted(pairs):
+        target = target_for(value, root) if base == root else base / value.replace("\\", "/")
+        target = target if target is not None and target.exists() else None
+        link = base / value
         if target is None:
             skipped += 1
         elif not link.is_symlink() and not link.exists():
