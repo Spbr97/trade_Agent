@@ -152,3 +152,10 @@ Nothing is written here by hand; this file is append-only from `apply()`'s own c
 - applied: 2026-10-18T20:33:20.105027+00:00
 - commit: `d2a95c32b5f30af8b4eb9becf91fe5260177977d`
 - files: config\setups.yaml
+
+## NEW DETECTOR r_tsmom60_rsi_momentum_trend_trail on nse
+
+- item: `nse:2026-10-19T16:45:54.771399+05:30`
+- applied: 2026-10-20T06:19:21.927817+00:00
+- commit: `5b81736738fdfd9bdcdcf3bd53b931356951214f`
+- files: src\tradedesk\engine\signals.py, src\tradedesk\setups\r_tsmom60_rsi_momentum_trend_trail.py, src\tradedesk\setups\__init__.py, config\setups.yaml
