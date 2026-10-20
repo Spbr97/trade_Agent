@@ -57,6 +57,13 @@ source into evidence (`digest(Path(__file__))`) to fix paths. Alerts reach the p
 on, sends close-job, end-of-day, intraday-check, multi-day-call, earnings-drift and weekly
 digests; drift calls go out whenever that day's price stages loaded, even if a later
 research-only stage fails the after-close job, and review items go out as one push per run.
+Every multi-day call push carries each rule's live record (avg rupees per Rs 10,000 call after
+charges) beside the random picks. Owner's rule (2026-10-21): phone figures count everything
+cut at the trade - all charges, STT, crypto's 1% TDS (0.56% of a Rs 10,000 delivery round trip
+with the DP charge, not the study's 0.39%) - and never deduct the income tax settled at the
+year-end filing. Research pass bars that were pre-registered after tax stay as they were. A paper monthly
+BTC/ETH plan (src/tradedesk/crypto_monthly.py, Rs 5,000 each, never sold) runs beside the
+normal crypto calls, recorded and pushed once a month from tradedesk-crypto-research-tracker.
 Six files deploy with CRLF bytes (.gitattributes) because sealed research cohorts hashed them so. Oracle cost safety: a `free-tier-only` quota policy, a SGD budget alert, and
 `deploy/oracle/billing_guard.py` every 5 min on both the server and the laptop (kill switch at
 SGD 0.30) - the owner cannot afford any Oracle charge. Memory safety: every batch job runs in

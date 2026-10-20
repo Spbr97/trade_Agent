@@ -8,6 +8,7 @@
     python scripts/send_digest.py weekly
     python scripts/send_digest.py review           # review items waiting, each once, one push a run
     python scripts/send_digest.py movers --market nse
+    python scripts/send_digest.py monthly --market crypto   # paper BTC/ETH plan, once a month
 
 systemd runs it as ExecStopPost of the job it reports on, so it can never change that job's
 result (`-` prefix) and a delivery failure only costs the message. A message already sent for
@@ -126,6 +127,7 @@ def main(argv: list[str] | None = None) -> int:
             "drift",
             "review",
             "movers",
+            "monthly",
         ],
     )
     parser.add_argument("--market", choices=sorted(digests.CALLS))
@@ -173,6 +175,16 @@ def main(argv: list[str] | None = None) -> int:
         slots = int(float(load_config(ROOT).risk.trading_capital) // earnings_drift.AMOUNT_INR)
         for n, (title, body) in enumerate(earnings_drift.messages(result, held=held, slots=slots)):
             _send(f"drift:{result['last_session']}:{n}", title, body)
+        return 0
+    if args.kind == "monthly":
+        # The paper BTC/ETH monthly plan (src/tradedesk/crypto_monthly.py): one push a month.
+        from tradedesk import crypto_monthly
+
+        result = crypto_monthly.run()
+        print(json.dumps({k: v for k, v in result.items() if k != "prices"}, default=str)[:1000])
+        built = crypto_monthly.message(result)
+        if built:
+            _send(f"monthly:{result['month']}", *built)
         return 0
     if args.kind == "review":
         batch = review_batch(digests.review_items(root=root), _seen())

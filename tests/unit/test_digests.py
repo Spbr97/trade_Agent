@@ -4,6 +4,8 @@ import json
 from datetime import date
 from pathlib import Path
 
+import pytest
+
 from tradedesk import digests
 
 DAY = date(2026, 10, 16)
@@ -215,3 +217,29 @@ def test_potential_movers_list_their_own_track_record(tmp_path: Path) -> None:
     report["data_stale"] = True
     path.write_text(json.dumps(report), encoding="utf-8")
     assert digests.potential_movers("nse", root=tmp_path) is None
+
+
+def test_every_call_push_carries_its_rules_live_record_against_random(tmp_path: Path) -> None:
+    done = {"entry": 100.0, "outcome": "timeout", "armed_on": "2026-10-01"}
+    rows = [
+        _call("W1", "dip", **done, exit_price=90.0),
+        _call("W2", "dip", **done, exit_price=120.0),
+        _call("R1", "random_eligible", **done, exit_price=110.0),
+        _call("NEW", "dip", armed_on="2026-10-20"),
+    ]
+    _write_jsonl(tmp_path / "data/reports/research_calls_crypto.jsonl", rows)
+    body = digests.multiday_calls("crypto", root=tmp_path, today=date(2026, 10, 20))[0][1]
+    cost = digests.FALLBACK_ROUND_TRIP["crypto"]  # TDS included: it is cut at the sale
+    # After every charge cut at the trade; no year-end income tax is taken off.
+    dip = (10_000 * (-0.10 - cost) + 10_000 * (0.20 - cost)) / 2
+    rnd = 10_000 * (0.10 - cost)
+    assert "after all charges incl. TDS" in body and "tax" not in body.split("RESEARCH")[0]
+    assert f"dip: 2 calls, avg {digests._rupees(dip)}, 50% made money" in body
+    assert "worse than random picks" in body
+    assert f"random picks: 1 calls, avg {digests._rupees(rnd)}, 100% made money" in body
+
+
+def test_equity_figures_count_every_charge_including_stt() -> None:
+    # Rs 10,000 delivery round trip: Rs 56.41 in all, Rs 20 of it STT (0.1% each side).
+    root = Path(__file__).resolve().parents[2]
+    assert digests.round_trip("nse", root=root) == pytest.approx(0.005641, abs=0.0002)

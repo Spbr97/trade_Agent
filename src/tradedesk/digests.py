@@ -130,6 +130,15 @@ def dashboard_link(*, root: Path = Path(".")) -> tuple[str, str] | None:
 
 
 def round_trip(market: str, *, root: Path = Path(".")) -> float:
+    """Charges on a Rs 10,000 call as a fraction of it. NSE/BSE come from the production cost
+    calculator at that exact size: 0.56%, STT included (the study's 0.39% left out the flat DP
+    charge on each sale). Owner's rule (2026-10-21): count everything cut at the trade - all
+    charges, STT, crypto's 1% TDS - and never the income tax settled at the year-end filing."""
+    if market in ("nse", "bse"):
+        try:
+            return equity_round_trip(root)
+        except Exception:  # noqa: BLE001 - fall back to the study's figure rather than fail
+            pass
     study = _json(root / LAB / "multiday_hold_study" / market / "latest.json")
     try:
         return float(study["round_trip_cost"])
@@ -148,6 +157,53 @@ def net_inr(call: Mapping[str, Any], cost: float) -> float | None:
     if entry <= 0:
         return None
     return NOTIONAL_INR * (exit_price / entry - 1 - cost)
+
+
+def equity_round_trip(root: Path = Path(".")) -> float:
+    from decimal import Decimal
+
+    from tradedesk.config import load_config
+    from tradedesk.markets.costs import EquityCostModel
+    from tradedesk.models import TradeType
+
+    model = EquityCostModel(load_config(root).risk.costs)
+    rt = model.round_trip_cost(
+        trade_type=TradeType.DELIVERY, qty=100, entry_price=Decimal("100"),
+        exit_price=Decimal("100"),
+    )  # fmt: skip
+    return float(rt.total) / NOTIONAL_INR
+
+
+def track_record(
+    market: str, rules: Iterable[str], calls: list[Mapping[str, Any]], cost: float
+) -> list[str]:
+    """One line per rule being called today, plus the random control: its resolved calls so
+    far, average rupees per call after every charge cut at the trade (no year-end income tax)
+    and how often it made money - so a call is never sent without its own live result."""
+
+    def stats(rows: list[Mapping[str, Any]]) -> tuple[int, float, float] | None:
+        values = [v for r in rows if (v := net_inr(r, cost)) is not None]
+        if not values:
+            return None
+        return len(values), sum(values) / len(values), sum(v > 0 for v in values) / len(values)
+
+    after = "after all charges incl. TDS" if market == "crypto" else "after all charges incl. STT"
+    lines = [f"Live record so far (Rs {NOTIONAL_INR:,} a call, {after}):"]
+    control = stats([c for c in calls if c.get("rule") == CONTROL_RULE])
+    for rule in sorted(set(rules)):
+        own = stats([c for c in calls if c.get("rule") == rule])
+        if own is None:
+            lines.append(f"  {rule}: no resolved calls yet")
+            continue
+        n, avg, won = own
+        verdict = ""
+        if control is not None:
+            verdict = " - worse than random picks" if avg < control[1] else " - better than random"
+        lines.append(f"  {rule}: {n} calls, avg {_rupees(avg)}, {won:.0%} made money{verdict}")
+    if control is not None:
+        n, avg, won = control
+        lines.append(f"  random picks: {n} calls, avg {_rupees(avg)}, {won:.0%} made money")
+    return lines
 
 
 def add_sessions(start: date, sessions: int, market: str) -> date:
@@ -230,7 +286,10 @@ def eod_summary(market: str, day: date, *, root: Path = Path(".")) -> tuple[str,
         line = _inr_line(label, rows, cost)
         if line:
             lines.append(line)
-    lines.append(f"(Rs figures: Rs {NOTIONAL_INR:,} per call, after {100 * cost:.2f}% round trip)")
+    lines.append(
+        f"(Rs figures: Rs {NOTIONAL_INR:,} per call, after {100 * cost:.2f}% charges incl. "
+        "STT / crypto TDS; year-end income tax not deducted)"
+    )
     lines.append(RESEARCH)
     return f"{_name(market)} end-of-day numbers", "\n".join(lines)
 
@@ -344,7 +403,8 @@ def multiday_calls(
     day, stop and target distances and latest exit day, plus calls entered today with the
     actual open. One or more messages; empty when the market has no calls."""
 
-    calls = [c for c in _jsonl(root / REPORTS / CALLS[market]) if c.get("rule") != CONTROL_RULE]
+    every = _jsonl(root / REPORTS / CALLS[market])
+    calls = [c for c in every if c.get("rule") != CONTROL_RULE]
     if not calls:
         return []
     today = today or datetime.now(IST).date()
@@ -358,6 +418,7 @@ def multiday_calls(
         f"{_name(market)} new multi-day calls (armed {armed}): {len(fresh)} "
         f"({', '.join(f'{k} {v}' for k, v in sorted(by_rule.items()))})",
         f"Buy at the {buy_day:%a %d %b} open. Stop and target are set from that open price.",
+        *track_record(market, by_rule, every, round_trip(market, root=root)),
     ]
     lines = []
     for call in sorted(fresh, key=lambda c: str(c.get("symbol"))):
@@ -449,7 +510,10 @@ def weekly(
     health = _json(root / REPORTS / "health.json")
     failing = health.get("failing") or []
     lines.append(f"Failing tasks now: {len(failing)}")
-    lines.append(f"(Rs figures: Rs {NOTIONAL_INR:,} per call, after each market's round trip)")
+    lines.append(
+        f"(Rs figures: Rs {NOTIONAL_INR:,} per call, after every charge cut at the trade - "
+        "STT, crypto TDS; year-end income tax not deducted)"
+    )
     lines.append(RESEARCH)
     return "Weekly numbers", "\n".join(lines)
 

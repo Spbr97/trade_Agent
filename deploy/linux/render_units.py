@@ -91,6 +91,8 @@ DIGEST_HOOKS: dict[str, list[tuple[str, str]]] = {
     "tradedesk-potential-movers-nse": [("movers", "nse")],
     "tradedesk-potential-movers-bse": [("movers", "bse")],
     "tradedesk-potential-movers-crypto": [("movers", "crypto")],
+    # The paper BTC/ETH monthly plan: recorded and pushed on the first fresh run of a month.
+    "tradedesk-crypto-research-tracker": [("monthly", "crypto")],
 }
 
 
