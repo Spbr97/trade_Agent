@@ -90,7 +90,7 @@ setups' entries held 5 sessions (daily_twin_test.py), NIFTY 50 trend rules and s
 (edge_hunt.py). Also failed on 2026-10-19 (the owner's algo plan): ORB with a volume filter and
 VWAP band + RSI reversion on 1-minute history (tradedesk_lab/intraday_plan_test.py), dual-momentum
 rotation and Donchian-55 with a 3xATR trail (tradedesk_lab/multiday_rotation.py).
-Liquidity-sweep fades also fail (tradedesk_lab/sweep_and_reversion.py); its multi-day dip buy
+Crypto multi-day alternatives also fail after 30% tax (tradedesk_lab/crypto_multiday_alternatives.py, 2026-10-20): BTC/ETH above their 200-day average and a BTC+ETH trend pair grow money but less than holding BTC and not better than random timing; top-5 coin momentum loses 66%. Liquidity-sweep fades also fail (tradedesk_lab/sweep_and_reversion.py); its multi-day dip buy
 (RSI2<5 above EMA200) passes on paper but is erased by the real 0.56% round trip at Rs 10,000 a
 trade - it needs >= Rs 25,000 a trade. The Rs 10,000 delivery round trip is 0.56%, not 0.39%.
 Option income (9:20 straddle, Friday iron condor) cannot be backtested - INDstocks' expired-contract
