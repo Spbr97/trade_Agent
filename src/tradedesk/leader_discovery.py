@@ -900,11 +900,14 @@ def _freeze_prospective_sessions(
             existing_hash = existing.get("artifact_sha256")
             if existing_hash != canonical_sha256(_report_without_hash(existing)):
                 raise ValueError(f"prospective freeze {session} hash mismatch")
-            for key in ("version", "market", "contract_sha256", "row_count"):
+            for key in ("version", "market", "contract_sha256"):
                 if existing.get(key) != payload.get(key):
                     raise ValueError(
                         f"prospective freeze {session} changed at immutable field {key}"
                     )
+            if existing.get("row_count") != payload.get("row_count"):
+                freezes.append(_record_revision(path, existing, payload, generated_at))
+                continue
             recorded = existing.get("pending_outcomes")
             # A legacy freeze is verified under the 10-decimal rule it was written with.
             legacy = existing.get("float_rounding") != FREEZE_ROUNDING
@@ -924,9 +927,8 @@ def _freeze_prospective_sessions(
                 ):
                     mask, basis = sealed_mask, sealed_rows
             if mask is None:
-                raise ValueError(
-                    f"prospective freeze {session} changed at immutable field causal_rows_sha256"
-                )
+                freezes.append(_record_revision(path, existing, payload, generated_at))
+                continue
             payload = existing
             if legacy:
                 # Only after it verifies, record the sealed rows' significant-digit hash next
@@ -951,6 +953,47 @@ def _freeze_prospective_sessions(
             }
         )
     return freezes
+
+
+REVISED = "revised_excluded"
+
+
+def _record_revision(
+    path: Path, sealed: Mapping[str, Any], current: Mapping[str, Any], at: datetime
+) -> dict[str, Any]:
+    """The stored price history behind a sealed session changed after the seal (a vendor
+    revision or a history backfill - 2026-10-21: three 2024 BSE listings gained older bars and
+    four NSE closes were revised). The seal is never rewritten: a revision record beside it
+    keeps both hashes, and the session is excluded from prospective evidence from then on, so
+    revised data can neither replace nor silently join what was sealed. A code or contract
+    change still raises."""
+
+    record_path = path.with_name(f"{path.stem}.revision.json")
+    if record_path.exists():
+        record = json.loads(record_path.read_text(encoding="utf-8"))
+    else:
+        record = {
+            "version": "missed-leader-freeze-revision-v1",
+            "session": sealed.get("session"),
+            "status": REVISED,
+            "reason": "stored price history changed after the seal; session excluded",
+            "detected_at": at.isoformat(),
+            "sealed_artifact_sha256": sealed.get("artifact_sha256"),
+            "sealed_row_count": sealed.get("row_count"),
+            "sealed_causal_rows_sha256": sealed.get("causal_rows_sha256"),
+            "current_row_count": current.get("row_count"),
+            "current_causal_rows_sha256": current.get("causal_rows_sha256"),
+        }
+        record["artifact_sha256"] = canonical_sha256(record)
+        _atomic_text(record_path, json.dumps(record, indent=2, sort_keys=True) + "\n")
+    return {
+        "session": sealed.get("session"),
+        "path": str(path),
+        "artifact_sha256": sealed.get("artifact_sha256"),
+        "causal_rows_sha256": sealed.get("causal_rows_sha256"),
+        "status": REVISED,
+        "revision_path": str(record_path),
+    }
 
 
 def _report_without_hash(report: Mapping[str, Any]) -> dict[str, Any]:
@@ -999,7 +1042,26 @@ def run_missed_leader_audit(
     rows = build_audit_rows(frame, market=market, tracker_records=tracker_records)
     sessions = sorted({str(row["session"]) for row in rows})
     session_summaries = [_session_summary(rows, session) for session in sessions]
-    observed_summaries = [item for item in session_summaries if item["tracker_observed"]]
+    market_root = output_root / market
+    dataset_path = market_root / "dataset.jsonl.gz"
+    prospective_freezes = _freeze_prospective_sessions(
+        rows,
+        session_summaries,
+        market=market,
+        market_root=market_root,
+        generated_at=generated_at,
+        rebuild=lambda as_of: build_audit_rows(
+            extract_causal_universe(db_path, market, now=as_of, session_count=session_count)[0],
+            market=market,
+            tracker_records=tracker_records,
+        ),
+    )
+    revised = {f["session"] for f in prospective_freezes if f.get("status") == REVISED}
+    observed_summaries = [
+        item
+        for item in session_summaries
+        if item["tracker_observed"] and item["session"] not in revised  # revised data is void
+    ]
     latest = observed_summaries[-1] if observed_summaries else session_summaries[-1]
     observed_leaders = sum(int(item["leader_count"]) for item in observed_summaries)
     observed_candidates = sum(int(item["candidate_count"]) for item in observed_summaries)
@@ -1015,20 +1077,6 @@ def run_missed_leader_audit(
         "qualified_recall": (observed_qualified / observed_leaders if observed_leaders else None),
     }
 
-    market_root = output_root / market
-    dataset_path = market_root / "dataset.jsonl.gz"
-    prospective_freezes = _freeze_prospective_sessions(
-        rows,
-        session_summaries,
-        market=market,
-        market_root=market_root,
-        generated_at=generated_at,
-        rebuild=lambda as_of: build_audit_rows(
-            extract_causal_universe(db_path, market, now=as_of, session_count=session_count)[0],
-            market=market,
-            tracker_records=tracker_records,
-        ),
-    )
     # Write the mutable aggregate only after every existing immutable session freeze has
     # validated.  A mismatch cannot leave latest.json bound to a newly rewritten dataset.
     dataset_hash = _write_dataset(dataset_path, rows)
@@ -1069,6 +1117,7 @@ def run_missed_leader_audit(
             "format": "jsonl",
         },
         "prospective_session_freezes": prospective_freezes,
+        "revised_sessions_excluded": sorted(revised),
         "latest_mature_audit": latest,
         "observed_history": observed_history,
         "session_history": session_summaries,

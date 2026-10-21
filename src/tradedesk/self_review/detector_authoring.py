@@ -25,6 +25,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+import pandas as pd
 from tradedesk_lab.artifacts import OUTPUT, ROOT, digest, verify_base, write_json
 from tradedesk_lab.candidates.base import LabSetup
 from tradedesk_lab.harness.gauntlet import GauntletReport, run_gauntlet
@@ -132,6 +133,25 @@ def market_bundle(market: str, settings: Any) -> Market:
     return {"crypto": crypto_market, "bse": bse_market}.get(market, nse_market)(settings)
 
 
+CRYPTO_HISTORY_FROM = "2021-01-01"
+"""CoinDCX's own 2018-2020 daily history is corrupt: about 1 bar in 10 is impossible (BTC
+opening at Rs 5.4 lakh and closing at Rs 0.29 on 1-3 BTC of volume); from 2021 on it is about
+1 in 1,000 and from 2025 none (measured 2026-10-21). Candidates are judged on 2021 onwards."""
+
+
+def sane_bars(raw: Any, code: str) -> Any:
+    """Drop bars no market can print - a non-positive price, a high below the low, or a
+    close more than 5x away from its own open (NSE/BSE circuit limits make that impossible;
+    on crypto it is the corrupt history above) - and crypto history before 2021."""
+    ok = (
+        (raw["open"] > 0) & (raw["close"] > 0) & (raw["high"] >= raw["low"])
+        & (raw["close"] <= 5 * raw["open"]) & (raw["close"] >= 0.2 * raw["open"])
+    )  # fmt: skip
+    if code.startswith("CDX_"):
+        ok &= raw.index >= pd.Timestamp(CRYPTO_HISTORY_FROM, tz=raw.index.tz)
+    return raw[ok]
+
+
 def load_real_daily_frames(
     db: Path, *, max_codes: int = 100, exclude: frozenset[str] | set[str] = frozenset()
 ) -> tuple[dict[str, Any], dict[str, str]]:
@@ -148,6 +168,7 @@ def load_real_daily_frames(
             if code in exclude:
                 continue
             raw = store.load(code, Interval.D1)
+            raw = sane_bars(raw, code) if raw is not None else None
             if raw is None or len(raw) < 260:
                 continue
             tail = raw.iloc[-60:]

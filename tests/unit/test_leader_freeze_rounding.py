@@ -14,9 +14,8 @@ from datetime import date, datetime
 from pathlib import Path
 
 import pandas as pd
-import pytest
 
-from tests.unit.test_leader_discovery import _frame, _tracker
+from tests.unit.test_leader_discovery import _frame, _tracker, assert_revised
 from tradedesk import leader_discovery as ld
 from tradedesk.broker.indstocks.models import IST
 from tradedesk.prediction_ledger import canonical_sha256
@@ -61,8 +60,7 @@ def test_new_freezes_ignore_last_place_noise_on_large_values(tmp_path: Path, mon
     current.loc[0, "avg_turnover_20"] = DRIFTED
     assert len(run(13)["prospective_session_freezes"]) == 1
     current.loc[0, "avg_turnover_20"] = DRIFTED + 1.0  # a real revision of one rupee
-    with pytest.raises(ValueError, match="changed at immutable field causal_rows_sha256"):
-        run(14)
+    assert_revised(run, 14, path)
 
 
 def _make_legacy(path: Path, monkeypatch, run) -> dict:
@@ -96,8 +94,7 @@ def test_a_legacy_freeze_is_verified_then_carried_forward(tmp_path: Path, monkey
     current.loc[0, "avg_turnover_20"] = DRIFTED  # the noise that used to fail every day
     assert len(run(14)["prospective_session_freezes"]) == 1
     current.loc[0, "return_5"] = 9.9  # a real revision still fails
-    with pytest.raises(ValueError, match="changed at immutable field causal_rows_sha256"):
-        run(15)
+    assert_revised(run, 15, path)
 
 
 def test_a_legacy_freeze_that_fails_its_own_rule_is_left_untouched(
@@ -107,8 +104,7 @@ def test_a_legacy_freeze_that_fails_its_own_rule_is_left_untouched(
     _make_legacy(path, monkeypatch, run)
     before = path.read_text()
     current.loc[0, "avg_turnover_20"] = DRIFTED  # cannot be verified under the old rule
-    with pytest.raises(ValueError, match="changed at immutable field causal_rows_sha256"):
-        run(13)
+    assert_revised(run, 13, path)
     assert path.read_text() == before  # never re-sealed from unverified rows
 
 
@@ -169,8 +165,7 @@ def test_a_rebuild_does_not_excuse_a_real_revision(tmp_path: Path, monkeypatch) 
     current.loc[0, "avg_turnover_20"] = DRIFTED
     current.loc[0, "return_5"] = 9.9  # the sealed rebuild matches, today's data does not
 
-    with pytest.raises(ValueError, match="changed at immutable field causal_rows_sha256"):
-        run(13)
+    assert_revised(run, 13, path)
     assert SEAL_TIME in asked
     assert path.read_text() == before
 
@@ -198,5 +193,4 @@ def test_a_new_freeze_survives_noise_across_a_rounding_boundary(
     assert path.read_text() == before  # nothing to migrate on a new freeze
 
     current.loc[0, "avg_turnover_20"] = drifted + 1.0  # a real revision of one rupee
-    with pytest.raises(ValueError, match="changed at immutable field causal_rows_sha256"):
-        run(14)
+    assert_revised(run, 14, path)

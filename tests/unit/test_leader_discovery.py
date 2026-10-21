@@ -180,19 +180,18 @@ def test_prospective_session_freeze_refuses_rewritten_causal_evidence(
     assert len(first["prospective_session_freezes"]) == 1
 
     current.loc[0, "return_5"] = 9.9
-    try:
-        run_missed_leader_audit(
+
+    def again(hour: int) -> dict:
+        return run_missed_leader_audit(
             market="nse",
             db_path=tmp_path / "test.duckdb",
             tracker_path=tracker,
             output_root=output,
-            now=datetime(2026, 10, 14, 13, tzinfo=IST),
+            now=datetime(2026, 10, 14, hour, tzinfo=IST),
             session_count=1,
         )
-    except ValueError as exc:
-        assert "changed at immutable field causal_rows_sha256" in str(exc)
-    else:
-        raise AssertionError("rewritten prospective feature evidence was accepted")
+
+    assert_revised(again, 13, output / "nse" / "sessions" / "2026-10-10.json")
 
 
 def test_prospective_freeze_ignores_float_noise_but_not_real_revisions(
@@ -225,12 +224,7 @@ def test_prospective_freeze_ignores_float_noise_but_not_real_revisions(
     current.loc[0, "return_5"] = current.loc[0, "return_5"] + 3e-15  # rolling-mean noise
     assert len(run(13)["prospective_session_freezes"]) == 1
     current.loc[0, "return_5"] = current.loc[0, "return_5"] + 1e-6  # a real revision
-    try:
-        run(14)
-    except ValueError as exc:
-        assert "changed at immutable field causal_rows_sha256" in str(exc)
-    else:
-        raise AssertionError("a real revision was accepted")
+    assert_revised(run, 14, tmp_path / "audit" / "nse" / "sessions" / "2026-10-10.json")
 
 
 def test_prospective_freeze_lets_a_pending_outcome_mature_but_not_a_known_one_change(
@@ -267,9 +261,60 @@ def test_prospective_freeze_lets_a_pending_outcome_mature_but_not_a_known_one_ch
     current.loc[:, "forward_close_return_5"] = 0.05  # the outcome matures on schedule
     assert len(run(13)["prospective_session_freezes"]) == 1
     current.loc[0, "forward_close_return_3"] = current.loc[0, "forward_close_return_3"] + 0.01
-    try:
-        run(14)
-    except ValueError as exc:
-        assert "changed at immutable field causal_rows_sha256" in str(exc)
-    else:
-        raise AssertionError("a known outcome was rewritten and accepted")
+    assert_revised(run, 14, tmp_path / "audit" / "nse" / "sessions" / "2026-10-10.json")
+
+
+def assert_revised(run, hour: int, seal: Path) -> dict:
+    """A real revision of sealed evidence is never accepted: the seal file stays byte for byte,
+    a revision record keeps both hashes, and the session leaves the evidence totals."""
+    from tradedesk import leader_discovery as ld
+
+    before = seal.read_text(encoding="utf-8")
+    report = run(hour)
+    assert report["prospective_session_freezes"][0]["status"] == ld.REVISED
+    assert seal.read_text(encoding="utf-8") == before
+    record = json.loads(seal.with_name(f"{seal.stem}.revision.json").read_text(encoding="utf-8"))
+    sealed = json.loads(before)
+    assert record["sealed_causal_rows_sha256"] == sealed["causal_rows_sha256"]
+    assert record["current_causal_rows_sha256"] != sealed["causal_rows_sha256"]
+    assert report["revised_sessions_excluded"] == [sealed["session"]]
+    assert report["observed_history"]["sessions"] == 0
+    return report
+
+
+def test_a_session_that_gains_rows_after_its_seal_is_recorded_and_excluded(
+    tmp_path: Path, monkeypatch
+) -> None:
+    # 2026-10-21: three 2024 BSE listings gained older history, so a sealed session had
+    # 1,099 rows instead of 1,096. The seal stays; the session leaves the evidence.
+    from tradedesk import leader_discovery
+
+    current = _frame(date(2026, 10, 10))
+    meta = {
+        "db_path": "test.duckdb", "latest_closed_session": "2026-10-13",
+        "query_history_start": "2025-05-06", "mature_session_start": "2026-10-10",
+        "mature_session_end": "2026-10-10", "mature_sessions": 1, "raw_rows_considered": 3,
+    }  # fmt: skip
+    frames = {"now": current}
+    monkeypatch.setattr(
+        leader_discovery, "extract_causal_universe", lambda *a, **k: (frames["now"].copy(), meta)
+    )
+    tracker = tmp_path / "tracker.jsonl"
+    tracker.write_text(
+        json.dumps(_tracker()[0] | {"armed_on": "2026-10-10"}) + "\n", encoding="utf-8"
+    )
+
+    def run(hour: int) -> dict:
+        return run_missed_leader_audit(
+            market="nse", db_path=tmp_path / "test.duckdb", tracker_path=tracker,
+            output_root=tmp_path / "audit", now=datetime(2026, 10, 14, hour, tzinfo=IST),
+            session_count=1,
+        )  # fmt: skip
+
+    run(12)
+    extra = current.iloc[[0]].copy()
+    extra["scrip_code"] = "NSE_999"
+    frames["now"] = pd.concat([current, extra], ignore_index=True)
+    seal = tmp_path / "audit" / "nse" / "sessions" / "2026-10-10.json"
+    assert_revised(run, 13, seal)
+    assert_revised(run, 14, seal)  # stays excluded; the revision record is not rewritten

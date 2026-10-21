@@ -180,3 +180,23 @@ def test_propose_new_detector_names_the_exact_five_allowed_target_files() -> Non
         "src/tradedesk/setups/__init__.py",
         "config/setups.yaml",
     ]
+
+
+def test_impossible_bars_and_early_crypto_history_are_dropped() -> None:
+    import pandas as pd
+
+    from tradedesk.self_review.detector_authoring import sane_bars
+
+    days = ["2019-12-09", "2020-06-01", "2021-03-01", "2021-03-02", "2021-03-03"]
+    raw = pd.DataFrame(
+        {
+            "open": [548671.0, 100, 100, 100, 100],
+            "high": [96.0, 105, 110, 90, 120],
+            "low": [94.154, 98, 95, 95, 99],
+            "close": [94.154, 102, 105, 92, 600],  # bad, clean, clean, high<low, 6x its open
+        },
+        index=pd.DatetimeIndex(days, tz="Asia/Kolkata"),
+    )
+    kept = lambda code: list(sane_bars(raw, code).index.strftime("%Y-%m-%d"))  # noqa: E731
+    assert kept("CDX_BTCINR") == ["2021-03-01"]  # crypto also loses the clean 2020 bar
+    assert kept("NSE_1") == ["2020-06-01", "2021-03-01"]
