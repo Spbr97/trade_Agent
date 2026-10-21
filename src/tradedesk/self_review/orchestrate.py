@@ -44,6 +44,7 @@ from tradedesk.cli import _reference_code, _resolve_db, _sector_config, _store
 from tradedesk.config import load_config
 from tradedesk.engine.signals import SetupKind
 from tradedesk.markets import bse_market, crypto_market, nse_market
+from tradedesk.profit_gate import STATUS_PATH as GATE_STATUS
 from tradedesk.proposals import ProposalKind
 from tradedesk.review_queue import ReviewItem
 from tradedesk.rolling_failure_monitor import FailureSeverity, run_daily_check
@@ -132,6 +133,27 @@ def _valid_setups(names: list[str]) -> list[str]:
     return valid
 
 
+PROVEN_NO_EDGE = frozenset({"base_breakout", "trend_pullback", "nr7_breakout"})
+GATE_FAILED = frozenset({"no_edge", "stopped"})
+
+
+def failing_on_money(market: str, setup: str, *, root: Path = ROOT) -> bool:
+    """May a swap retire `setup` on `market`? Only one of the three original setups (no edge
+    against random timing on every market) or one the profit gate has judged on live rupees -
+    NO EDGE or STOPPED. The rolling monitor's target-hit rate cannot decide it alone: a
+    trailing-exit setup rarely touches a fixed target, so on 2026-10-21 every live trend setup
+    on NSE and BSE (two of them cleared for quarter-size alerts) sat in a proposal's retire
+    list. A missing or unreadable gate status retires nothing new."""
+    if setup in PROVEN_NO_EDGE:
+        return True
+    try:
+        status = json.loads((root / GATE_STATUS).read_text(encoding="utf-8"))
+        verdict = status["markets"][market][setup]["status"]
+    except (OSError, ValueError, KeyError, TypeError):
+        return False
+    return verdict in GATE_FAILED
+
+
 MAX_NEW_DETECTORS_PER_RUN = 3
 """Cap on NEW_DETECTOR items one run may submit. Passing candidates are usually variants of
 one idea (Donchian-20 with different filters and exits); each needs its own human approval
@@ -200,7 +222,8 @@ def run_self_review(
     # Owner's rule (2026-10-18): replace, never retire into a blank. A candidate only passes
     # by beating the best of these setups' own results on this market, so it stands in for
     # the sustained failures in the same approval.
-    beaten = [s for s in flagged if by_setup[s].severity == FailureSeverity.SUSTAINED]
+    sustained = [s for s in flagged if by_setup[s].severity == FailureSeverity.SUSTAINED]
+    beaten = [s for s in sustained if failing_on_money(market, s, root=root)]
     # A candidate already installed on this market (live, retired or research-only here) is no
     # new proposal: the 2026-10-19 crypto run re-proposed r_adx_thrust_tsmom_up_trend_trail,
     # live on crypto since its own approval. Its slot goes to the next-best candidate.

@@ -304,3 +304,29 @@ def test_load_real_market_data_against_the_real_local_database() -> None:
         SetupKind.TREND_PULLBACK,
         SetupKind.NR7_BREAKOUT,
     }
+
+
+@pytest.mark.parametrize(("verdict", "retired"), [("provisional", False), ("stopped", True)])
+def test_a_swap_retires_a_live_setup_only_when_the_profit_gate_says_it_fails(
+    tmp_path: Path, monkeypatch, verdict: str, retired: bool
+) -> None:
+    live = "r_donchian20_strong_trend_trend_trail"
+    status = {"markets": {"nse": {live: {"status": verdict}}}}
+    gate = tmp_path / "data" / "reports" / "profit_gate_status.json"
+    gate.parent.mkdir(parents=True)
+    gate.write_text(json.dumps(status), encoding="utf-8")
+    found = _passed_result(tmp_path)
+    failures = [
+        _failure("nr7_breakout", FailureSeverity.SUSTAINED),
+        _failure(live, FailureSeverity.SUSTAINED),
+    ]
+    outcome = lambda targets: _outcome(targets, passed=[found])  # noqa: E731
+    _wire(tmp_path, monkeypatch, failures, search=outcome)
+    item = orch.run_self_review("nse", root=tmp_path).items[0]
+    replaces = load_proposal(Path(item.proposal_ref)).payload.replaces
+    assert replaces == (["nr7_breakout", live] if retired else ["nr7_breakout"])
+
+
+def test_without_a_gate_status_only_the_original_setups_can_be_replaced(tmp_path: Path) -> None:
+    assert orch.failing_on_money("nse", "trend_pullback", root=tmp_path)
+    assert not orch.failing_on_money("nse", "r_donchian20_strong_trend_trend_trail", root=tmp_path)
