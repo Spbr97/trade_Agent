@@ -2,8 +2,9 @@
 silence must never pass for "all fine".
 
 Every run (scheduled every 10 minutes while the laptop is on) reads the server's
-health.json over SSH. It alerts (desktop + ntfy) when the server cannot be reached, or when
-its hourly health check has not written for STALE_MINUTES. It stays quiet when the laptop
+health.json over SSH. It alerts (desktop + ntfy) when the server cannot be reached on
+SSH_MISSES_TO_ALERT runs in a row, or when its hourly health check has not written for
+STALE_MINUTES. It stays quiet when the laptop
 itself is offline (ntfy.sh unreachable), because then the problem is here, not there. A
 problem re-alerts every REMIND_MINUTES and sends one "back" message when it clears.
 
@@ -30,6 +31,7 @@ HEALTH = "/opt/tradedesk/data/reports/health.json"
 STATE = ROOT / "data" / "reports" / "server_watch.json"
 STALE_MINUTES = 90
 REMIND_MINUTES = 60
+SSH_MISSES_TO_ALERT = 2  # consecutive unreachable checks (10 min apart) before an alert
 SSH_CANDIDATES = (r"C:\Program Files\Git\usr\bin\ssh.exe", r"C:\Windows\System32\OpenSSH\ssh.exe")
 
 
@@ -92,6 +94,16 @@ def main() -> int:
     except Exception as exc:  # noqa: BLE001 - every failure is reported, not raised
         error = repr(exc)[:200]
     problem = problem_for(health, error, now)
+    misses = int(state.get("ssh_misses", 0)) + 1 if error is not None else 0
+    if error is not None and misses < SSH_MISSES_TO_ALERT and not state.get("problem"):
+        # One timed-out check is not a dead server (2026-10-23: the laptop, busy with a test
+        # run, timed out once while the server answered fine): wait for the next run.
+        state.update(ssh_misses=misses, checked_at=now.isoformat())
+        STATE.parent.mkdir(parents=True, exist_ok=True)
+        STATE.write_text(json.dumps(state), encoding="utf-8")
+        print(f"{now.isoformat(timespec='seconds')} one missed check, not alerting yet: {error}")
+        return 0
+    state["ssh_misses"] = misses
     last = state.get("last_alert_at")
     due = problem and (
         problem.split(":")[0] != state.get("problem", "").split(":")[0]

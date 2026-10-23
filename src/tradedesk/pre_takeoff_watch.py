@@ -504,6 +504,11 @@ def _net_r(plan: Mapping[str, Any], exit_raw: float, market: str) -> float | Non
     risk_distance = entry - stop
     if risk_distance <= 0:
         return None
+    if price_decimal(stop) >= price_decimal(entry):
+        # A coin priced below a few paise-millionths (2026-10-23: ~Rs 0.00000041) can have
+        # entry and stop round to the same 8-place price: unmeasurable, not a crash that
+        # stops the whole watch every 15 minutes.
+        return None
     raw_qty = min(RISK_BUDGET / risk_distance, RESEARCH_CAPITAL / entry)
     if market == "crypto":
         step = float(bundle.qty_step)

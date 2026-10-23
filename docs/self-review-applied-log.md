@@ -159,3 +159,17 @@ Nothing is written here by hand; this file is append-only from `apply()`'s own c
 - applied: 2026-10-20T06:19:21.927817+00:00
 - commit: `5b81736738fdfd9bdcdcf3bd53b931356951214f`
 - files: src\tradedesk\engine\signals.py, src\tradedesk\setups\r_tsmom60_rsi_momentum_trend_trail.py, src\tradedesk\setups\__init__.py, config\setups.yaml
+
+## NEW DETECTOR r_ema20_bounce_strong_trend_trend_trail on bse
+
+- item: `bse:2026-10-20T17:02:14.248502+05:30`
+- applied: 2026-10-23T12:22:01.658008+00:00
+- commit: `3f85d82485eb5e89a6b891bf220c7363ac8d1c64`
+- files: src\tradedesk\engine\signals.py, src\tradedesk\setups\r_ema20_bounce_strong_trend_trend_trail.py, src\tradedesk\setups\__init__.py, config\setups.yaml
+
+## NEW DETECTOR r_ema20_bounce_strong_trend_trend_trail on nse
+
+- item: `nse:2026-10-22T16:45:58.577802+05:30`
+- applied: 2026-10-23T12:22:22.428300+00:00
+- commit: `cea610a199ae49b9c432898bb40b9c2d8fb58963`
+- files: config\setups.yaml

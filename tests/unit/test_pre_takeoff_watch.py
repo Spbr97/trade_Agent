@@ -801,3 +801,12 @@ def test_standalone_collector_script_can_import_shared_pipeline_lock(tmp_path) -
     result = json.loads(completed.stdout)
     assert set(result) == {"nse", "bse"}
     assert result["nse"]["status"] == "not_collected"
+
+
+def test_a_plan_whose_stop_rounds_onto_its_entry_is_unmeasured_not_a_crash() -> None:
+    # 2026-10-23: a coin near Rs 0.00000041 had entry and stop round to the same 8-place
+    # price, and the cost model's "stop must be below entry" stopped the watch every run.
+    from tradedesk import pre_takeoff_watch as ptw
+
+    plan = {"entry_execution": 4.1e-7, "stop": 4.09999e-7, "market": "crypto"}
+    assert ptw._net_r(plan, 4.2e-7, "crypto") is None

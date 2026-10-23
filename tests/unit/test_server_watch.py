@@ -28,3 +28,28 @@ def test_a_silent_health_check_is_a_problem() -> None:
 def test_unreachable_and_unreadable_are_problems() -> None:
     assert watch.problem_for(None, "timed out", NOW).startswith("server unreachable")
     assert "no readable timestamp" in watch.problem_for({}, None, NOW)
+
+
+def test_one_missed_check_waits_two_in_a_row_alert(tmp_path: Path, monkeypatch) -> None:
+    import tradedesk.task_health as th
+
+    sent: list[str] = []
+    monkeypatch.setattr(th, "alert", lambda title, body, **kw: sent.append(title))
+    monkeypatch.setattr(watch, "STATE", tmp_path / "state.json")
+    monkeypatch.setattr(watch, "laptop_online", lambda: True)
+    up = {"checked_at": datetime.now(UTC).isoformat()}
+    replies: list = []
+
+    def read():
+        reply = replies.pop(0)
+        if isinstance(reply, Exception):
+            raise reply
+        return reply
+
+    monkeypatch.setattr(watch, "read_server_health", read)
+    replies[:] = [TimeoutError("busy"), up, TimeoutError("busy")]
+    assert [watch.main() for _ in range(3)] == [0, 0, 0] and sent == []  # misses reset
+
+    replies[:] = [TimeoutError("down"), up]
+    assert watch.main() == 1 and sent == ["TRADEDESK SERVER SILENT"]  # second miss in a row
+    assert watch.main() == 0 and sent[-1] == "tradedesk server back"

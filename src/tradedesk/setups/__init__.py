@@ -8,7 +8,9 @@ from tradedesk.setups.r_adx_thrust_tsmom_up_trend_trail import RAdxThrustTsmomUp
 from tradedesk.setups.r_donchian20_strong_trend_trend_trail import RDonchian20StrongTrendTrendTrail
 from tradedesk.setups.r_donchian55_any_trend_trail import RDonchian55AnyTrendTrail
 from tradedesk.setups.r_donchian55_rsi_momentum_trend_trail import RDonchian55RsiMomentumTrendTrail
-from tradedesk.setups.r_ema20_bounce_strong_trend_trend_trail import REma20BounceStrongTrendTrendTrail
+from tradedesk.setups.r_ema20_bounce_strong_trend_trend_trail import (
+    REma20BounceStrongTrendTrendTrail,
+)
 from tradedesk.setups.r_high52_break_strong_trend_trend_trail import (
     RHigh52BreakStrongTrendTrendTrail,
 )
