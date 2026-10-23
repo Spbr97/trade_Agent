@@ -243,3 +243,41 @@ def test_equity_figures_count_every_charge_including_stt() -> None:
     # Rs 10,000 delivery round trip: Rs 56.41 in all, Rs 20 of it STT (0.1% each side).
     root = Path(__file__).resolve().parents[2]
     assert digests.round_trip("nse", root=root) == pytest.approx(0.005641, abs=0.0002)
+
+
+def test_the_evening_summary_is_one_push_with_the_top_calls_and_where_the_rest_are(
+    tmp_path: Path,
+) -> None:
+    rows = [_call(f"S{i:02d}", "dip", armed_on="2026-10-23") for i in range(12)]
+    rows.append(_call("R1", "random_eligible", armed_on="2026-10-23"))
+    _write_jsonl(tmp_path / "data/reports/research_calls.jsonl", rows)
+    (tmp_path / "data/reports/dashboard_link.json").write_text(
+        json.dumps({"url": "https://example.trycloudflare.com"}), encoding="utf-8"
+    )
+    out = digests.evening_summary("nse", date(2026, 10, 23), root=tmp_path)
+    assert len(out) == 1
+    title, body = out[0]
+    assert title == "NSE evening summary 23 Oct"
+    assert "NSE end of day 2026-10-23" in body and "intraday study" in body
+    assert "Multi-day calls armed 2026-10-23: 12 (dip 12), buy at the Mon 26 Oct open" in body
+    assert body.count("[dip] stop open-") == digests.SUMMARY_TOP
+    assert "+7 more on the dashboard: Research tab (nse)" in body
+    assert "R1" not in body  # the random control is never listed as a call
+    assert "Dashboard: https://example.trycloudflare.com" in body
+    assert body.count("RESEARCH ONLY") == 1 and len(body) <= digests.MAX_MESSAGE_CHARS + 200
+
+
+def test_a_failed_host_job_marks_only_its_own_section(tmp_path: Path) -> None:
+    _write_jsonl(tmp_path / "data/reports/research_calls_crypto.jsonl", [])
+    _, body = digests.evening_summary(
+        "crypto", date(2026, 10, 23), root=tmp_path, multiday_ok=False
+    )[0]
+    assert "CRYPTO end of day" in body and "today's job failed" in body
+
+
+def test_long_summaries_split_on_whole_sections() -> None:
+    big = [[f"line {i} " + "x" * 90 for i in range(25)] for _ in range(3)]
+    parts = digests._split("T", big, ["END"])
+    assert len(parts) > 1 and parts[0][0] == f"T (1/{len(parts)})"
+    assert all(len(body) <= digests.MAX_MESSAGE_CHARS for _, body in parts)
+    assert parts[-1][1].endswith("END") and "END" not in parts[0][1]

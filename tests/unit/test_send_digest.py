@@ -69,3 +69,27 @@ def test_the_sent_record_keeps_the_newest_keys_not_the_last_names() -> None:
     seen["close:today"] = "2026-10-20T16:08:00"
     kept = dict(sd.newest(seen, 3))
     assert "close:today" in kept and len(kept) == 3
+
+
+def test_only_what_needs_acting_on_pushes_on_its_own(monkeypatch) -> None:
+    sent: list[str] = []
+    monkeypatch.setattr(sd, "_send", lambda key, *a, **k: sent.append(key))
+    monkeypatch.setattr(sd.market_calendar, "is_equity_holiday", lambda *a, **k: False)
+    monkeypatch.setattr(sd.digests, "evening_summary", lambda m, d, **k: [("t", "b")])
+    monkeypatch.setattr(sd.digests, "crypto_morning", lambda **k: [("t", "b")])
+    monkeypatch.setattr(sd.digests, "close_job", lambda *a, **k: ("t", "b"))
+    quiet = [
+        ["close", "--market", "nse", "--job", "j", "--result", "success"],
+        ["eod", "--market", "nse"],
+        ["intraday", "--market", "nse"],
+        ["movers", "--market", "bse"],
+        ["movers", "--market", "crypto"],
+    ]
+    for argv in quiet:
+        assert sd.main(argv) == 0
+    assert sent == []
+    sd.main(["close", "--market", "nse", "--job", "j", "--result", "exit-code", "--exit", "1"])
+    sd.main(["intraday", "--market", "crypto"])
+    sd.main(["multiday", "--result", "exit-code"])  # the summary still goes out
+    assert sent[0].startswith("close:j:") and sent[1].startswith("morning:crypto:")
+    assert sorted(k.split(":")[1] for k in sent[2:]) == ["bse", "crypto", "nse"]

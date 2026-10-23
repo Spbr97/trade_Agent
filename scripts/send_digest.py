@@ -1,5 +1,10 @@
 """Send one phone digest (see src/tradedesk/digests.py).
 
+Since 2026-10-24 (owner): job successes, end-of-day numbers, NSE/BSE intraday studies and
+movers are not pushed on their own - `multiday` sends one evening summary per market and
+crypto `intraday` one morning push that carry them. Drift, review, weekly and failures
+still push on their own.
+
     python scripts/send_digest.py close --market nse --job tradedesk-after-close \
         --result success --exit 0
     python scripts/send_digest.py eod --market nse
@@ -139,9 +144,17 @@ def main(argv: list[str] | None = None) -> int:
     now = datetime.now(IST)
     # Review items wait for the owner whatever the job that found them did next; drift calls
     # need only the day's prices, so a later research-stage failure does not hold them back.
-    if args.kind not in {"close", "weekly", "review"} and args.result != "success":
+    # The evening summary and the crypto morning push go out even if their host job failed:
+    # each section reads its own files and the failed part says so (one failure must not
+    # silence the whole evening - 2026-10-24, when everything was folded into them).
+    if (
+        args.kind not in {"close", "weekly", "review", "multiday", "intraday"}
+        and args.result != "success"
+    ):
         if not (args.kind == "drift" and data_ready(args.market or "nse", now.date())):
-            print(f"{args.kind}: job result {args.result}, nothing sent (the health check reports it)")  # noqa: E501
+            print(
+                f"{args.kind}: job result {args.result}, nothing sent (the health check reports it)"
+            )  # noqa: E501
             return 0
         print(f"drift: job result {args.result}, but today's prices loaded; sending the calls")
     day = now.date().isoformat()
@@ -195,11 +208,9 @@ def main(argv: list[str] | None = None) -> int:
             _send(keys[0], title, body, also=keys[1:])
         return 0
     if args.kind == "movers":
-        built = digests.potential_movers(args.market or "nse", root=root)
-        if built:
-            _send(*built)
-        else:
-            print("movers: no fresh list, nothing sent")
+        # Folded in (2026-10-24): NSE/BSE into the evening summary, crypto into the morning.
+        push = "morning" if args.market == "crypto" else "evening"
+        print(f"movers {args.market}: folded into the {push} push")
         return 0
     if args.kind == "picks":
         # Consensus paper picks, each announced once (pick_announcer keeps its own record).
@@ -211,11 +222,15 @@ def main(argv: list[str] | None = None) -> int:
         title, body = digests.weekly(now.date(), root=root)
         _send(f"weekly:{now.isocalendar().year}-W{now.isocalendar().week}", title, body)
     elif args.kind == "multiday":
+        # One evening summary per market instead of up to 13 multi-day messages (2026-10-24).
+        ok = args.result == "success"
         for market in [args.market] if args.market else sorted(digests.CALLS):
             if holiday and market in {"nse", "bse"}:
                 continue
-            for n, (title, body) in enumerate(digests.multiday_calls(market, root=root)):
-                _send(f"multiday:{market}:{day}:{n}", title, body)
+            for n, (title, body) in enumerate(
+                digests.evening_summary(market, now.date(), root=root, multiday_ok=ok)
+            ):
+                _send(f"evening:{market}:{day}:{n}", title, body)
     else:
         if not args.market:
             parser.error(f"{args.kind} needs --market")
@@ -224,13 +239,17 @@ def main(argv: list[str] | None = None) -> int:
                 args.market, args.job, args.result, args.exit_status, today=now.date(), root=root
             )
             ok = args.result == "success"
-            _send(f"close:{args.job}:{day}:{args.result}", title, body, urgent=not ok, force=not ok)
+            if ok:  # a job that finished fine is not news (2026-10-24); failures push at once
+                print(f"close {args.job}: success, not pushed")
+            else:
+                _send(f"close:{args.job}:{day}:{args.result}", title, body, urgent=True, force=True)
         elif args.kind == "eod":
-            title, body = digests.eod_summary(args.market, now.date(), root=root)
-            _send(f"eod:{args.market}:{day}", title, body)
+            print(f"eod {args.market}: folded into the evening summary")
+        elif args.market == "crypto":
+            for n, (title, body) in enumerate(digests.crypto_morning(root=root)):
+                _send(f"morning:crypto:{day}:{n}", title, body)
         else:
-            title, body = digests.intraday_check(args.market, root=root)
-            _send(f"intraday:{args.market}:{day}", title, body)
+            print(f"intraday {args.market}: folded into the evening summary")
     return 0
 
 

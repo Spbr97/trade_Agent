@@ -56,7 +56,7 @@ source into evidence (`digest(Path(__file__))`) to fix paths. Alerts reach the p
 (`task_health.alert`); `scripts/send_digest.py`, hooked as ExecStopPost on the jobs it reports
 on, sends close-job, end-of-day, intraday-check, multi-day-call, earnings-drift and weekly
 digests; drift calls go out whenever that day's price stages loaded, even if a later
-research-only stage fails the after-close job, and review items go out as one push per run.
+research-only stage fails the after-close job, and review items go out as one push per run. Owner's decision 2026-10-24: about 5 pushes a weekday, not 30 - drift calls, review items, trade alerts and every failure/warning push at once; job successes are not pushed; each market's day (end-of-day, intraday study, movers, multi-day calls: count, live record, top 5) comes as one evening summary at 21:15 (`digests.evening_summary`, sent even if that job fails), crypto's intraday study and movers as one morning push; the full multi-day list with stop/target is on the dashboard's Research tab.
 Every multi-day call push carries each rule's live record (avg rupees per Rs 10,000 call after
 charges) beside the random picks. Owner's rule (2026-10-21): phone figures count everything
 cut at the trade - all charges, STT, crypto's 1% TDS (0.56% of a Rs 10,000 delivery round trip

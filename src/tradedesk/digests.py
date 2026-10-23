@@ -600,3 +600,131 @@ def potential_movers(market: str, *, root: Path = Path(".")) -> tuple[str, str, 
     lines.append(RESEARCH)
     title = f"{_name(market)} potential movers for the next session ({report.get('as_of')})"
     return f"movers:{market}:{report.get('as_of')}", title, "\n".join(lines)
+
+
+# ---------------------------------------------------------------- one push per market a day
+# Owner's decision 2026-10-24: about 30 pushes a weekday became about 5. What needs acting on
+# (drift calls, review items, trade alerts, every failure or warning) still goes out on its
+# own at once; the day's numbers come as one evening summary per market and one crypto morning
+# push, and the full multi-day list lives on the dashboard's Research tab.
+
+SUMMARY_TOP = 5
+MAX_MESSAGE_CHARS = 3500  # ntfy caps a message near 4 KB
+
+
+def _body(lines_text: str) -> list[str]:
+    """A built message's body lines without the trailing research footer."""
+    return [line for line in lines_text.splitlines() if line and line != RESEARCH]
+
+
+def current_link(*, root: Path = Path(".")) -> str | None:
+    return _json(root / LINK_STATE).get("url") or None
+
+
+def multiday_brief(
+    market: str, *, root: Path = Path("."), today: date | None = None, top: int = SUMMARY_TOP
+) -> list[str]:
+    """The multi-day calls in a few lines: how many were armed, each rule's live record
+    against random picks, the first `top` names from the best-recorded rule with their buy day
+    and levels, and where the rest are."""
+
+    every = _jsonl(root / REPORTS / CALLS[market])
+    calls = [c for c in every if c.get("rule") != CONTROL_RULE]
+    if not calls:
+        return ["Multi-day calls: none yet"]
+    today = today or datetime.now(IST).date()
+    armed = max(str(c.get("armed_on") or "") for c in calls)
+    fresh = [c for c in calls if c.get("armed_on") == armed]
+    buy_day = add_sessions(date.fromisoformat(armed), 1, market)
+    by_rule = Counter(str(c.get("rule")) for c in fresh)
+    cost = round_trip(market, root=root)
+    lines = [
+        f"Multi-day calls armed {armed}: {len(fresh)} "
+        f"({', '.join(f'{k} {v}' for k, v in sorted(by_rule.items()))}), buy at the "
+        f"{buy_day:%a %d %b} open",
+        *track_record(market, by_rule, every, cost),
+    ]
+
+    def avg(rule: str) -> float:
+        values = [v for c in every if c.get("rule") == rule and (v := net_inr(c, cost)) is not None]
+        return sum(values) / len(values) if values else float("-inf")
+
+    order = sorted(by_rule, key=lambda r: (-avg(r), r))
+    ranked = sorted(fresh, key=lambda c: (order.index(str(c.get("rule"))), str(c.get("symbol"))))
+    shown = 0
+    for call in ranked:
+        risk = _risk(call)
+        if risk is None or shown >= top:
+            continue
+        target = float(call.get("target_r") or 2.0) * risk
+        exit_day = add_sessions(buy_day, int(call.get("max_hold") or 10), market)
+        lines.append(
+            f"  {call.get('symbol')} [{call.get('rule')}] stop open-{_price(risk)}, "
+            f"target open+{_price(target)}, exit by {exit_day:%a %d %b}"
+        )
+        shown += 1
+    if len(fresh) > shown:
+        lines.append(f"  +{len(fresh) - shown} more on the dashboard: Research tab ({market})")
+    entered = [
+        c for c in calls
+        if not c.get("outcome") and c.get("armed_on")
+        and add_sessions(date.fromisoformat(str(c["armed_on"])), 1, market) == today
+    ]  # fmt: skip
+    if entered:
+        lines.append(f"Entered at today's open: {len(entered)} (levels on the Research tab)")
+    return lines
+
+
+def _split(title: str, sections: list[list[str]], tail: list[str]) -> list[tuple[str, str]]:
+    """Whole sections per message, never past MAX_MESSAGE_CHARS; the tail ends the last."""
+    parts: list[list[str]] = [[]]
+    for section in sections:
+        block = [*section, ""]
+        if parts[-1] and len("\n".join(parts[-1] + block)) > MAX_MESSAGE_CHARS:
+            parts.append([])
+        parts[-1] += block
+    parts[-1] += tail
+    if len(parts) == 1:
+        return [(title, "\n".join(parts[0]).strip())]
+    return [
+        (f"{title} ({n}/{len(parts)})", "\n".join(part).strip())
+        for n, part in enumerate(parts, start=1)
+    ]
+
+
+def evening_summary(
+    market: str, day: date, *, root: Path = Path("."), multiday_ok: bool = True
+) -> list[tuple[str, str]]:
+    """The market's day in one push: end-of-day numbers, the intraday study and the potential
+    movers (NSE/BSE; crypto's come in the morning push) and the multi-day calls. Built from
+    the same functions the separate pushes used, so no figure differs."""
+
+    sections = [_body(eod_summary(market, day, root=root)[1])]
+    if market in ("nse", "bse"):
+        sections.append(_body(intraday_check(market, root=root)[1]))
+        movers = potential_movers(market, root=root)
+        if movers:
+            body = _body(movers[2])
+            names = [line for line in body if not line.startswith(("Track record", "+"))]
+            rest = [line for line in body if line.startswith("Track record")]
+            sections.append(
+                [f"Potential movers ({len(names)} shown in full on the Markets tab):",
+                 *names[:SUMMARY_TOP], *rest]
+            )  # fmt: skip
+    if multiday_ok:
+        sections.append(multiday_brief(market, root=root, today=day))
+    else:
+        sections.append(["Multi-day calls: today's job failed - see the health alert"])
+    link = current_link(root=root)
+    tail = [f"Dashboard: {link}"] if link else []
+    return _split(f"{_name(market)} evening summary {day:%d %b}", sections, [*tail, RESEARCH])
+
+
+def crypto_morning(*, root: Path = Path(".")) -> list[tuple[str, str]]:
+    """Crypto's morning push: its intraday study and its potential movers together."""
+    sections = [_body(intraday_check("crypto", root=root)[1])]
+    movers = potential_movers("crypto", root=root)
+    if movers:
+        sections.append([movers[1], *_body(movers[2])])
+    day = datetime.now(IST).date()
+    return _split(f"CRYPTO morning {day:%d %b}", sections, [RESEARCH])

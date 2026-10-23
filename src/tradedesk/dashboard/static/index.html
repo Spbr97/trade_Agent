@@ -3661,13 +3661,17 @@ function renderResearchCalls() {
   const data = rowsF === 'all' ? matched : matched.slice(0, Number(rowsF));
   const byId = (o) => o === 'target' ? 'closed' : (o ? 'stopped' : '');
   const resultLabel = (o) => o === 'target' ? 'hit' : (o ? 'not hit' : 'pending');
-  rows($('research-calls'), ['Sym','Rule','Armed','#Entry','#Exit','#Days','Result','#R','#% P/L'],
+  rows($('research-calls'), ['Sym','Rule','Armed','#Entry','#Stop','#Target','#Exit','#Days','Result','#R','#% P/L'],
     data.map(d => {
       const p = plPct(d);
       const plClass = p == null ? '' : (p >= 0 ? 'pos' : 'neg');
       const dh = daysHeld(d);
       const daysText = dh == null ? '-' : (dh.pending ? `${dh.days}+` : `${dh.days}`);
-      return `<tr><td>${d.symbol}</td><td>${d.rule}</td><td>${d.armed_on}</td><td class="num">${fmt(d.entry)}</td><td class="num">${d.exit_price!=null?fmt(d.exit_price):'-'}</td><td class="num">${daysText}</td><td class="${byId(d.outcome)}">${resultLabel(d.outcome)}${d.outcome && d.outcome !== 'target' ? ` (${d.outcome.replace('_',' ')})` : ''}</td><td class="num">${d.r_multiple!=null?fmt(d.r_multiple,2):'-'}</td><td class="num ${plClass}">${p!=null?pct(p):'-'}</td></tr>`;
+      // Before entry the levels are distances from the next open (what the phone used to list).
+      const risk = (d.stop_atr && d.atr_at_arm) ? d.stop_atr * d.atr_at_arm : null;
+      const stopTxt = d.stop != null ? fmt(d.stop) : (risk != null ? `open−${fmt(risk)}` : '-');
+      const tgtTxt = d.t1 != null ? fmt(d.t1) : (risk != null ? `open+${fmt((d.target_r || 2) * risk)}` : '-');
+      return `<tr><td>${d.symbol}</td><td>${d.rule}</td><td>${d.armed_on}</td><td class="num">${d.entry!=null?fmt(d.entry):'-'}</td><td class="num">${stopTxt}</td><td class="num">${tgtTxt}</td><td class="num">${d.exit_price!=null?fmt(d.exit_price):'-'}</td><td class="num">${daysText}</td><td class="${byId(d.outcome)}">${resultLabel(d.outcome)}${d.outcome && d.outcome !== 'target' ? ` (${d.outcome.replace('_',' ')})` : ''}</td><td class="num">${d.r_multiple!=null?fmt(d.r_multiple,2):'-'}</td><td class="num ${plClass}">${p!=null?pct(p):'-'}</td></tr>`;
     }));
   $('research-filter-count').textContent = `${data.length} of ${matched.length} matched (${all.length} total)`;
 }
