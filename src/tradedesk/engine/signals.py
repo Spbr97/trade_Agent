@@ -22,6 +22,7 @@ class SetupKind(StrEnum):
     R_DONCHIAN55_ANY_TREND_TRAIL = "r_donchian55_any_trend_trail"
     R_DONCHIAN20_STRONG_TREND_TREND_TRAIL = "r_donchian20_strong_trend_trend_trail"
     R_TSMOM60_RSI_MOMENTUM_TREND_TRAIL = "r_tsmom60_rsi_momentum_trend_trail"
+    R_EMA20_BOUNCE_STRONG_TREND_TREND_TRAIL = "r_ema20_bounce_strong_trend_trend_trail"
 
 
 class ExitPlan(BaseModel):

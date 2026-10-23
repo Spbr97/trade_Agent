@@ -25,6 +25,7 @@
 setups:
   # (restored 2026-10-18, owner's rule: replace with better, never retire into a blank) was retired on crypto 2026-09-30 by self-review item crypto:2026-09-29T00:20:21.604586+05:30: sustained failure; still enabled elsewhere and shadow-tracked on crypto (see docs/self-review-applied-log.md)
   # REPLACED on bse 2026-10-18 by r_high52_break_strong_trend_trend_trail and r_tsmom20_strong_trend_trend_trail (owner-approved swap: both beat it on BSE history after costs, +0.26R/trade); still shadow-tracked on bse
+  # REPLACED on bse 2026-10-23 by r_ema20_bounce_strong_trend_trend_trail (self-review item bse:2026-10-20T17:02:14.248502+05:30); still shadow-tracked on bse
   base_breakout:
     retired_markets: [bse]
     enabled: true
@@ -40,6 +41,7 @@ setups:
   # REPLACED on bse 2026-10-18 by r_high52_break_strong_trend_trend_trail and r_tsmom20_strong_trend_trend_trail (owner-approved swap: both beat it on BSE history after costs, +0.26R/trade); still shadow-tracked on bse
   # REPLACED on nse 2026-10-18 by r_donchian20_strong_trend_trend_trail (self-review item nse:2026-10-18T16:45:51.939110+05:30); still shadow-tracked on nse
   # REPLACED on nse 2026-10-20 by r_tsmom60_rsi_momentum_trend_trail (self-review item nse:2026-10-19T16:45:54.771399+05:30); still shadow-tracked on nse
+  # REPLACED on bse 2026-10-23 by r_ema20_bounce_strong_trend_trend_trail (self-review item bse:2026-10-20T17:02:14.248502+05:30); still shadow-tracked on bse
   trend_pullback:
     retired_markets: [bse, nse]
     enabled: true
@@ -53,6 +55,7 @@ setups:
   # REPLACED on bse 2026-10-18 by r_high52_break_strong_trend_trend_trail and r_tsmom20_strong_trend_trend_trail (owner-approved swap: both beat it on BSE history after costs, +0.26R/trade); still shadow-tracked on bse
   # REPLACED on nse 2026-10-18 by r_donchian20_strong_trend_trend_trail (self-review item nse:2026-10-18T16:45:51.939110+05:30); still shadow-tracked on nse
   # REPLACED on nse 2026-10-20 by r_tsmom60_rsi_momentum_trend_trail (self-review item nse:2026-10-19T16:45:54.771399+05:30); still shadow-tracked on nse
+  # REPLACED on bse 2026-10-23 by r_ema20_bounce_strong_trend_trend_trail (self-review item bse:2026-10-20T17:02:14.248502+05:30); still shadow-tracked on bse
   nr7_breakout:
     retired_markets: [bse, nse]
     enabled: true
@@ -90,7 +93,9 @@ setups:
     enabled: true
     markets: [bse]
     research_only_markets: [bse]
+  # REPLACED on bse 2026-10-23 by r_ema20_bounce_strong_trend_trend_trail (self-review item bse:2026-10-20T17:02:14.248502+05:30); still shadow-tracked on bse
   r_donchian20_strong_trend_trend_trail:
+    retired_markets: [bse]
     enabled: true
     markets: [bse, nse]
     research_only_markets: [bse, nse]
@@ -98,6 +103,10 @@ setups:
     enabled: true
     markets: [nse]
     research_only_markets: [nse]
+  r_ema20_bounce_strong_trend_trend_trail:
+    enabled: true
+    markets: [bse]
+    research_only_markets: [bse]
 entry:
   confirm_timeframe_minutes: 15
   chased_atr_multiple: 1.0
