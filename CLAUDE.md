@@ -92,7 +92,13 @@ average, +2.2%, than below, +0.8% - tradedesk_lab/earnings_drift_timing.py): cal
 10,000 each, sold at +10% or the 20th close (from 2026-10-19, tradedesk_lab/takeoff_capture.py: ~32% more
 rupees a year on Rs 1 lakh), no stop, stops issuing if live results trail the market. The owner's real
 fills are read after each close (read-only order book, src/tradedesk/owner_trades.py) and matched
-to the calls; each call says how many of the ten Rs 10,000 slots are in use.
+to the calls; each call says how many of the ten Rs 10,000 slots are in use. From 2026-10-24
+(owner) a call whose reaction closed on a market down day (equal-weight liquid market -1% or
+worse that session) is marked "DOWN DAY - weaker" and real money should skip it: in history
+(live rule, exploratory split) such calls made +0.84% a call but only +0.23% over the market
+(256 calls, 45% of years ahead) against +1.25% and +0.94% on other days (1,349, 91%). They are
+still issued and kept on paper; calls from before the mark get one appended `annotated` event,
+and the scorecard reports the two groups apart.
 Tested and failed on 2026-10-18 (do not re-test without new data): the intraday playbook (ORB,
 VWAP pullback, breakout-retest, first-hour momentum - tradedesk_lab/intraday_playbook.py), daily
 setups' entries held 5 sessions (daily_twin_test.py), NIFTY 50 trend rules and sector rotation
@@ -107,8 +113,7 @@ books, but no better than holding the market (11.6%/yr) and a 45% fall (bar 25%)
 ~16%/yr of the capital at ~440 round trips a year. Down-day leaders fail too (2026-10-24,
 tradedesk_lab/down_day_leaders.py): stocks closing up 1%+ on volume while the market fell 1%+
 then trail the market by ~1.6% over 10-20 sessions in every year 2017-2026 (t -4 to -7).
-Exploratory, not a rule: drift picks whose reaction close fell on a market down day only matched
-the market (+0.68% net, 459 of 2,881) vs +1.8% net on other days. The Rs 10,000 delivery round trip is 0.56%, not 0.39%.
+That is why drift calls made on a market down day are marked weaker (see earnings_drift above). The Rs 10,000 delivery round trip is 0.56%, not 0.39%.
 Option income (9:20 straddle, Friday iron condor) cannot be backtested - INDstocks' expired-contract
 candles return nothing yet - so `tradedesk_lab/option_income.py` paper-trades both FORWARD on real
 Nifty quotes (scripts/option_income_watch.py, weekdays 09:17-15:20, saves every minute's chain);

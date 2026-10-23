@@ -14,6 +14,8 @@ calls win; the edge is in the average. No stop in the tested rule: each call is 
 From 2026-10-19 a call is sold when its price first reaches +10% over the entry, or else at the
 20th close (tradedesk_lab/takeoff_capture.py): +1.2% net a call, +0.8% over the market, 58% win,
 40% reach the target, and ~32% more rupees a year on Rs 1 lakh because slots free sooner.
+From 2026-10-24 a call whose reaction closed on a market down day is marked "weaker" (see
+DOWN_DAY); it is still issued and kept in the paper record, which reports the two apart.
 
 Each evening after the NSE close (hooked to tradedesk-after-close): issue calls whose
 reaction closed today (buy at the next open), record entries at the real open, close calls at
@@ -67,7 +69,19 @@ HISTORY = {  # the live rule (+10% target or the 20th close) at the real 0.564% 
     "net_below_200dma": 0.0043,
     "sd_net": 0.0888,  # spread of one call's result
     "round_trip": 0.00564,
+    # By the market's move on the reaction close (exploratory split, 2026-10-24).
+    "down_day_calls": 256,
+    "net_down_day": 0.0084,
+    "excess_down_day": 0.0023,
+    "net_other_days": 0.0125,
+    "excess_other_days": 0.0094,
 }
+# A call whose reaction closed on a market down day - the equal-weight liquid market down 1%
+# or more that session - is marked "weaker" (owner-approved 2026-10-24): in history such calls
+# kept little of the edge over the market (+0.2% vs +0.9%, positive in 45% of years vs 91%),
+# matching tradedesk_lab/down_day_leaders.py (stocks rising while the market falls trail it
+# afterwards). A mark only: every call is still issued and kept in the paper record.
+DOWN_DAY = -0.01
 SCORECARD = Path("data/reports/earnings_drift_scorecard.json")
 NIFTY = "NSE_40000001"
 NIFTY_LOOKBACK_DAYS = 330  # enough sessions for a 200-day average
@@ -153,6 +167,31 @@ def _market(p: Panels) -> pd.Series:
     return p.close.pct_change(fill_method=None).where(ok).mean(axis=1)
 
 
+def market_day_move(p: Panels, day: date, market: pd.Series | None = None) -> float | None:
+    """The equal-weight liquid market's close-to-close move on `day` (None: unknown)."""
+
+    market = _market(p) if market is None else market
+    if day not in market.index:
+        return None
+    value = float(market.loc[day])
+    return value if math.isfinite(value) else None
+
+
+def annotate(p: Panels, ledger: Sequence[Mapping[str, Any]], now: datetime) -> list[dict[str, Any]]:
+    """One appended `annotated` event per call recorded before the down-day mark existed."""
+
+    market = _market(p)
+    out = []
+    for cid, c in positions(ledger).items():
+        if "down_day" in c or not c.get("reaction_close_on"):
+            continue
+        move = market_day_move(p, date.fromisoformat(c["reaction_close_on"]), market)
+        if move is not None:
+            out.append({"event": "annotated", "call_id": cid, "at": now.isoformat(),
+                        "market_day_move": move, "down_day": move <= DOWN_DAY})  # fmt: skip
+    return out
+
+
 def candidates(p: Panels) -> list[dict[str, Any]]:
     """Results reactions that closed on the LAST stored session and meet the rule."""
 
@@ -196,12 +235,16 @@ def candidates(p: Panels) -> list[dict[str, Any]]:
             and c0 >= MIN_PRICE
         ):
             seen.add(code)
+            move = float(market.iloc[i1])
+            move_known = math.isfinite(move)
             out.append({
                 "symbol": sym, "scrip_code": code, "results_date": d.isoformat(),
                 "reaction_close_on": sessions[i1].isoformat(), "reference_close": float(c1),
                 "jump_vs_market": float(jump), "volume_x": float(window_vol / usual),
                 "turnover_cr": float(turnover / 1e7),
                 "nifty_vs_200dma": market_state(p, sessions[i1]),
+                "market_day_move": move if move_known else None,
+                "down_day": move_known and move <= DOWN_DAY,
             })  # fmt: skip
     return sorted(out, key=lambda c: -c["jump_vs_market"])
 
@@ -331,7 +374,7 @@ def run(
     p = load(db, now=now)
     ledger = read_ledger(ledger_path)
     moves = advance(p, ledger, now)
-    _append(moves, ledger_path)
+    _append([*moves, *annotate(p, ledger, now)], ledger_path)
     ledger = read_ledger(ledger_path)
     judged = verdict(ledger)
     open_codes = {c["scrip_code"] for c in positions(ledger).values() if "exit_price" not in c}
@@ -388,7 +431,7 @@ def scorecard(
                 inr = net * float(c["entry_price"]) * c["qty"]
                 open_now.append(
                     {"symbol": c.get("symbol"), "entry": c["entry_price"], "now": px,
-                     "net": net, "inr": inr}
+                     "net": net, "inr": inr, "down_day": c.get("down_day")}
                 )  # fmt: skip
     n = len(closed)
     mean = sum(float(c["net_return"]) for c in closed) / n if n else None
@@ -424,7 +467,36 @@ def scorecard(
         "status": status,
         "proven": bool(lower is not None and lower > 0),
         "closed_calls_for_proof": needed,
+        "by_market_day": _by_market_day(open_now, closed),
     }
+
+
+def _by_market_day(
+    open_now: Sequence[Mapping[str, Any]], closed: Sequence[Mapping[str, Any]]
+) -> dict[str, dict[str, Any]]:
+    """The live record split as the history was: calls marked down-day against the rest."""
+
+    def mean(values: list[float]) -> float | None:
+        return sum(values) / len(values) if values else None
+
+    out = {}
+    for label, flag in (("down_day", True), ("other_days", False)):
+        held = [float(r["net"]) for r in open_now if r.get("down_day") is flag]
+        done = [float(c["net_return"]) for c in closed if c.get("down_day") is flag]
+        out[label] = {"open": len(held), "open_mean_net": mean(held),
+                      "closed": len(done), "closed_mean_net": mean(done)}  # fmt: skip
+    return out
+
+
+def _market_day_part(part: Mapping[str, Any] | None) -> str:
+    if not part:
+        return "none"
+    bits = [
+        f"{part[k]} {k} {100 * part[f'{k}_mean_net']:+.1f}%"
+        for k in ("open", "closed")
+        if part.get(k) and part.get(f"{k}_mean_net") is not None
+    ]
+    return ", ".join(bits) or "none"
 
 
 def scorecard_message(card: Mapping[str, Any]) -> tuple[str, str] | None:
@@ -450,6 +522,12 @@ def scorecard_message(card: Mapping[str, Any]) -> tuple[str, str] | None:
             f"Normal for {card['closed']} closed calls: {100 * low:+.1f}% to {100 * high:+.1f}% "
             f"on average - {card['status']}"
         )
+    split = card.get("by_market_day") or {}
+    if any(v.get("open") or v.get("closed") for v in split.values()):
+        lines.append(
+            f"Made on a market down day: {_market_day_part(split.get('down_day'))}; "
+            f"other days: {_market_day_part(split.get('other_days'))}"
+        )
     lines.append(
         "PROVEN live: results beat the market" if card["proven"] else
         f"Proof needs about {card['closed_calls_for_proof']} closed calls; losing runs are "
@@ -466,6 +544,17 @@ def _state_line(calls: Sequence[Mapping[str, Any]]) -> str:
     return (
         f" Market: NIFTY {state} its 200-day average; calls made in this state averaged "
         f"{100 * net:+.1f}% after costs."
+    )
+
+
+def _down_day_line() -> str:
+    h = HISTORY
+    return (
+        "DOWN DAY: the results reaction closed on a day the market fell 1% or more. Such calls "
+        f"made {100 * h['net_down_day']:+.1f}% a call after costs but only "
+        f"{100 * h['excess_down_day']:+.1f}% over the market ({h['down_day_calls']} in history; "
+        f"other days {100 * h['net_other_days']:+.1f}%, {100 * h['excess_other_days']:+.1f}% "
+        "over). With real money, skip them; the paper record keeps every call."
     )
 
 
@@ -496,7 +585,10 @@ def messages(
                 f"(~Rs {c['reference_close'] * (1 + TARGET_PCT):,.2f}) or the close of the "
                 f"{HOLD_SESSIONS}th session | "
                 f"results +{100 * c['jump_vs_market']:.1f}% vs market on {c['volume_x']:.1f}x volume"  # noqa: E501
+                + (" | DOWN DAY - weaker" if c.get("down_day") else "")
             )
+        if any(c.get("down_day") for c in result["issued"]):
+            lines.append(_down_day_line())
         out.append((
             f"EARNINGS DRIFT: {len(result['issued'])} call(s) for the next open",
             "\n".join(lines) + f"\nAfter buying, place a sell order (GTT) at {1 + TARGET_PCT:.2f}x "

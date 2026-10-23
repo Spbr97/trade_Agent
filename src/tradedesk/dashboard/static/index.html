@@ -1848,6 +1848,9 @@ async function loadEarningsDrift() {
       lines.push(`Paper record (as if Rs 10,000 each): ${sc.calls} calls - ${sc.waiting_entry} waiting, ${sc.open} open, ${sc.closed} closed.`);
       if (sc.open) lines.push(`Open now ${(100 * sc.open_mean_net).toFixed(1)}% avg after costs (Rs ${Math.round(sc.open_inr).toLocaleString()}).`);
       if (sc.closed) lines.push(`Closed ${sc.closed_won}/${sc.closed} won, avg ${(100 * sc.closed_mean_net).toFixed(1)}% after costs; normal for ${sc.closed} calls is ${(100 * sc.normal_range_80[0]).toFixed(1)}% to ${(100 * sc.normal_range_80[1]).toFixed(1)}% - ${esc(sc.status)}.`);
+      const split = sc.by_market_day || {};
+      const part = p => p ? [p.open ? `${p.open} open ${(100 * p.open_mean_net).toFixed(1)}%` : '', p.closed ? `${p.closed} closed ${(100 * p.closed_mean_net).toFixed(1)}%` : ''].filter(Boolean).join(', ') || 'none' : 'none';
+      if (Object.values(split).some(p => p.open || p.closed)) lines.push(`Made on a market down day: ${part(split.down_day)}; other days: ${part(split.other_days)}.`);
       lines.push(sc.proven ? 'PROVEN live: beats the market.' : `Proof needs about ${sc.closed_calls_for_proof} closed calls.`);
     }
     $('drift-scorecard').textContent = lines.join(' ');
@@ -1859,7 +1862,10 @@ async function loadEarningsDrift() {
       const exit = c.exit_price != null ? `${c.exit_on} @ ${c.exit_price.toFixed(2)}` : (c.entry_price != null ? `+10% (${(1.1 * c.entry_price).toFixed(2)}) or session ${d.hold_sessions}` : `+10% or session ${d.hold_sessions}`);
       const net = c.net_return != null ? `<span class="${c.net_return > 0 ? 'pos' : 'neg'}">${(100 * c.net_return).toFixed(2)}% (Rs ${Math.round(c.net_inr)})</span>` : '-';
       const ex = c.excess_return != null ? `${(100 * c.excess_return).toFixed(2)}%` : '-';
-      return `<tr><td>${esc(c.symbol)}</td><td>${c.results_date}</td><td>+${(100 * c.jump_vs_market).toFixed(1)}% (${c.volume_x.toFixed(1)}x vol)</td><td>${entry}</td><td>${c.qty ?? '-'}</td><td>${exit}</td><td>${net}</td><td>${ex}</td><td>${status}</td></tr>`;
+      // Down day: the reaction closed on a day the market fell 1%+ - weaker in history,
+      // skip with real money (earnings_drift.py DOWN_DAY); still kept on paper.
+      const weak = c.down_day ? ` <span class="neg" title="Reaction closed on a market down day (${(100 * (c.market_day_move || 0)).toFixed(1)}%): in history only +0.2% over the market vs +0.9% on other days. Skip with real money.">DOWN DAY - weaker</span>` : '';
+      return `<tr><td>${esc(c.symbol)}${weak}</td><td>${c.results_date}</td><td>+${(100 * c.jump_vs_market).toFixed(1)}% (${c.volume_x.toFixed(1)}x vol)</td><td>${entry}</td><td>${c.qty ?? '-'}</td><td>${exit}</td><td>${net}</td><td>${ex}</td><td>${status}</td></tr>`;
     }).join('');
     $('drift-table').innerHTML = head + (body || '<tr><td colspan="9" class="muted">No calls yet - they are issued after the close on results days.</td></tr>');
   } catch (e) {

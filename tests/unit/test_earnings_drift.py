@@ -39,6 +39,40 @@ def test_a_liquid_results_jump_on_volume_is_a_call() -> None:
     assert abs(found[0]["jump_vs_market"] - 0.12) < 0.02 and found[0]["volume_x"] >= 2
 
 
+def test_a_call_made_on_a_market_down_day_is_marked_weaker() -> None:
+    calm = ed.candidates(_panels())[0]
+    assert calm["down_day"] is False and calm["market_day_move"] == pytest.approx(0.12 / 13)
+    p = _panels()
+    p.close.iloc[-1, :12] = 500.0 * 0.97  # the rest of the market falls 3% that session
+    falling = ed.candidates(p)[0]
+    assert falling["down_day"] is True
+    assert falling["market_day_move"] == pytest.approx((12 * -0.03 + 0.12) / 13)
+    assert falling["symbol"] == "JUMPY"  # still a call: the mark never withholds one
+
+
+def test_calls_from_before_the_mark_are_annotated_once(tmp_path: Path) -> None:
+    p = _panels()
+    p.close.iloc[-1, :12] = 500.0 * 0.97
+    old = {"event": "call", "call_id": "JUMPY:x", "at": "t", "symbol": "JUMPY",
+           "scrip_code": "NSE_J", "reaction_close_on": p.sessions[-1].isoformat()}  # fmt: skip
+    marks = ed.annotate(p, [old], datetime.now(IST))
+    assert [m["event"] for m in marks] == ["annotated"] and marks[0]["down_day"] is True
+    merged = ed.positions([old, *marks])["JUMPY:x"]
+    assert merged["down_day"] is True and merged["symbol"] == "JUMPY"
+    assert ed.annotate(p, [old, *marks], datetime.now(IST)) == []
+
+
+def test_the_call_push_says_a_down_day_call_is_weaker() -> None:
+    call = {"symbol": "CYIENT", "reference_close": 1200.0, "jump_vs_market": 0.09, "volume_x": 3.0}
+    result = {"issued": [call, {**call, "symbol": "GRWRHITECH", "down_day": True}],
+              "exit_tomorrow": [], "exited": [], "verdict": {"status": "live"}}  # fmt: skip
+    body = ed.messages(result)[0][1]
+    assert body.count("DOWN DAY - weaker") == 1 and "GRWRHITECH BUY" in body
+    assert "only +0.2% over the market" in body and "With real money, skip them" in body
+    plain = ed.messages({**result, "issued": [call]})[0][1]
+    assert "DOWN DAY" not in plain
+
+
 def test_small_jumps_or_quiet_volume_are_not_calls() -> None:
     assert ed.candidates(_panels(jump=0.03)) == []
     assert ed.candidates(_panels(volume_x=1.2)) == []
@@ -197,5 +231,22 @@ def test_the_scorecard_compares_the_paper_record_with_what_is_normal() -> None:
     title, body = ed.scorecard_message(card)
     assert title == "Earnings-drift paper record (as if Rs 10,000 each)"
     assert "Closed: 15 of 30 won" in body and "Normal for 30 closed calls" in body
-    assert "losing runs are normal" in body
+    assert "losing runs are normal" in body and "market down day" not in body  # none marked
     assert ed.scorecard_message({}) is None
+
+
+def test_the_paper_record_reports_down_day_calls_apart() -> None:
+    rows = [
+        {"event": "call", "call_id": "A:d", "at": "t", "symbol": "A", "scrip_code": "NSE_A",
+         "down_day": True},
+        {"event": "entered", "call_id": "A:d", "at": "t", "entry_price": 100.0, "qty": 100},
+        *_closed(1, 0.04),
+    ]  # fmt: skip
+    rows[2] = {**rows[2], "down_day": False}
+    card = ed.scorecard(rows, {"NSE_A": 95.0}, as_of="x")
+    split = card["by_market_day"]
+    assert split["down_day"]["open"] == 1 and split["down_day"]["closed"] == 0
+    assert split["other_days"] == {"open": 0, "open_mean_net": None, "closed": 1,
+                                   "closed_mean_net": 0.04}  # fmt: skip
+    body = ed.scorecard_message(card)[1]
+    assert "Made on a market down day: 1 open -5.6%; other days: 1 closed +4.0%" in body
