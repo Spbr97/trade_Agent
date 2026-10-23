@@ -288,7 +288,7 @@ def eod_summary(market: str, day: date, *, root: Path = Path(".")) -> tuple[str,
             lines.append(line)
     lines.append(
         f"(Rs figures: Rs {NOTIONAL_INR:,} per call, after {100 * cost:.2f}% charges incl. "
-        "STT / crypto TDS; year-end income tax not deducted)"
+        f"{'TDS' if market == 'crypto' else 'STT'}; year-end income tax not deducted)"
     )
     lines.append(RESEARCH)
     return f"{_name(market)} end-of-day numbers", "\n".join(lines)
@@ -301,7 +301,11 @@ def intraday_check(market: str, *, root: Path = Path(".")) -> tuple[str, str]:
         return title, f"No intraday study report yet for {market}.\n{RESEARCH}"
     consensus = (report.get("pick_record") or {}).get("consensus") or {}
     latest, overall = consensus.get("latest") or {}, consensus.get("all") or {}
-    lines = [f"{_name(market)} intraday study, latest session {consensus.get('latest_session')}"]
+    session = consensus.get("latest_session")
+    lines = [
+        f"{_name(market)} intraday study, "
+        + (f"latest session {session}" if session else "no session scored yet")
+    ]
     lines.append(
         f"Consensus picks that session: {latest.get('picks', 0)}, "
         f"winners {latest.get('winners', 0)}, beat market {latest.get('beat_market', 0)}"
@@ -598,7 +602,10 @@ def potential_movers(market: str, *, root: Path = Path(".")) -> tuple[str, str, 
     if len(rows) > MOVERS_SHOWN:
         lines.append(f"+{len(rows) - MOVERS_SHOWN} more on the dashboard (Markets tab)")
     lines.append(RESEARCH)
-    title = f"{_name(market)} potential movers for the next session ({report.get('as_of')})"
+    title = (
+        f"{_name(market)} potential movers for the next session (after the "
+        f"{report.get('as_of')} close)"
+    )
     return f"movers:{market}:{report.get('as_of')}", title, "\n".join(lines)
 
 
@@ -675,6 +682,18 @@ def multiday_brief(
     return lines
 
 
+def movers_brief(market: str, *, root: Path = Path("."), top: int = SUMMARY_TOP) -> list[str]:
+    """The potential movers in a few lines: the first `top` names and the watch's record."""
+    movers = potential_movers(market, root=root)
+    if not movers:
+        return []
+    body = _body(movers[2])
+    names = [line for line in body if not line.startswith(("Track record", "+"))]
+    record = [line for line in body if line.startswith("Track record")]
+    header = f"{movers[1]}, top {min(top, len(names))} (the full list is on the Markets tab):"
+    return [header, *names[:top], *record]
+
+
 def _split(title: str, sections: list[list[str]], tail: list[str]) -> list[tuple[str, str]]:
     """Whole sections per message, never past MAX_MESSAGE_CHARS; the tail ends the last."""
     parts: list[list[str]] = [[]]
@@ -702,15 +721,9 @@ def evening_summary(
     sections = [_body(eod_summary(market, day, root=root)[1])]
     if market in ("nse", "bse"):
         sections.append(_body(intraday_check(market, root=root)[1]))
-        movers = potential_movers(market, root=root)
+        movers = movers_brief(market, root=root)
         if movers:
-            body = _body(movers[2])
-            names = [line for line in body if not line.startswith(("Track record", "+"))]
-            rest = [line for line in body if line.startswith("Track record")]
-            sections.append(
-                [f"Potential movers ({len(names)} shown in full on the Markets tab):",
-                 *names[:SUMMARY_TOP], *rest]
-            )  # fmt: skip
+            sections.append(movers)
     if multiday_ok:
         sections.append(multiday_brief(market, root=root, today=day))
     else:
@@ -723,8 +736,8 @@ def evening_summary(
 def crypto_morning(*, root: Path = Path(".")) -> list[tuple[str, str]]:
     """Crypto's morning push: its intraday study and its potential movers together."""
     sections = [_body(intraday_check("crypto", root=root)[1])]
-    movers = potential_movers("crypto", root=root)
+    movers = movers_brief("crypto", root=root)
     if movers:
-        sections.append([movers[1], *_body(movers[2])])
+        sections.append(movers)
     day = datetime.now(IST).date()
     return _split(f"CRYPTO morning {day:%d %b}", sections, [RESEARCH])

@@ -273,6 +273,28 @@ def test_a_failed_host_job_marks_only_its_own_section(tmp_path: Path) -> None:
         "crypto", date(2026, 10, 23), root=tmp_path, multiday_ok=False
     )[0]
     assert "CRYPTO end of day" in body and "today's job failed" in body
+    assert "charges incl. TDS;" in body and "STT" not in body
+
+
+def test_the_crypto_morning_push_lists_only_the_top_movers(tmp_path: Path) -> None:
+    report = {
+        "status": "available", "as_of": "2026-10-23",
+        "candidates": [
+            {"symbol": f"C{i}INR", "tier": "deep", "close": 3.4,
+             "five_session_change_pct": -7.6, "model_probability": 0.3}
+            for i in range(25)
+        ],
+    }  # fmt: skip
+    path = tmp_path / "data" / "m14_m18" / "potential_movers" / "crypto" / "latest.json"
+    path.parent.mkdir(parents=True)
+    path.write_text(json.dumps(report), encoding="utf-8")
+    study = tmp_path / "data" / "m14_m18" / "intraday_mover_study" / "crypto" / "latest.json"
+    study.parent.mkdir(parents=True)
+    study.write_text(json.dumps({"pick_record": {"consensus": {"sessions": 0}}}), "utf-8")
+    (_, body), *more = digests.crypto_morning(root=tmp_path)
+    assert not more and "no session scored yet" in body
+    assert "(after the 2026-10-23 close), top 5 (the full list is on the Markets tab):" in body
+    assert body.count("INR  deep") == digests.SUMMARY_TOP and "C5INR" not in body
 
 
 def test_long_summaries_split_on_whole_sections() -> None:

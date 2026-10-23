@@ -66,7 +66,9 @@ BTC/ETH plan (src/tradedesk/crypto_monthly.py, Rs 5,000 each, never sold) runs b
 normal crypto calls, recorded and pushed once a month from tradedesk-crypto-research-tracker.
 Six files deploy with CRLF bytes (.gitattributes) because sealed research cohorts hashed them so. Oracle cost safety: a `free-tier-only` quota policy, a SGD budget alert, and
 `deploy/oracle/billing_guard.py` every 5 min on both the server and the laptop (kill switch at
-SGD 0.30) - the owner cannot afford any Oracle charge. Memory safety: every batch job runs in
+SGD 0.30) - the owner cannot afford any Oracle charge. Each machine keeps its own accepted
+resource list: accept a new resource (`--accept`) on BOTH, or the other keeps pushing it
+(2026-10-24: the laptop re-pushed the default "Tenant Admin Policy" accepted only on the server). Memory safety: every batch job runs in
 `tradedesk-jobs.slice` (one shared cap at 85% of RAM, so a runaway job is stopped alone while the
 dashboard, tunnel and billing guard keep room), a 4 GB swap file on the boot volume cushions peaks,
 and `deploy/linux/memory_guard.py` (every minute) pushes low/critical memory, any out-of-memory
@@ -99,7 +101,14 @@ VWAP band + RSI reversion on 1-minute history (tradedesk_lab/intraday_plan_test.
 rotation and Donchian-55 with a 3xATR trail (tradedesk_lab/multiday_rotation.py).
 Crypto multi-day alternatives also fail after 30% tax (tradedesk_lab/crypto_multiday_alternatives.py, 2026-10-20): BTC/ETH above their 200-day average and a BTC+ETH trend pair grow money but less than holding BTC and not better than random timing; top-5 coin momentum loses 66%. Liquidity-sweep fades also fail (tradedesk_lab/sweep_and_reversion.py); its multi-day dip buy
 (RSI2<5 above EMA200) passes on paper but is erased by the real 0.56% round trip at Rs 10,000 a
-trade - it needs >= Rs 25,000 a trade. The Rs 10,000 delivery round trip is 0.56%, not 0.39%.
+trade - and as a 10-slot Rs 25,000 book (Rs 2.5 lakh assumed, 0.36% round trip,
+tradedesk_lab/dip_book.py, 2026-10-24) it still fails: ~10%/yr, beats all 200 matched random
+books, but no better than holding the market (11.6%/yr) and a 45% fall (bar 25%); charges run
+~16%/yr of the capital at ~440 round trips a year. Down-day leaders fail too (2026-10-24,
+tradedesk_lab/down_day_leaders.py): stocks closing up 1%+ on volume while the market fell 1%+
+then trail the market by ~1.6% over 10-20 sessions in every year 2017-2026 (t -4 to -7).
+Exploratory, not a rule: drift picks whose reaction close fell on a market down day only matched
+the market (+0.68% net, 459 of 2,881) vs +1.8% net on other days. The Rs 10,000 delivery round trip is 0.56%, not 0.39%.
 Option income (9:20 straddle, Friday iron condor) cannot be backtested - INDstocks' expired-contract
 candles return nothing yet - so `tradedesk_lab/option_income.py` paper-trades both FORWARD on real
 Nifty quotes (scripts/option_income_watch.py, weekdays 09:17-15:20, saves every minute's chain);
