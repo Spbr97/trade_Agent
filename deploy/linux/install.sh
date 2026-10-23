@@ -72,8 +72,11 @@ chown "$USER_NAME" "$units"  # rendered as the service user, so it must own the 
 sudo -u "$USER_NAME" "$ROOT/.venv/bin/python" "$ROOT/deploy/linux/render_units.py" \
   --root "$ROOT" --user "$USER_NAME" --out "$units"
 # Remove units for jobs that no longer exist, then install the fresh set.
+# tradedesk-backup is installed further down from deploy/linux, not rendered: left to this
+# loop, every deploy stopped it - killing a backup that was running (2026-10-24, 02:42).
 for old in /etc/systemd/system/tradedesk-*.service /etc/systemd/system/tradedesk-*.timer; do
   [ -e "$old" ] || continue
+  case "$(basename "$old")" in tradedesk-backup.service|tradedesk-backup.timer) continue ;; esac
   [ -e "$units/$(basename "$old")" ] || { systemctl disable --now "$(basename "$old")" || true; rm -f "$old"; }
 done
 install -m 0644 "$units"/* /etc/systemd/system/
