@@ -42,6 +42,7 @@ setups:
   # REPLACED on nse 2026-10-18 by r_donchian20_strong_trend_trend_trail (self-review item nse:2026-10-18T16:45:51.939110+05:30); still shadow-tracked on nse
   # REPLACED on nse 2026-10-20 by r_tsmom60_rsi_momentum_trend_trail (self-review item nse:2026-10-19T16:45:54.771399+05:30); still shadow-tracked on nse
   # REPLACED on bse 2026-10-23 by r_ema20_bounce_strong_trend_trend_trail (self-review item bse:2026-10-20T17:02:14.248502+05:30); still shadow-tracked on bse
+  # REPLACED on nse 2026-10-23 by r_ema20_bounce_strong_trend_trend_trail (self-review item nse:2026-10-22T16:45:58.577802+05:30); still shadow-tracked on nse
   trend_pullback:
     retired_markets: [bse, nse]
     enabled: true
@@ -56,6 +57,7 @@ setups:
   # REPLACED on nse 2026-10-18 by r_donchian20_strong_trend_trend_trail (self-review item nse:2026-10-18T16:45:51.939110+05:30); still shadow-tracked on nse
   # REPLACED on nse 2026-10-20 by r_tsmom60_rsi_momentum_trend_trail (self-review item nse:2026-10-19T16:45:54.771399+05:30); still shadow-tracked on nse
   # REPLACED on bse 2026-10-23 by r_ema20_bounce_strong_trend_trend_trail (self-review item bse:2026-10-20T17:02:14.248502+05:30); still shadow-tracked on bse
+  # REPLACED on nse 2026-10-23 by r_ema20_bounce_strong_trend_trend_trail (self-review item nse:2026-10-22T16:45:58.577802+05:30); still shadow-tracked on nse
   nr7_breakout:
     retired_markets: [bse, nse]
     enabled: true
@@ -73,7 +75,9 @@ setups:
     enabled: true
     markets: [nse]
     research_only_markets: [nse]
+  # REPLACED on nse 2026-10-23 by r_ema20_bounce_strong_trend_trend_trail (self-review item nse:2026-10-22T16:45:58.577802+05:30); still shadow-tracked on nse
   r_high52_break_strong_trend_trend_trail:
+    retired_markets: [nse]
     enabled: true
     markets: [nse, bse]
     research_only_markets: [nse, bse]
@@ -105,8 +109,8 @@ setups:
     research_only_markets: [nse]
   r_ema20_bounce_strong_trend_trend_trail:
     enabled: true
-    markets: [bse]
-    research_only_markets: [bse]
+    markets: [bse, nse]
+    research_only_markets: [bse, nse]
 entry:
   confirm_timeframe_minutes: 15
   chased_atr_multiple: 1.0
