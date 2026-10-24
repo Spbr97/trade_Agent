@@ -63,6 +63,17 @@ STATUS_MAX_AGE = timedelta(days=4)  # older than this, the scan treats every set
 
 ALERTING = {"tradeable": 1.0, "provisional": PROVISIONAL_SIZE}
 
+# Since 2026-10-14 the tracker grades every call twice, under a 3-session 0.75R contract and
+# a 10-session 2R one (signal_tracker.log_exit_contract_signals). Counting both made each
+# call two live results (2026-10-25: 205 NSE/BSE calls counted twice, doubling losing
+# streaks). A call counts once: its swing row - the multi-session hold the history was
+# proven on - or, for calls from before the contracts, its legacy row.
+JUDGED_CONTRACTS = ("swing-v1", "legacy-t1-tracker-v1")
+# A call outside the market's ATR band can never alert, whatever the verdict. Money-market
+# ETFs (LIQUIDCASE, LIQUIDBEES, ...) sit there: a stop a few paise away turns the charges
+# into -3R to -49R and buried r_tsmom252's live record (2026-10-25).
+UNTRADEABLE_PREFIX = "ATR "
+
 
 def confidence_sequence(
     values: Sequence[float], *, alpha: float, target_n: int = TARGET_CALLS
@@ -122,7 +133,8 @@ def after_cost_r(row: Mapping[str, Any], round_trip: float) -> float | None:
 
 def live_results(market: str, *, root: Path = Path(".")) -> dict[str, list[dict[str, Any]]]:
     """Resolved, actually-traded LIVE calls per setup in resolution order, in R after costs.
-    Backfilled history rows (source != "live") are not live evidence and are skipped."""
+    Backfilled history rows (source != "live") are not live evidence and are skipped, each
+    call counts once (JUDGED_CONTRACTS), and calls outside the ATR band never count."""
 
     from tradedesk.digests import round_trip
 
@@ -130,6 +142,10 @@ def live_results(market: str, *, root: Path = Path(".")) -> dict[str, list[dict[
     out: dict[str, list[dict[str, Any]]] = {}
     for row in _rows(root / TRACKERS[market]):
         if row.get("source") != "live" or row.get("outcome") not in TRADED_OUTCOMES:
+            continue
+        if str(row.get("contract_version") or JUDGED_CONTRACTS[1]) not in JUDGED_CONTRACTS:
+            continue
+        if any(str(why).startswith(UNTRADEABLE_PREFIX) for why in row.get("rejected_for") or []):
             continue
         r = after_cost_r(row, cost)
         if r is None:

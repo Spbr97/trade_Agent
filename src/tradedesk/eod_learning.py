@@ -484,7 +484,11 @@ def run_eod_learning(
     base = _fit_and_score(df, active, seed=20260101, cost_r=cost_r, kind=state.model_kind)
     if base is None:
         record["phase"] = "waiting"
-        record["summary"] = "usable rows fell below the fitting floor after dropna"
+        sessions = df["armed_date"].nunique() if "armed_date" in df else 0
+        record["summary"] = (
+            f"too little history to fit yet: {len(df)} usable rows over {sessions} sessions "
+            f"(the purged walk-forward needs more sessions, not only more rows)"
+        )
         echo(record["summary"])
         _append_history(market, record)
         return record

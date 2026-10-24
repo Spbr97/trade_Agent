@@ -207,6 +207,18 @@ class SearchOutcome:
                 + (f" {', '.join(self.submitted_items)}" if self.submitted_items else "")
                 + ". Approving it adds it on this market only."
             )
+        elif self.leaderboard and self.leaderboard[0].get("passed"):
+            # A passing leader that was not submitted is installed here already or takes
+            # mostly a live setup's entries (orchestrate.select_for_submission) - not a near
+            # miss, which "failed on: n/a" made it read like (crypto, 2026-10-25).
+            top = self.leaderboard[0]
+            lines.append(
+                f"Best so far: {top['name']} ({top['description']}) - net "
+                f"{_fmt_r(top['net_r'])}/trade, {_fmt_pct(top['win_rate'])} winners over "
+                f"{top['n_trades']} trades; it passed every check but is already installed on "
+                "this market or mostly takes a live setup's entries, so it is not proposed "
+                "again."
+            )
         elif self.leaderboard:
             top = self.leaderboard[0]
             lines.append(

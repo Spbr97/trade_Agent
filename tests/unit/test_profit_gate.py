@@ -82,6 +82,26 @@ def test_only_live_rows_count_and_costs_are_taken_off(tmp_path: Path) -> None:
     assert [round(c["net_r"], 4) for c in calls] == [round(2.0 - 0.0039098 * 100 / 5, 4), -1.06]
 
 
+def test_each_call_counts_once_and_untradeable_calls_not_at_all(tmp_path: Path) -> None:
+    base = {"source": "live", "setup": "a", "outcome": "stop", "resolved_at": "2026-10-20"}
+    rows = [
+        {**base, "signal_id": "a:X:1::quick-profit-v1", "contract_version": "quick-profit-v1",
+         "net_r": -0.5},
+        {**base, "signal_id": "a:X:1::swing-v1", "contract_version": "swing-v1", "net_r": -1.1},
+        {**base, "signal_id": "a:Y:1", "contract_version": "legacy-t1-tracker-v1",
+         "net_r": -1.0},
+        {**base, "signal_id": "a:LIQUIDBEES:1::swing-v1", "contract_version": "swing-v1",
+         "net_r": -2.8, "rejected_for": ["ATR 0.0% outside 1.5-5.0%", "grade C (score 57)"]},
+        {**base, "signal_id": "a:Z:1::swing-v1", "contract_version": "swing-v1", "net_r": 0.4,
+         "outcome": "target", "rejected_for": ["regime risk_off: no new swing entries"]},
+    ]  # fmt: skip
+    path = tmp_path / pg.TRACKERS["nse"]
+    path.parent.mkdir(parents=True)
+    path.write_text("\n".join(json.dumps(r) for r in rows), encoding="utf-8")
+    calls = pg.live_results("nse", root=tmp_path)["a"]
+    assert sorted(c["net_r"] for c in calls) == [-1.1, -1.0, 0.4]
+
+
 def test_the_scan_fails_closed_on_a_missing_or_stale_status(tmp_path: Path) -> None:
     assert pg.alerting_setups("nse", root=tmp_path) == {}
     verdict = pg.decide("r_x", "nse", [], [], GOOD_HISTORY, alpha=0.01)

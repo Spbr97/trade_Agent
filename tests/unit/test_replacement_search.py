@@ -136,6 +136,16 @@ def test_a_passing_candidate_is_reported_as_the_replacement(monkeypatch, tmp_pat
     assert outcome.leaderboard[0]["name"] == "b"
 
 
+def test_a_passing_leader_from_an_earlier_run_is_not_called_a_near_miss(
+    monkeypatch, tmp_path: Path
+) -> None:
+    _stub_world(monkeypatch, tmp_path, verdicts={"a": False, "b": True})
+    _run(tmp_path, time_budget_s=600)
+    text = _run(tmp_path, time_budget_s=0).summary()
+    assert "Best so far: b" in text and "not proposed again" in text
+    assert "failed on" not in text
+
+
 def test_near_misses_are_ranked_and_named_in_the_plan(monkeypatch, tmp_path: Path) -> None:
     _stub_world(monkeypatch, tmp_path, verdicts={"a": False})
     outcome = _run(tmp_path, time_budget_s=600)
