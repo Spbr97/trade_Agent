@@ -147,7 +147,8 @@ and beats the retired setups' own forward result - the bar is never lowered to p
 winner. A passing candidate already installed on that market, or whose entries a live rule
 setup already takes more than half the time (`replacement_search.MAX_LIVE_OVERLAP`, measured on
 the same history), is not proposed (2026-10-20: a Donchian-55 proposal was 100% inside the live
-Donchian-20). The search judges candidates on sane bars only (`detector_authoring.sane_bars`): impossible bars are dropped and crypto history starts in 2021, because CoinDCX's 2018-2020 daily history is about 10% corrupt. The Review tab's "Replacement research" panel shows the plan and leaderboard.
+Donchian-20); 2026-10-24: improvement variants of rule setups skipped this check and sent six
+proposals 97-100% inside live setups - they are now measured too, and count as one idea per base setup). The search judges candidates on sane bars only (`detector_authoring.sane_bars`): impossible bars are dropped and crypto history starts in 2021, because CoinDCX's 2018-2020 daily history is about 10% corrupt. The Review tab's "Replacement research" panel shows the plan and leaderboard.
 **Replace, never retire into a blank** (owner's rule, 2026-10-18): the loop no longer raises retire-only items. A sustained failure stays on its market's roster (and stays a research target) until a candidate beats it; that candidate is one NEW_DETECTOR proposal whose `replaces` lists the setups it beat - only the original three or setups the profit gate has judged NO EDGE/STOPPED on live rupees (`orchestrate.failing_on_money`, 2026-10-21: the target-hit-rate monitor flags every trailing-exit trend setup, so swaps were set to retire live, gate-cleared setups), and `apply()` adds it and moves those to `retired_markets` in a single commit. The 2026-09-30 retire-only changes were restored the same day.
 Full spec and milestone list: PLAN.md.
 

@@ -219,6 +219,18 @@ def test_select_for_submission_keeps_the_best_per_idea_and_caps_the_run() -> Non
     assert chosen == ["a2", "c", "b"] and len(chosen) == MAX_NEW_DETECTORS_PER_RUN
 
 
+def test_improvements_of_one_setup_are_one_idea() -> None:
+    from tradedesk.self_review.orchestrate import select_for_submission
+
+    cands = {
+        "i1": SimpleNamespace(base="r_high52_break_strong_trend_trend_trail"),
+        "i2": SimpleNamespace(base="r_high52_break_strong_trend_trend_trail"),
+        "j": SimpleNamespace(base="r_donchian55_any_trend_trail"),
+    }
+    passed = [SimpleNamespace(name=n, net_r=v) for n, v in [("i1", 0.25), ("i2", 0.25), ("j", 0.2)]]
+    assert [x.name for x in select_for_submission(passed, cands)] == ["i1", "j"]
+
+
 def test_is_repo_root_accepts_the_relative_root_the_cli_passes(tmp_path) -> None:
     import os
     from pathlib import Path
@@ -254,3 +266,14 @@ def test_a_candidate_whose_entries_a_live_setup_takes_already_overlaps_fully() -
     assert rs.live_overlap(d20, [d55], frames) < rs.MAX_LIVE_OVERLAP
     assert rs.live_overlap(d55, [], frames) is None
     assert rs.live_overlap(SimpleNamespace(name="library"), [d20], frames) is None
+
+
+def test_an_improvement_of_a_rule_setup_is_measured_against_live_setups() -> None:
+    from tradedesk_lab.candidates.rules import ImprovedSetup, RuleCandidate
+
+    d20 = RuleCandidate("donchian20", "strong_trend", "trend_trail")
+    imp = ImprovedSetup("r_donchian55_strong_trend_trend_trail", "any", "trend_trail")
+    frames = {"X": _rising_frame()}
+    assert rs.live_overlap(imp, [d20], frames) == 1.0
+    hand_written = ImprovedSetup("base_breakout", "any", "trend_trail")
+    assert rs.live_overlap(hand_written, [d20], frames) is None

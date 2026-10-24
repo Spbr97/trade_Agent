@@ -31,7 +31,12 @@ from typing import Any
 
 from tradedesk_lab.artifacts import OUTPUT, ROOT, verify_base, write_json
 from tradedesk_lab.candidates import candidate_space
-from tradedesk_lab.candidates.rules import RuleCandidate, clear_base_cache, rule_candidates
+from tradedesk_lab.candidates.rules import (
+    ImprovedSetup,
+    RuleCandidate,
+    clear_base_cache,
+    rule_candidates,
+)
 from tradedesk_lab.registry import Registry
 
 from tradedesk.broker.indstocks.models import IST
@@ -115,22 +120,42 @@ above the 55-day high is above the 20-day high too). It is not proposed."""
 OVERLAP_SESSIONS = 5
 
 
+def _entry_rule(candidate: Any) -> tuple[RuleCandidate, ImprovedSetup | None] | None:
+    """The rule whose signal days are `candidate`'s entries, plus the extra filter of an
+    improvement variant built on a rule setup. None when entries need the production arm()
+    (an improvement of base_breakout and the other hand-written setups)."""
+    if isinstance(candidate, RuleCandidate):
+        return candidate, None
+    if isinstance(candidate, ImprovedSetup):
+        base = next((r for r in rule_candidates() if r.name == candidate.base), None)
+        if base is not None:
+            return base, candidate
+    return None
+
+
 def live_overlap(
     candidate: Any, live: list[RuleCandidate], frame_map: dict[str, Any]
 ) -> float | None:
     """Share of `candidate`'s entry days on which one of the `live` rule setups fired on the
-    same stock that day or in the previous OVERLAP_SESSIONS - 1 sessions. None for a
-    non-rule candidate, nothing live to compare with, or no entries."""
-    if not isinstance(candidate, RuleCandidate) or not live:
+    same stock that day or in the previous OVERLAP_SESSIONS - 1 sessions. An improvement
+    variant of a rule setup is measured too (2026-10-24: imp_r_high52_break_strong_trend_* on
+    NSE went unmeasured and was proposed, though a 52-week high is a 20-day high and
+    r_donchian20_strong_trend_trend_trail is live there). None for a candidate whose entries
+    cannot be read off a rule, nothing live to compare with, or no entries."""
+    rule = _entry_rule(candidate)
+    if rule is None or not live:
         return None
+    base, extra = rule
     total = shared = 0
     for df in frame_map.values():
-        own = candidate.prepare(df)[candidate.gate_column]
+        own = base.prepare(df)[base.gate_column]
+        if extra is not None:
+            own = own & extra.prepare(df)[extra.gate_column]
         if not own.any():
             continue
         others = own & False
-        for rule in live:
-            others = others | rule.prepare(df)[rule.gate_column]
+        for other in live:
+            others = others | other.prepare(df)[other.gate_column]
         recent = others.astype(int).rolling(OVERLAP_SESSIONS, min_periods=1).max().astype(bool)
         total += int(own.sum())
         shared += int((own & recent).sum())

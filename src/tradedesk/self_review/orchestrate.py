@@ -162,11 +162,14 @@ and they are highly correlated, so the queue takes the best few, never the whole
 
 def select_for_submission(passed: list[Any], by_name: dict[str, Any]) -> list[Any]:
     """Best net R first, at most one per trigger (the idea), at most MAX per run. Only ever
-    FEWER items than before - no candidate that failed a bar is added by this."""
+    FEWER items than before - no candidate that failed a bar is added by this. An
+    improvement variant's idea is the setup it improves (2026-10-24: three filters of
+    r_high52_break_strong_trend_trend_trail with the very same trades went out as three items)."""
     chosen: list[Any] = []
     seen: set[str] = set()
     for found in sorted(passed, key=lambda r: -(r.net_r if r.net_r is not None else -1e9)):
-        idea = getattr(by_name.get(found.name), "trigger", None) or found.name
+        cand = by_name.get(found.name)
+        idea = getattr(cand, "trigger", None) or getattr(cand, "base", None) or found.name
         if idea in seen:
             continue
         seen.add(idea)
