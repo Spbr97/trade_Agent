@@ -271,6 +271,11 @@ def decide(
             f"history {hist['net_r']:+.2f}R over {hist['n_trades']} trades after costs; "
             f"quarter size until live proof"
         )
+        if hist.get("fair_test_failed_in"):
+            reason += (
+                f"; FAILED the fair random-entry test ({hist['fair_test_failed_in']}), "
+                f"permission held until {GRANDFATHER_UNTIL} for the owner's decision"
+            )
     else:
         status, reason = "collecting", "not enough live evidence yet"
     own_values = [c["net_r"] for c in own]
