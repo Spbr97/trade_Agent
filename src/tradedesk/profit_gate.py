@@ -73,6 +73,12 @@ JUDGED_CONTRACTS = ("swing-v1", "legacy-t1-tracker-v1")
 # ETFs (LIQUIDCASE, LIQUIDBEES, ...) sit there: a stop a few paise away turns the charges
 # into -3R to -49R and buried r_tsmom252's live record (2026-10-25).
 UNTRADEABLE_PREFIX = "ATR "
+# Owner's decision (2026-10-25): the replacement search now re-tests earlier passes on the
+# fair random benchmark. Until GRANDFATHER_UNTIL a pass that later fails that retest keeps
+# its quarter-size permission (flagged `fair_test_failed_in`), so alerts change only when the
+# owner has seen the fair-test table and decided.
+FAIR_TEST_FROM = "2026-10-25"
+GRANDFATHER_UNTIL = "2026-11-08"
 
 
 def confidence_sequence(
@@ -178,13 +184,26 @@ def history(market: str, *, root: Path = Path(".")) -> dict[str, dict[str, Any]]
         rows += [r for r in report.get("tested_this_run") or [] if isinstance(r, dict)]
         for row in rows:
             if row.get("name") and row.get("net_r") is not None:
-                found[row["name"]] = {
+                new = {
                     "passed": bool(row.get("passed")),
                     "net_r": float(row["net_r"]),
                     "n_trades": int(row.get("n_trades") or 0),
                     "win_rate": row.get("win_rate"),
                     "tested_in": os.path.basename(path),
                 }
+                prior = found.get(row["name"])
+                if (
+                    prior
+                    and prior["passed"]
+                    and not new["passed"]
+                    and str(row.get("tested_at") or "") >= FAIR_TEST_FROM
+                    and datetime.now(IST).date().isoformat() < GRANDFATHER_UNTIL
+                ):
+                    # Failed the fair random benchmark: keep the earlier pass for now and
+                    # say so, instead of silently switching its alerts off.
+                    prior["fair_test_failed_in"] = new["tested_in"]
+                    continue
+                found[row["name"]] = new
     return found
 
 

@@ -28,6 +28,7 @@ from typing import Any
 import pandas as pd
 from tradedesk_lab.artifacts import OUTPUT, ROOT, digest, verify_base, write_json
 from tradedesk_lab.candidates.base import LabSetup
+from tradedesk_lab.harness.fair_null import FairTrade, point_in_time_members, run_fair_null
 from tradedesk_lab.harness.gauntlet import GauntletReport, run_gauntlet
 from tradedesk_lab.harness.run_lab_candidate import simulate_single_setup, to_harness_trades
 from tradedesk_lab.harness.spec import KillCriteria
@@ -129,6 +130,60 @@ class BaseDrifted(Exception):
     pass
 
 
+FAIR_STAGE = "fair_random_benchmark"
+# Stages after which the trades are worth the fair benchmark's cost: the gauntlet's own
+# random stage is biased AGAINST random entries (see fair_null.py), so a trade set that
+# fails even that cannot pass the fair one.
+_FAIR_AFTER = {None, "in_sample", "walk_forward", "parameter_sensitivity", "kill_criteria"}
+
+
+def point_in_time_trades(trades: list[Any], frames: dict[str, Any], pit_top: int) -> list[Any]:
+    """Only the trades taken while the stock was in that day's top `pit_top` by liquidity.
+    `load_real_daily_frames` ranks by the LAST 60 sessions, which keeps today's winners;
+    judging only point-in-time members removes most of that hindsight (2026-10-25: it cut
+    r_ema20_bounce from +0.31R to +0.08R gross on NSE)."""
+    pit = point_in_time_members(frames, pit_top)
+    positions = {code: {d: i for i, d in enumerate(f.index.date)} for code, f in frames.items()}
+    kept = []
+    for t in trades:
+        bar = positions.get(t.scrip_code, {}).get(t.entry_date)
+        if bar is not None and pit[t.scrip_code][bar]:
+            kept.append(t)
+    return kept
+
+
+def fair_benchmark(
+    trades: list[Any], frames: dict[str, Any], *, pit_top: int, cost_model: Any
+) -> dict[str, Any]:
+    """Random entries on the same stocks, on any day each stock was a point-in-time member,
+    with the trade's own geometry and exit and no forced close (fair_null.run_fair_null).
+    The margin over this is what the rule's trigger and filter add together."""
+    pit = point_in_time_members(frames, pit_top)
+    positions = {code: {d: i for i, d in enumerate(f.index.date)} for code, f in frames.items()}
+    fair = []
+    for t in trades:
+        bar = positions.get(t.scrip_code, {}).get(t.entry_date)
+        risk = t.position.initial_risk
+        if bar is None or risk <= 0:
+            continue
+        fair.append(
+            FairTrade(t.scrip_code, bar, t.position.signal, gross_r=t.r_multiple + t.costs / risk,
+                      net_r=t.r_multiple)  # fmt: skip
+        )
+    result = run_fair_null(fair, frames, eligible=pit, cost_model=cost_model)
+    return {
+        "setup_mean_gross_r": result.setup_mean_gross_r,
+        "null_mean_gross_r": result.null_mean_gross_r,
+        "margin_gross_r": result.margin_gross_r,
+        "p_value": result.p_value,
+        "p_resolution": result.p_resolution,
+        "n_cohorts": result.n_cohorts,
+        "n_used": result.n_used,
+        "point_in_time_top": pit_top,
+        "passes": result.passes,
+    }
+
+
 def market_bundle(market: str, settings: Any) -> Market:
     return {"crypto": crypto_market, "bse": bse_market}.get(market, nse_market)(settings)
 
@@ -202,7 +257,7 @@ def candidate_verdict(
         reasons.append("kill criteria not met")
     if not beats_random_margin:
         reasons.append(f"not +{MUST_BEAT_RANDOM_BY_R}R over random timing")
-    bench = report.stages.get("random_entry_benchmark") or {}
+    bench = report.stages.get(FAIR_STAGE, report.stages.get("random_entry_benchmark")) or {}
     p_value = bench.get("p_value")
     if max_null_p_value is not None and (p_value is None or p_value > max_null_p_value):
         reasons.append(f"random-benchmark p={p_value} > search-adjusted {max_null_p_value:.4f}")
@@ -291,6 +346,7 @@ def author_and_validate(
     max_null_p_value: float | None = None,
     skip_base_check: bool = False,
     output_dir: Path = OUTPUT,
+    pit_top: int | None = None,
 ) -> tuple[GauntletReport, bool, str, str, Path]:
     """Returns (gauntlet_report, beats_random_margin, experiment_id, candidate_id,
     artifact_path) - the artifact path is returned rather than left for a caller to
@@ -314,7 +370,12 @@ def author_and_validate(
 
     `frames` lets a caller testing many candidates load the market's history once;
     `skip_base_check` is only for such a caller that has already run `verify_base()` for
-    this batch (it is not a way around the check)."""
+    this batch (it is not a way around the check).
+
+    `pit_top` (the replacement search passes it, 2026-10-25): judge only trades taken while
+    the stock was in that day's top `pit_top` by liquidity, and replace the gauntlet's
+    random-entry verdict with the fair benchmark (`FAIR_STAGE`): its margin must reach
+    +0.10R and its p-value the search-adjusted threshold."""
 
     if not skip_base_check:
         base_state = verify_base()
@@ -353,6 +414,8 @@ def author_and_validate(
                 risk_pct=risk_pct,
                 qty_step=mkt.qty_step,
             )
+            if pit_top is not None:
+                trades = point_in_time_trades(trades, frame_map, pit_top)
             harness_trades, bars_by_code = to_harness_trades(trades, frame_map)
             report = run_gauntlet(
                 f"lab_candidate:{candidate.name}:{market}",
@@ -362,7 +425,18 @@ def author_and_validate(
             )
             beats_random_margin = False
             stage = report.stages.get("random_entry_benchmark")
-            if stage is not None:
+            if pit_top is not None:
+                stage = None
+                if report.stopped_at in _FAIR_AFTER:
+                    try:
+                        stage = fair_benchmark(
+                            trades, frame_map, pit_top=pit_top, cost_model=mkt.costs
+                        )
+                        beats_random_margin = stage["margin_gross_r"] >= MUST_BEAT_RANDOM_BY_R
+                    except ValueError as exc:  # no usable random pool: cannot pass
+                        stage = {"error": str(exc), "p_value": None}
+                    report.stages[FAIR_STAGE] = stage
+            elif stage is not None:
                 setup_mean = stage.get("setup_mean_gross_r")
                 null_mean = stage.get("null_mean_gross_r")
                 if setup_mean is not None and null_mean is not None:

@@ -37,7 +37,25 @@ def test_plan_batch_tries_untested_first_then_stale_and_skips_recent() -> None:
 
 def test_search_p_value_threshold_tightens_with_space_and_respects_resolution() -> None:
     assert rs.search_p_value_threshold(5) == pytest.approx(0.01)
-    assert rs.search_p_value_threshold(250) == pytest.approx(0.001)  # null's own floor
+    assert rs.search_p_value_threshold(250) == pytest.approx(0.0002)
+    assert rs.search_p_value_threshold(777) == pytest.approx(0.0001)  # fair null's floor
+
+
+def test_a_pass_from_before_the_fair_benchmark_is_retested_first(tmp_path: Path) -> None:
+    def row(name: str, evidence: dict) -> dict:
+        path = tmp_path / f"{name}.json"
+        path.write_text(json.dumps(evidence), encoding="utf-8")
+        return {"artifact_path": str(path), "started_at": "2026-10-24T10:00:00+00:00",
+                "metrics": {"net_r": 0.2}}  # fmt: skip
+
+    history = {
+        "old_pass": row("old_pass", {"passed": True, "stages": {"random_entry_benchmark": {}}}),
+        "fair_pass": row("fair_pass", {"passed": True, "stages": {"fair_random_benchmark": {}}}),
+        "old_fail": row("old_fail", {"passed": False, "stages": {}}),
+    }
+    space = [_c("new"), _c("fair_pass"), _c("old_fail"), _c("old_pass")]
+    now = datetime(2026, 10, 25, tzinfo=IST)
+    assert [c.name for c in rs.plan_batch(space, history, now=now)] == ["old_pass", "new"]
 
 
 def test_retired_baseline_is_the_best_of_the_setups_being_replaced(tmp_path: Path) -> None:

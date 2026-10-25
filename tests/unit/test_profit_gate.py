@@ -102,6 +102,21 @@ def test_each_call_counts_once_and_untradeable_calls_not_at_all(tmp_path: Path) 
     assert sorted(c["net_r"] for c in calls) == [-1.1, -1.0, 0.4]
 
 
+def test_a_pass_that_fails_the_fair_retest_keeps_its_permission_for_now(tmp_path: Path) -> None:
+    def report(name: str, passed: bool, tested_at: str) -> None:
+        row = {"name": "r_x", "passed": passed, "net_r": 0.25, "n_trades": 900,
+               "tested_at": tested_at}  # fmt: skip
+        folder = tmp_path / pg.SEARCH_REPORTS / "nse"
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / f"{name}.json").write_text(json.dumps({"leaderboard": [row]}), encoding="utf-8")
+
+    report("2026-10-24T162502", True, "2026-10-22T10:56:03+00:00")
+    report("2026-10-26T162502", False, "2026-10-26T10:56:03+00:00")
+    kept = pg.history("nse", root=tmp_path)["r_x"]
+    assert kept["passed"] and kept["fair_test_failed_in"] == "2026-10-26T162502.json"
+    assert pg.history_qualifies(kept)
+
+
 def test_the_scan_fails_closed_on_a_missing_or_stale_status(tmp_path: Path) -> None:
     assert pg.alerting_setups("nse", root=tmp_path) == {}
     verdict = pg.decide("r_x", "nse", [], [], GOOD_HISTORY, alpha=0.01)

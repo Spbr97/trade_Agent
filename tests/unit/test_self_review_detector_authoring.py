@@ -150,6 +150,16 @@ def test_candidate_verdict_names_the_bar_that_was_missed(report, beats, kwargs, 
     assert any(needle in r for r in reasons)
 
 
+def test_the_fair_benchmark_p_value_overrides_the_biased_one() -> None:
+    report = _report(p_value=0.0)
+    report.stages[da.FAIR_STAGE] = {"p_value": 0.21, "margin_gross_r": 0.03}
+    ok, reasons = da.candidate_verdict(report, False, max_null_p_value=0.0001)
+    assert not ok
+    assert any("p=0.21" in r for r in reasons) and any("over random" in r for r in reasons)
+    report.stages[da.FAIR_STAGE] = {"error": "no usable random-entry pool", "p_value": None}
+    assert not da.candidate_verdict(report, True, max_null_p_value=0.0001)[0]
+
+
 def test_generated_production_source_compiles_and_references_the_new_setup_kind() -> None:
     src = da._mean_reversion_v1_production_source("MEAN_REVERSION_V1")
     compile(src, "<generated>", "exec")

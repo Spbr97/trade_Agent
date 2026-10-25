@@ -60,9 +60,19 @@ def family_for(market: str) -> str:
     return f"{market}:replacement"
 
 
-def search_p_value_threshold(space_size: int, alpha: float = 0.05, floor: float = 0.001) -> float:
-    """Bonferroni over the whole candidate space, floored at the null baseline's own
-    resolution (1/1000 cohorts - a p below that can't be measured, only reported as 0)."""
+# 2026-10-25: candidates are judged on the fair random benchmark (detector_authoring.FAIR_STAGE)
+# over the point-in-time top PIT_TOP of LOAD_CODES loaded stocks. Its 20,000 cohorts resolve
+# p = 0.00005, so the Bonferroni threshold no longer has to stop at the old 1,000-cohort
+# null's 0.001 - which let a 777-trial search pass at 13x the honest bar.
+PIT_TOP = 100
+LOAD_CODES = 300
+
+
+def search_p_value_threshold(
+    space_size: int, alpha: float = 0.05, floor: float = 0.0001
+) -> float:
+    """Bonferroni over the whole candidate space, floored near the fair benchmark's own
+    resolution (1/20,001 cohorts - a p below that can't be measured, only reported)."""
     return max(floor, alpha / max(space_size, 1))
 
 
@@ -286,6 +296,23 @@ def streak_rule_outdated(row: dict[str, Any]) -> bool:
     )
 
 
+def fair_benchmark_outdated(row: dict[str, Any]) -> bool:
+    """True when this candidate PASSED before the fair random benchmark existed. Its pass
+    rests on a random side biased against random entries and a hindsight universe
+    (2026-10-25: r_ema20_bounce's margin fell from +0.38R to about +0.03R), so it is
+    re-judged first. A failure stays a failure: the fair test is never easier."""
+    path = row.get("artifact_path")
+    if not path or not Path(path).exists():
+        return False
+    try:
+        evidence = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    from tradedesk.self_review.detector_authoring import FAIR_STAGE
+
+    return bool(evidence.get("passed")) and FAIR_STAGE not in (evidence.get("stages") or {})
+
+
 def plan_batch(
     space: list[Any],
     history: dict[str, dict[str, Any]],
@@ -293,12 +320,18 @@ def plan_batch(
     now: datetime,
     retest_after_days: int = DEFAULT_RETEST_AFTER_DAYS,
 ) -> list[Any]:
-    """Results whose only failure was the superseded fixed streak cap first (best net R
-    first); then untested candidates in `space`'s priority order; then previously-tested
-    ones whose last test is older than `retest_after_days`, stalest first. Anything tested
-    more recently is left alone."""
+    """Results judged under a superseded bar first - passes from before the fair random
+    benchmark, and failures only of the old fixed streak cap - best net R first; then
+    untested candidates in `space`'s priority order; then previously-tested ones whose last
+    test is older than `retest_after_days`, stalest first. Anything tested more recently is
+    left alone."""
 
-    outdated = [c for c in space if c.name in history and streak_rule_outdated(history[c.name])]
+    outdated = [
+        c
+        for c in space
+        if c.name in history
+        and (fair_benchmark_outdated(history[c.name]) or streak_rule_outdated(history[c.name]))
+    ]
     outdated.sort(
         key=lambda c: -float((history[c.name].get("metrics") or {}).get("net_r") or 0.0)
     )
@@ -405,6 +438,7 @@ def run_replacement_search(
         return outcome
 
     mkt = market_bundle(market, settings)
+    max_codes = max(max_codes, LOAD_CODES)
     frames = load_real_daily_frames(
         db, max_codes=max_codes, exclude=frozenset(mkt.universe_rules.exclude_codes)
     )
@@ -427,13 +461,18 @@ def run_replacement_search(
                 max_null_p_value=threshold,
                 skip_base_check=True,
                 output_dir=output_dir,
+                pit_top=PIT_TOP,
             )
         except BaseDrifted as exc:  # pragma: no cover - verify_base already ran above
             outcome.status = "blocked"
             outcome.blocked_reason = str(exc)
             break
         evidence = json.loads(Path(artifact_path).read_text(encoding="utf-8"))
-        bench = report.stages.get("random_entry_benchmark") or {}
+        bench = (
+            report.stages.get("fair_random_benchmark")
+            or report.stages.get("random_entry_benchmark")
+            or {}
+        )
         net_r = (report.stages.get("in_sample") or {}).get("net_expectancy_r")
         outcome.tested_this_run.append(
             CandidateResult(
