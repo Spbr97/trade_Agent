@@ -250,3 +250,19 @@ def test_the_paper_record_reports_down_day_calls_apart() -> None:
                                    "closed_mean_net": 0.04}  # fmt: skip
     body = ed.scorecard_message(card)[1]
     assert "Made on a market down day: 1 open -5.6%; other days: 1 closed +4.0%" in body
+    assert "200-day average" not in body  # no call carries the trend mark here
+
+
+def test_the_paper_record_reports_calls_above_and_below_nifty_200dma_apart() -> None:
+    rows = [
+        {"event": "call", "call_id": "A:d", "at": "t", "symbol": "A", "scrip_code": "NSE_A",
+         "nifty_vs_200dma": "below"},
+        {"event": "entered", "call_id": "A:d", "at": "t", "entry_price": 100.0, "qty": 100},
+        *_closed(1, 0.04),
+    ]  # fmt: skip
+    rows[2] = {**rows[2], "nifty_vs_200dma": "above"}
+    card = ed.scorecard(rows, {"NSE_A": 95.0}, as_of="x")
+    trend = card["by_nifty_trend"]
+    assert trend["below_200dma"]["open"] == 1 and trend["above_200dma"]["closed"] == 1
+    body = ed.scorecard_message(card)[1]
+    assert "NIFTY above its 200-day average: 1 closed +4.0%; below: 1 open -5.6%" in body

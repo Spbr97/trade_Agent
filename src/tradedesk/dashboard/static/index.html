@@ -1871,6 +1871,8 @@ async function loadEarningsDrift() {
       const split = sc.by_market_day || {};
       const part = p => p ? [p.open ? `${p.open} open ${(100 * p.open_mean_net).toFixed(1)}%` : '', p.closed ? `${p.closed} closed ${(100 * p.closed_mean_net).toFixed(1)}%` : ''].filter(Boolean).join(', ') || 'none' : 'none';
       if (Object.values(split).some(p => p.open || p.closed)) lines.push(`Made on a market down day: ${part(split.down_day)}; other days: ${part(split.other_days)}.`);
+      const trend = sc.by_nifty_trend || {};
+      if (Object.values(trend).some(p => p.open || p.closed)) lines.push(`NIFTY above its 200-day average: ${part(trend.above_200dma)}; below: ${part(trend.below_200dma)}.`);
       lines.push(sc.proven ? 'PROVEN live: beats the market.' : `Proof needs about ${sc.closed_calls_for_proof} closed calls.`);
     }
     $('drift-scorecard').textContent = lines.join(' ');

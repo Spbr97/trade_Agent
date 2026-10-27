@@ -431,7 +431,8 @@ def scorecard(
                 inr = net * float(c["entry_price"]) * c["qty"]
                 open_now.append(
                     {"symbol": c.get("symbol"), "entry": c["entry_price"], "now": px,
-                     "net": net, "inr": inr, "down_day": c.get("down_day")}
+                     "net": net, "inr": inr, "down_day": c.get("down_day"),
+                     "nifty_vs_200dma": c.get("nifty_vs_200dma")}
                 )  # fmt: skip
     n = len(closed)
     mean = sum(float(c["net_return"]) for c in closed) / n if n else None
@@ -468,6 +469,10 @@ def scorecard(
         "proven": bool(lower is not None and lower > 0),
         "closed_calls_for_proof": needed,
         "by_market_day": _by_market_day(open_now, closed),
+        "by_nifty_trend": _split(
+            open_now, closed, "nifty_vs_200dma",
+            (("above_200dma", "above"), ("below_200dma", "below")),
+        ),  # fmt: skip
     }
 
 
@@ -475,14 +480,26 @@ def _by_market_day(
     open_now: Sequence[Mapping[str, Any]], closed: Sequence[Mapping[str, Any]]
 ) -> dict[str, dict[str, Any]]:
     """The live record split as the history was: calls marked down-day against the rest."""
+    return _split(open_now, closed, "down_day", (("down_day", True), ("other_days", False)))
+
+
+def _split(
+    open_now: Sequence[Mapping[str, Any]],
+    closed: Sequence[Mapping[str, Any]],
+    field: str,
+    groups: Sequence[tuple[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    """Open and closed calls grouped by `field`, so each split the history was measured on
+    (down day; NIFTY above or below its 200-day average: +2.2% against +0.8% a call) can be
+    checked on live results."""
 
     def mean(values: list[float]) -> float | None:
         return sum(values) / len(values) if values else None
 
     out = {}
-    for label, flag in (("down_day", True), ("other_days", False)):
-        held = [float(r["net"]) for r in open_now if r.get("down_day") is flag]
-        done = [float(c["net_return"]) for c in closed if c.get("down_day") is flag]
+    for label, value in groups:
+        held = [float(r["net"]) for r in open_now if r.get(field) == value]
+        done = [float(c["net_return"]) for c in closed if c.get(field) == value]
         out[label] = {"open": len(held), "open_mean_net": mean(held),
                       "closed": len(done), "closed_mean_net": mean(done)}  # fmt: skip
     return out
@@ -527,6 +544,12 @@ def scorecard_message(card: Mapping[str, Any]) -> tuple[str, str] | None:
         lines.append(
             f"Made on a market down day: {_market_day_part(split.get('down_day'))}; "
             f"other days: {_market_day_part(split.get('other_days'))}"
+        )
+    trend = card.get("by_nifty_trend") or {}
+    if any(v.get("open") or v.get("closed") for v in trend.values()):
+        lines.append(
+            f"NIFTY above its 200-day average: {_market_day_part(trend.get('above_200dma'))}; "
+            f"below: {_market_day_part(trend.get('below_200dma'))}"
         )
     lines.append(
         "PROVEN live: results beat the market" if card["proven"] else
