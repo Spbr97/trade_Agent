@@ -15,6 +15,16 @@ DECISION RULE (written 2026-10-28 before the run): advise skipping real money on
 below-200-day + down-day group if its mean excess over the market is <= 0.
 
     python -m tradedesk_lab.drift_market_split
+
+RESULT (2026-10-28, 1,602 calls 2016-2026, live +10%/20-session exit, 0.564% round trip):
+  NIFTY below 200-day + down day:   87 calls, -1.50% net a call, -2.10% vs market (t -2.2),
+                                    39% win, positive in 1 of 8 years   -> ADVISE SKIP
+  NIFTY below 200-day + other day: 369 calls, +0.90% net, +0.62% vs market, 5/9 years
+  NIFTY above 200-day + down day:  173 calls, +2.24% net, +0.86% vs market, 8/10 years
+  NIFTY above 200-day + other day: 973 calls, +1.33% net, +0.05% vs market
+  everything but the weak cell:   1,515 calls, +1.33% net, +0.28% vs market
+The down-day weakness is all in falling markets: with NIFTY above its 200-day, down-day calls
+were the best group. Exploratory split of the live rule's own history (small cells).
 """
 
 from __future__ import annotations

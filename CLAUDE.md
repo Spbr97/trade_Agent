@@ -132,7 +132,12 @@ survivorship flatters, too rare to prove forward in under several years. Medians
 Drift timing (2026-10-28, tradedesk_lab/drift_timing.py): buying the reaction day's close instead of the next
 open adds nothing (+0.01% a call, t 0.8). Dating results by filing time - judging intraday-filed results on
 the same day's close and calling a session sooner - made +1.6% more a call on 28 paired events (t 1.4): under
-its bar (30 pairs, t 2.0); re-run once the Oct-Nov 2026 season's calls mature (about mid-December 2026). The Rs 10,000 delivery round trip is 0.56%, not 0.39%.
+its bar (30 pairs, t 2.0); re-run once the Oct-Nov 2026 season's calls mature (about mid-December 2026).
+Drift by market state (2026-10-28, tradedesk_lab/drift_market_split.py, live exit, 1,602 calls): reactions on a
+market down day while NIFTY is below its 200-day average lost -1.5% a call (-2.1% vs market, t -2.2, 1 of 8
+years positive, 87 calls) - real money should skip them; with NIFTY above its 200-day, down-day calls were the
+best group (+2.2% a call, 8/10 years). The live "DOWN DAY - weaker" mark covers both; narrowing it to falling
+markets is the owner's decision (identical today: NIFTY is below its 200-day). The Rs 10,000 delivery round trip is 0.56%, not 0.39%.
 Option income (9:20 straddle, Friday iron condor) cannot be backtested - INDstocks' expired-contract
 candles return nothing yet - so `tradedesk_lab/option_income.py` paper-trades both FORWARD on real
 Nifty quotes (scripts/option_income_watch.py, weekdays 09:17-15:20, saves every minute's chain);
