@@ -128,7 +128,11 @@ New listings fail too (2026-10-28, tradedesk_lab/new_listings.py, NSE listings 2
 buying every debut, a 5%+ debut, or the first close above the listing-period high, held 20 or 60 sessions
 after real costs - none reaches t >= 3 over entry weeks. Closest: listing-period high held 60 sessions,
 +5.7% a call, +3.3% over the market, t 1.7, both halves positive, ~25 calls a year - a weak lead that
-survivorship flatters, too rare to prove forward in under several years. Medians are about zero or below. The Rs 10,000 delivery round trip is 0.56%, not 0.39%.
+survivorship flatters, too rare to prove forward in under several years. Medians are about zero or below.
+Drift timing (2026-10-28, tradedesk_lab/drift_timing.py): buying the reaction day's close instead of the next
+open adds nothing (+0.01% a call, t 0.8). Dating results by filing time - judging intraday-filed results on
+the same day's close and calling a session sooner - made +1.6% more a call on 28 paired events (t 1.4): under
+its bar (30 pairs, t 2.0); re-run once the Oct-Nov 2026 season's calls mature (about mid-December 2026). The Rs 10,000 delivery round trip is 0.56%, not 0.39%.
 Option income (9:20 straddle, Friday iron condor) cannot be backtested - INDstocks' expired-contract
 candles return nothing yet - so `tradedesk_lab/option_income.py` paper-trades both FORWARD on real
 Nifty quotes (scripts/option_income_watch.py, weekdays 09:17-15:20, saves every minute's chain);

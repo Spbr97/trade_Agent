@@ -22,6 +22,15 @@ PASS BARS (written 2026-10-28, before any result was seen):
      entry WEEK as one unit, and positive in both halves of the history.
 Research only: a pass is a proposal for the owner, not a change to the live rule.
 
+RESULT (2026-10-28). Neither passes.
+  A. 1,070 results filed in market hours since 2026-07-16; 46 qualify on the filing day, 75 the
+     live way. Matured calls: +2.65% a call (38) against +1.80% (62); on the 28 events both ways
+     the earlier call made +1.6% more, t 1.4 - promising but under the bar (30 pairs, t 2.0).
+     Re-run when the Oct-Nov 2026 season's calls have matured (about mid-December 2026).
+  B. 1,601 events 2016-2026: buying the reaction close (+0.15% allowance) made +1.20% a call
+     against +1.19% at the next open (t 0.8; first half negative). The next open averages only
+     +0.29% above the close - not worth an intraday entry.
+
     python -m tradedesk_lab.drift_timing
 """
 
