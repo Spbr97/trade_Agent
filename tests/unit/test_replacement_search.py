@@ -164,6 +164,18 @@ def test_a_passing_leader_from_an_earlier_run_is_not_called_a_near_miss(
     assert "failed on" not in text
 
 
+def test_a_candidate_with_the_same_trades_takes_the_first_ones_result(
+    monkeypatch, tmp_path: Path
+) -> None:
+    calls = _stub_world(monkeypatch, tmp_path, verdicts={"a": False, "b": False, "c": True})
+    monkeypatch.setattr(rs, "entry_signature", lambda c, f: {"a": "s1", "b": "s1"}.get(c.name))
+    outcome = _run(tmp_path, time_budget_s=600)
+    assert calls == ["a", "c"]
+    assert outcome.duplicates_skipped == 1
+    assert outcome.untested_remaining == 0 and outcome.tested_total == 3
+    assert "made the same trades" in outcome.summary()
+
+
 def test_near_misses_are_ranked_and_named_in_the_plan(monkeypatch, tmp_path: Path) -> None:
     _stub_world(monkeypatch, tmp_path, verdicts={"a": False})
     outcome = _run(tmp_path, time_budget_s=600)
@@ -305,3 +317,18 @@ def test_an_improvement_of_a_rule_setup_is_measured_against_live_setups() -> Non
     assert rs.live_overlap(imp, [d20], frames) == 1.0
     hand_written = ImprovedSetup("base_breakout", "any", "trend_trail")
     assert rs.live_overlap(hand_written, [d20], frames) is None
+
+
+def test_candidates_that_make_the_same_trades_share_one_signature() -> None:
+    from tradedesk_lab.candidates.rules import ImprovedSetup, RuleCandidate
+
+    frames = {"X": _rising_frame()}
+    base = "r_donchian55_strong_trend_trend_trail"
+    rule = RuleCandidate("donchian55", "strong_trend", "trend_trail")
+    same = rs.entry_signature(ImprovedSetup(base, "any", "trend_trail"), frames)
+    assert same is not None and same == rs.entry_signature(rule, frames)
+    other_exit = rs.entry_signature(ImprovedSetup(base, "any", "target_3r"), frames)
+    other_entry = rs.entry_signature(RuleCandidate("donchian20", "strong_trend", "trend_trail"),
+                                     frames)  # fmt: skip
+    assert len({same, other_exit, other_entry}) == 3
+    assert rs.entry_signature(ImprovedSetup("base_breakout", "any", "trend_trail"), frames) is None

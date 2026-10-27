@@ -22,6 +22,7 @@ the best one came and what runs next" is the output until one genuinely clears i
 
 from __future__ import annotations
 
+import hashlib
 import json
 import time
 from dataclasses import asdict, dataclass, field
@@ -29,7 +30,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from tradedesk_lab.artifacts import OUTPUT, ROOT, verify_base, write_json
+import numpy as np
+from tradedesk_lab.artifacts import OUTPUT, ROOT, digest, verify_base, write_json
 from tradedesk_lab.candidates import candidate_space
 from tradedesk_lab.candidates.rules import (
     ImprovedSetup,
@@ -172,6 +174,83 @@ def live_overlap(
     return shared / total if total else None
 
 
+def entry_signature(candidate: Any, frame_map: dict[str, Any]) -> str | None:
+    """A fingerprint of the trades `candidate` would make: its stop family (the base rule's
+    trigger), its exit and every entry bar on every stock. Two candidates with the same
+    fingerprint make identical trades - 2026-10-27: four NSE improvement variants scored
+    exactly +0.072R because their extra filters never removed an entry - so only the first
+    is run through the gauntlet. None when entries need the production arm()."""
+    rule = _entry_rule(candidate)
+    if rule is None:
+        return None
+    base, extra = rule
+    digest_ = hashlib.sha256(f"{base.trigger}|{candidate.exit_name}".encode())
+    for code in sorted(frame_map):
+        df = frame_map[code]
+        own = base.prepare(df)[base.gate_column]
+        if extra is not None:
+            own = own & extra.prepare(df)[extra.gate_column]
+        bars = np.flatnonzero(own.to_numpy(bool)).astype(np.int64)
+        if len(bars):
+            digest_.update(code.encode())
+            digest_.update(bars.tobytes())
+    return digest_.hexdigest()
+
+
+def _result_from_history(
+    name: str, row: dict[str, Any], descriptions: dict[str, str]
+) -> CandidateResult:
+    metrics = row.get("metrics") or {}
+    return CandidateResult(
+        name=name,
+        description=descriptions.get(name, name),
+        family="",
+        passed=bool(metrics.get("passed_gauntlet")),
+        net_r=metrics.get("net_r"),
+        win_rate=metrics.get("win_rate"),
+        n_trades=int(metrics.get("n_trades") or 0),
+        stopped_at=metrics.get("stopped_at"),
+        p_value=metrics.get("p_value"),
+        fail_reasons=list(metrics.get("fail_reasons") or []),
+        experiment_id="",
+        candidate_id="",
+        artifact_path=str(row.get("artifact_path") or ""),
+        tested_at=str(row.get("started_at") or ""),
+    )
+
+
+def _record_duplicate(
+    candidate: Any, original: CandidateResult, family: str, registry_path: Path, market: str
+) -> tuple[str, str]:
+    """Registers `candidate` with `original`'s verdict, so it counts as tested and is
+    re-checked with it later, without spending a gauntlet run on identical trades."""
+    metrics = {
+        "net_r": original.net_r,
+        "win_rate": original.win_rate,
+        "passed_gauntlet": original.passed,
+        "n_trades": original.n_trades,
+        "stopped_at": original.stopped_at,
+        "p_value": original.p_value,
+        "fail_reasons": original.fail_reasons,
+        "duplicate_of": original.name,
+    }
+    with Registry(registry_path) as registry:
+        experiment_id = registry.begin(
+            {"candidate": candidate.name, "market": market, "duplicate_of": original.name}
+        )
+        candidate_id = registry.candidate(
+            experiment_id,
+            family,
+            {"candidate": candidate.name, "market": market},
+            metrics,
+            status="completed" if original.passed else "rejected",
+            artifact=original.artifact_path or None,
+            sha=digest(Path(original.artifact_path)) if original.artifact_path else None,
+        )
+        registry.finish(experiment_id, report={"passed": original.passed, "duplicate": True})
+    return experiment_id, candidate_id
+
+
 @dataclass
 class SearchOutcome:
     market: str
@@ -187,6 +266,8 @@ class SearchOutcome:
     leaderboard: list[dict[str, Any]] = field(default_factory=list)
     blocked_reason: str | None = None
     report_path: str | None = None
+    # Candidates whose trades were identical to one already judged (entry_signature).
+    duplicates_skipped: int = 0
     # Filled in by orchestrate once the NEW_DETECTOR items exist.
     submitted_items: list[str] = field(default_factory=list)
     candidates_by_name: dict[str, Any] = field(default_factory=dict, repr=False)
@@ -208,6 +289,12 @@ class SearchOutcome:
             f"tested {len(self.tested_this_run)} candidates this run; "
             f"{self.tested_total}/{self.space_size} tried so far, "
             f"{self.untested_remaining} still untested - the next run continues with those."
+            + (
+                f" {self.duplicates_skipped} made the same trades as one already judged and "
+                "took its result."
+                if self.duplicates_skipped
+                else ""
+            )
         ]
         if self.passed:
             names = ", ".join(r.name for r in self.passed)
@@ -443,10 +530,29 @@ def run_replacement_search(
         db, max_codes=max_codes, exclude=frozenset(mkt.universe_rules.exclude_codes)
     )
     clear_base_cache()
+    signatures_path = search_dir / market / "entry_signatures.json"
+    try:
+        known: dict[str, str] = json.loads(signatures_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        known = {}
+    this_run: dict[str, CandidateResult] = {}
     started = time.monotonic()
     for candidate in batch:
         if outcome.tested_this_run and time.monotonic() - started >= time_budget_s:
             break
+        signature = entry_signature(candidate, frames[0])
+        original = None
+        if signature is not None:
+            original = this_run.get(signature)
+            first = known.get(signature)
+            if original is None and first and first != candidate.name and first in history:
+                row = history[first]
+                if not fair_benchmark_outdated(row):
+                    original = _result_from_history(first, row, descriptions)
+        if original is not None:
+            _record_duplicate(candidate, original, family_for(market), registry_path, market)
+            outcome.duplicates_skipped += 1
+            continue
         try:
             report, _beats, experiment_id, candidate_id, artifact_path = author_and_validate(
                 candidate,
@@ -492,6 +598,11 @@ def run_replacement_search(
                 tested_at=now.isoformat(),
             )
         )
+        if signature is not None:
+            this_run[signature] = outcome.tested_this_run[-1]
+            known.setdefault(signature, candidate.name)
+    if known:
+        write_json(signatures_path, known)
 
     rules_by_name = {r.name: r for r in rule_candidates()}
     live = [
