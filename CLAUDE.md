@@ -123,7 +123,12 @@ bars 2025-10 to 2026-10, 1,656 stocks, 8,927 results events): a results stock up
 3x usual volume loses 0.7-0.8% by the close (t -5.5 to -6.2) and 1.5-2.1% over 5-20 sessions, worse than
 no-news pops - the pop tends to fade, which is why drift waits for the jump to hold into the close. The
 mirror trade (short the pop, cover at 15:15) was suggested by that data, so it is judged only forward from
-2026-10-29 (`run_fade_forward`, nightly 20:30, paper; pass: 150+ trades, 20+ days, t >= 2.5, both halves). The Rs 10,000 delivery round trip is 0.56%, not 0.39%.
+2026-10-29 (`run_fade_forward`, nightly 20:30, paper; pass: 150+ trades, 20+ days, t >= 2.5, both halves).
+New listings fail too (2026-10-28, tradedesk_lab/new_listings.py, NSE listings 2017-2026 still listed today):
+buying every debut, a 5%+ debut, or the first close above the listing-period high, held 20 or 60 sessions
+after real costs - none reaches t >= 3 over entry weeks. Closest: listing-period high held 60 sessions,
++5.7% a call, +3.3% over the market, t 1.7, both halves positive, ~25 calls a year - a weak lead that
+survivorship flatters, too rare to prove forward in under several years. Medians are about zero or below. The Rs 10,000 delivery round trip is 0.56%, not 0.39%.
 Option income (9:20 straddle, Friday iron condor) cannot be backtested - INDstocks' expired-contract
 candles return nothing yet - so `tradedesk_lab/option_income.py` paper-trades both FORWARD on real
 Nifty quotes (scripts/option_income_watch.py, weekdays 09:17-15:20, saves every minute's chain);
