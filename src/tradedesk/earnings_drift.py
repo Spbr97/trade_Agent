@@ -16,6 +16,9 @@ From 2026-10-19 a call is sold when its price first reaches +10% over the entry,
 40% reach the target, and ~32% more rupees a year on Rs 1 lakh because slots free sooner.
 From 2026-10-24 a call whose reaction closed on a market down day is marked "weaker" (see
 DOWN_DAY); it is still issued and kept in the paper record, which reports the two apart.
+From 2026-10-28 the mark is narrowed to down days in a FALLING market (NIFTY below its 200-day
+average), the only group that lost money (see skip_real_money); with NIFTY above it, down-day
+calls were the best group in history and are no longer marked.
 
 Each evening after the NSE close (hooked to tradedesk-after-close): issue calls whose
 reaction closed today (buy at the next open), record entries at the real open, close calls at
@@ -75,13 +78,27 @@ HISTORY = {  # the live rule (+10% target or the 20th close) at the real 0.564% 
     "excess_down_day": 0.0023,
     "net_other_days": 0.0125,
     "excess_other_days": 0.0094,
+    # By market state x down day (tradedesk_lab/drift_market_split.py, 2026-10-28, live exit).
+    "falling_down_day_calls": 87,
+    "net_falling_down_day": -0.0150,
+    "excess_falling_down_day": -0.0210,
+    "net_rising_down_day": 0.0224,
+    "net_all_but_falling_down_day": 0.0133,
 }
 # A call whose reaction closed on a market down day - the equal-weight liquid market down 1%
 # or more that session - is marked "weaker" (owner-approved 2026-10-24): in history such calls
 # kept little of the edge over the market (+0.2% vs +0.9%, positive in 45% of years vs 91%),
 # matching tradedesk_lab/down_day_leaders.py (stocks rising while the market falls trail it
 # afterwards). A mark only: every call is still issued and kept in the paper record.
+# Narrowed 2026-10-28 (owner left it to the agent): only a down day while NIFTY is below its
+# 200-day average is marked "skip with real money" - those 87 calls lost -1.5% a call (-2.1%
+# vs the market, 1 of 8 years positive); down days in a rising market made +2.2% a call.
 DOWN_DAY = -0.01
+
+
+def skip_real_money(call: Mapping[str, Any]) -> bool:
+    """A reaction on a market down day while NIFTY was below its 200-day average."""
+    return bool(call.get("down_day")) and call.get("nifty_vs_200dma") == "below"
 SCORECARD = Path("data/reports/earnings_drift_scorecard.json")
 NIFTY = "NSE_40000001"
 NIFTY_LOOKBACK_DAYS = 330  # enough sessions for a 200-day average
@@ -573,11 +590,13 @@ def _state_line(calls: Sequence[Mapping[str, Any]]) -> str:
 def _down_day_line() -> str:
     h = HISTORY
     return (
-        "DOWN DAY: the results reaction closed on a day the market fell 1% or more. Such calls "
-        f"made {100 * h['net_down_day']:+.1f}% a call after costs but only "
-        f"{100 * h['excess_down_day']:+.1f}% over the market ({h['down_day_calls']} in history; "
-        f"other days {100 * h['net_other_days']:+.1f}%, {100 * h['excess_other_days']:+.1f}% "
-        "over). With real money, skip them; the paper record keeps every call."
+        "FALLING-MARKET DOWN DAY: the results reaction closed on a day the market fell 1% or "
+        "more while NIFTY was below its 200-day average. Such calls lost "
+        f"{100 * h['net_falling_down_day']:+.1f}% a call after costs "
+        f"({100 * h['excess_falling_down_day']:+.1f}% vs the market, "
+        f"{h['falling_down_day_calls']} in history; every other call "
+        f"{100 * h['net_all_but_falling_down_day']:+.1f}%). With real money, skip them; the "
+        "paper record keeps every call."
     )
 
 
@@ -608,9 +627,10 @@ def messages(
                 f"(~Rs {c['reference_close'] * (1 + TARGET_PCT):,.2f}) or the close of the "
                 f"{HOLD_SESSIONS}th session | "
                 f"results +{100 * c['jump_vs_market']:.1f}% vs market on {c['volume_x']:.1f}x volume"  # noqa: E501
-                + (" | DOWN DAY - weaker" if c.get("down_day") else "")
+                + (" | FALLING-MARKET DOWN DAY - skip with real money"
+                   if skip_real_money(c) else "")  # fmt: skip
             )
-        if any(c.get("down_day") for c in result["issued"]):
+        if any(skip_real_money(c) for c in result["issued"]):
             lines.append(_down_day_line())
         out.append((
             f"EARNINGS DRIFT: {len(result['issued'])} call(s) for the next open",

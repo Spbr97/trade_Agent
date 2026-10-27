@@ -62,15 +62,18 @@ def test_calls_from_before_the_mark_are_annotated_once(tmp_path: Path) -> None:
     assert ed.annotate(p, [old, *marks], datetime.now(IST)) == []
 
 
-def test_the_call_push_says_a_down_day_call_is_weaker() -> None:
+def test_the_call_push_says_skip_a_down_day_call_only_in_a_falling_market() -> None:
     call = {"symbol": "CYIENT", "reference_close": 1200.0, "jump_vs_market": 0.09, "volume_x": 3.0}
-    result = {"issued": [call, {**call, "symbol": "GRWRHITECH", "down_day": True}],
+    falling = {**call, "symbol": "GRWRHITECH", "down_day": True, "nifty_vs_200dma": "below"}
+    rising = {**call, "symbol": "TECHM", "down_day": True, "nifty_vs_200dma": "above"}
+    result = {"issued": [call, falling, rising],
               "exit_tomorrow": [], "exited": [], "verdict": {"status": "live"}}  # fmt: skip
     body = ed.messages(result)[0][1]
-    assert body.count("DOWN DAY - weaker") == 1 and "GRWRHITECH BUY" in body
-    assert "only +0.2% over the market" in body and "With real money, skip them" in body
-    plain = ed.messages({**result, "issued": [call]})[0][1]
-    assert "DOWN DAY" not in plain
+    assert body.count("FALLING-MARKET DOWN DAY - skip with real money") == 1
+    assert "lost -1.5% a call" in body and "With real money, skip them" in body
+    plain = ed.messages({**result, "issued": [call, rising]})[0][1]
+    assert "DOWN DAY" not in plain  # a down day in a rising market is a normal call
+    assert ed.skip_real_money(falling) and not ed.skip_real_money(rising)
 
 
 def test_small_jumps_or_quiet_volume_are_not_calls() -> None:

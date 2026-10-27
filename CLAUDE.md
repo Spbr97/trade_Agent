@@ -136,8 +136,10 @@ its bar (30 pairs, t 2.0); re-run once the Oct-Nov 2026 season's calls mature (a
 Drift by market state (2026-10-28, tradedesk_lab/drift_market_split.py, live exit, 1,602 calls): reactions on a
 market down day while NIFTY is below its 200-day average lost -1.5% a call (-2.1% vs market, t -2.2, 1 of 8
 years positive, 87 calls) - real money should skip them; with NIFTY above its 200-day, down-day calls were the
-best group (+2.2% a call, 8/10 years). The live "DOWN DAY - weaker" mark covers both; narrowing it to falling
-markets is the owner's decision (identical today: NIFTY is below its 200-day). The Rs 10,000 delivery round trip is 0.56%, not 0.39%.
+best group (+2.2% a call, 8/10 years). So from 2026-10-28 (owner left the call to the agent) the live mark is
+"FALLING-MARKET DOWN DAY - skip with real money" (`earnings_drift.skip_real_money`: down day AND NIFTY below
+its 200-day); down-day calls in a rising market are normal calls. The raw `down_day` flag and the paper
+record's down-day split are unchanged. The Rs 10,000 delivery round trip is 0.56%, not 0.39%.
 Option income (9:20 straddle, Friday iron condor) cannot be backtested - INDstocks' expired-contract
 candles return nothing yet - so `tradedesk_lab/option_income.py` paper-trades both FORWARD on real
 Nifty quotes (scripts/option_income_watch.py, weekdays 09:17-15:20, saves every minute's chain);
