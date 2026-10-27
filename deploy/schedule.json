@@ -1405,6 +1405,70 @@
       ]
     },
     {
+      "name": "tradedesk-instruments-nse",
+      "enabled": true,
+      "command": [
+        "instruments-nse",
+        "tradedesk",
+        "data",
+        "sync-instruments",
+        "--market",
+        "nse"
+      ],
+      "windows_action": "C:\\Users\\sibap\\OneDrive\\Documents\\Trade_Agent\\.venv\\Scripts\\pythonw.exe \"C:\\Users\\sibap\\OneDrive\\Documents\\Trade_Agent\\scripts\\run_hidden.py\" instruments-nse tradedesk data sync-instruments --market nse",
+      "time_limit_minutes": 15,
+      "triggers": [
+        {
+          "kind": "Weekly",
+          "at": "07:40",
+          "first_date": "2026-10-28",
+          "days": [
+            "Mon",
+            "Tue",
+            "Wed",
+            "Thu",
+            "Fri"
+          ],
+          "every_days": null,
+          "repeat_minutes": null,
+          "repeat_for_minutes": null,
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "name": "tradedesk-instruments-bse",
+      "enabled": true,
+      "command": [
+        "instruments-bse",
+        "tradedesk",
+        "data",
+        "sync-instruments",
+        "--market",
+        "bse"
+      ],
+      "windows_action": "C:\\Users\\sibap\\OneDrive\\Documents\\Trade_Agent\\.venv\\Scripts\\pythonw.exe \"C:\\Users\\sibap\\OneDrive\\Documents\\Trade_Agent\\scripts\\run_hidden.py\" instruments-bse tradedesk data sync-instruments --market bse",
+      "time_limit_minutes": 15,
+      "triggers": [
+        {
+          "kind": "Weekly",
+          "at": "07:45",
+          "first_date": "2026-10-28",
+          "days": [
+            "Mon",
+            "Tue",
+            "Wed",
+            "Thu",
+            "Fri"
+          ],
+          "every_days": null,
+          "repeat_minutes": null,
+          "repeat_for_minutes": null,
+          "enabled": true
+        }
+      ]
+    },
+    {
       "name": "tradedesk-results-calendar",
       "enabled": true,
       "command": [
