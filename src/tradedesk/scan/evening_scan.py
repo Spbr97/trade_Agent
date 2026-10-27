@@ -228,6 +228,42 @@ def _eligibility_policy(settings: Settings) -> EligibilityPolicy:
     )
 
 
+# Owner-approved 2026-10-28: the rule setups that buy recent winners (r_high52_break, r_tsmom*,
+# r_donchian*, r_ema20_bounce, ...) win or lose together, so on one evening their alertable
+# calls share ONE full position's risk budget, best score first. Mean-reversion rules are a
+# different bet and are not counted.
+REVERSION_TRIGGERS = (
+    "crsi2_dip", "double7_dip", "ibs_low", "bullish_engulfing", "rsi2_dip", "bollinger_dip",
+    "rsi14_turn",
+)  # fmt: skip
+MOMENTUM_CLASS_REASON = "momentum class risk cap"
+
+
+def momentum_class(setup: str) -> bool:
+    return setup.startswith("r_") and not any(f"r_{t}_" in setup for t in REVERSION_TRIGGERS)
+
+
+def cap_momentum_class(entries: Sequence[Any], budget_pct: float) -> list[Any]:
+    """The entries with alertable momentum-class calls past `budget_pct` of capital (their
+    combined risk, best score first - pass them sorted) turned into rejections."""
+    used = 0.0
+    out = []
+    for entry in entries:
+        if entry.alertable and momentum_class(entry.signal.setup.value):
+            if used + entry.risk_pct > budget_pct + 1e-12:
+                reason = (
+                    f"{MOMENTUM_CLASS_REASON}: momentum rules already use {used:.2%} of the "
+                    f"{budget_pct:.2%} they share tonight"
+                )
+                entry = entry.model_copy(
+                    update={"alertable": False, "rejected_for": [*entry.rejected_for, reason]}
+                )
+            else:
+                used += entry.risk_pct
+        out.append(entry)
+    return out
+
+
 RETIRED_REASON_PREFIX = "retired by self-review on"
 RESEARCH_ONLY_REASON_PREFIX = "research-only on"
 
@@ -391,6 +427,7 @@ def build_watchlist(
             )
         )
     entries.sort(key=lambda e: (-e.score, e.signal.scrip_code))
+    entries = cap_momentum_class(entries, float(cfg.risk.max_risk_per_trade_pct))
     schedule = getattr(market.costs, "schedule", None)
     execution_assumptions = {
         "cost_model": type(market.costs).__name__,
