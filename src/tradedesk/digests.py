@@ -523,8 +523,9 @@ def weekly(
 
 
 def self_review_lines(start: date, end: date, *, root: Path = Path(".")) -> list[str]:
-    """What the self-review loop saw this week: setups whose rolling 20-day hit rate was under
-    30% on their latest check, and the review queue's decisions."""
+    """What the self-review loop saw this week: setups whose rolling 20-day window lost money
+    after costs on their latest check (from 2026-10-28; older checks: under a 30% hit rate),
+    and the review queue's decisions."""
 
     windows = [
         w for w in _jsonl(root / "data" / "reviews" / "rolling_windows.jsonl")
@@ -533,22 +534,27 @@ def self_review_lines(start: date, end: date, *, root: Path = Path(".")) -> list
     latest: dict[tuple[str, str], dict[str, Any]] = {}
     for w in windows:
         latest[(str(w.get("market")), str(w.get("setup")))] = w
-    weak = sorted(
-        (k, w) for k, w in latest.items()
-        if w.get("window_hit_rate") is not None and float(w["window_hit_rate"]) < 0.30
-    )  # fmt: skip
+
+    def losing(w: Mapping[str, Any]) -> bool:
+        if w.get("window_mean_net_r") is not None:
+            return float(w["window_mean_net_r"]) < 0
+        return w.get("window_hit_rate") is not None and float(w["window_hit_rate"]) < 0.30
+
+    weak = sorted((k, w) for k, w in latest.items() if losing(w))
     queue = _jsonl(root / "data" / "reviews" / "queue.jsonl")
     added = [q for q in queue if (d := _day(q.get("created_at"))) is not None and start <= d <= end]
     pending = [q for q in queue if q.get("status") == "pending"]
     lines = [
-        f"Self-review: {len(latest)} setup checks this week, {len(weak)} under 30% hit rate; "
-        f"review items added {len(added)}, waiting for you {len(pending)}"
+        f"Self-review: {len(latest)} setup checks this week, {len(weak)} losing money after "
+        f"costs; review items added {len(added)}, waiting for you {len(pending)}"
     ]
     for (market, setup), w in weak[:8]:
-        lines.append(
-            f"  {market.upper()} {setup}: {100 * float(w['window_hit_rate']):.0f}% "
-            f"over {w.get('window_n')} calls"
+        result = (
+            f"{float(w['window_mean_net_r']):+.2f}R a call"
+            if w.get("window_mean_net_r") is not None
+            else f"{100 * float(w['window_hit_rate']):.0f}% hit rate"
         )
+        lines.append(f"  {market.upper()} {setup}: {result} over {w.get('window_n')} calls")
     if len(weak) > 8:
         lines.append(f"  +{len(weak) - 8} more on the Review tab")
     return lines

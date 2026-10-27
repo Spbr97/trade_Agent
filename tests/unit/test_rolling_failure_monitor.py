@@ -28,6 +28,7 @@ def _signal(setup: str, resolved_on: str | None, outcome: str | None, n: int) ->
         logged_at="2026-01-01T09:15:00+05:30",
         outcome=outcome,
         resolved_at=f"{resolved_on}T15:30:00+05:30" if resolved_on else None,
+        net_r={"target": 1.9, "stop": -1.1}.get(outcome or ""),
     )
 
 
@@ -49,14 +50,49 @@ def test_compute_window_returns_none_when_nothing_resolved_in_range():
 def test_compute_window_counts_only_calls_in_the_trailing_window():
     resolutions = [("2026-01-01", "target")] + [("2026-01-15", "stop")] * 4
     rows = list(_rows("setup_a", resolutions).values())
-    n, hit_rate = mon.compute_window(rows, as_of=date(2026, 1, 20), window_days=20)
+    n, hit_rate, net = mon.compute_window(rows, as_of=date(2026, 1, 20), window_days=20)
     assert n == 5
     assert hit_rate == 0.2
+    assert net == (1.9 - 4 * 1.1) / 5
 
     # A 5-day window excludes the Jan 1 win entirely.
-    n2, hit_rate2 = mon.compute_window(rows, as_of=date(2026, 1, 20), window_days=5)
+    n2, hit_rate2, _ = mon.compute_window(rows, as_of=date(2026, 1, 20), window_days=5)
     assert n2 == 4
     assert hit_rate2 == 0.0
+
+
+def test_a_low_hit_rate_that_makes_money_is_not_a_failure(tmp_path: Path):
+    """2026-10-28: a trend setup with a 2R target that wins 25% of the time can still make
+    money; the old 30% hit-rate floor flagged it anyway. Judged on net R it is healthy."""
+    windows_log = tmp_path / "windows.jsonl"
+    resolutions = ([("2025-12-15", "target")] * 4 + [("2025-12-15", "stop")] * 12)
+    rows = _rows("trend_setup", resolutions)
+    for row in rows.values():
+        row.net_r = 3.8 if row.outcome == "target" else -1.1  # 25% winners, +0.12R a call
+    for day in (1, 2, 3):
+        mon.append_observations("nse", rows, as_of=date(2026, 1, day), windows_log=windows_log)
+    observations = mon.load_observations(windows_log)
+    assert observations[0].window_hit_rate == 0.25 and observations[0].window_mean_net_r > 0
+    assert mon.find_sustained_failures("nse", observations) == []
+
+
+def test_each_call_counts_once_and_untradeable_calls_not_at_all() -> None:
+    rows = _rows("s", [("2026-01-10", "stop")] * 3)
+    quick, swing, etf = rows.values()
+    quick.contract_version = "quick-profit-v1"
+    swing.contract_version = "swing-v1"
+    etf.rejected_for = ["ATR 0.0% outside 1.5-5.0%"]
+    assert [mon.judged_once(r) for r in (quick, swing, etf)] == [False, True, False]
+
+
+def test_observations_from_before_net_r_are_not_judged(tmp_path: Path):
+    windows_log = tmp_path / "windows.jsonl"
+    windows_log.write_text(
+        '{"market": "nse", "setup": "s", "as_of_date": "2026-01-01", "window_days": 20, '
+        '"window_n": 20, "window_hit_rate": 0.1, "recorded_at": "x"}\n',
+        encoding="utf-8",
+    )
+    assert mon.find_sustained_failures("nse", mon.load_observations(windows_log)) == []
 
 
 def test_append_observations_writes_one_row_per_setup_and_returns_qualifying_only(
