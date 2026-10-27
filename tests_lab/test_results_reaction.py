@@ -67,6 +67,34 @@ def test_intraday_outcome_is_net_of_costs_and_the_market() -> None:
     assert held is not None and held["net"] < 0  # flat after the pop: costs only
 
 
+def test_the_fade_shorts_the_pop_and_gains_when_it_gives_it_back() -> None:
+    spikes = {("A", 20): (3, 106.0, 8000.0)}
+    bars = _bars(spikes)
+    late = (bars.code == "A") & (bars.ts >= bars.ts.min())  # A falls back to 103 from bar 10
+    day20 = [int(datetime(DAYS[20].year, DAYS[20].month, DAYS[20].day, 9, 15, tzinfo=IST)
+                 .timestamp()) + 900 * b for b in range(10, 25)]  # fmt: skip
+    late &= bars.ts.isin(day20)
+    bars.loc[late, ["open", "high", "low", "close"]] = 103.0
+    df = rr.prepare(bars)
+    ctx = rr.context(df, lambda kind, buy, sell: 0.001)
+    sig = rr.news_signals(df, {"A": [DAYS[20]]}, 0.02).iloc[0].to_dict()
+    out = rr.fade_outcome(sig, ctx)
+    entry, cover = 106.0 * (1 - rr.SLIPPAGE), 103.0 * (1 + rr.SLIPPAGE)
+    assert abs(out["net"] - ((entry - cover) / entry - 0.001)) < 1e-12
+    assert out["net"] > 0 and out["mae"] < 0.001  # never traded above the short price
+
+
+def test_the_fade_verdict_waits_for_enough_forward_days() -> None:
+    rows = [{"day": DAYS[i % 10], "net": 0.004, "excess": 0.004 + 0.001 * (i % 3), "mae": 0.01}
+            for i in range(200)]  # fmt: skip
+    assert rr.fade_verdict(rows)["status"] == "collecting"  # 10 days < 20
+    rows = [{**r, "day": DAYS[i % 25]} for i, r in enumerate(rows)]
+    assert rr.fade_verdict(rows)["status"] == "passed"
+    losing = [{**r, "net": -0.002, "excess": -0.002} for r in rows]
+    assert rr.fade_verdict(losing)["status"] == "failed"
+    assert rr.fade_verdict([])["status"] == "collecting"
+
+
 def test_the_pass_bar() -> None:
     days = [DAYS[i] for i in range(20)]
     good = pd.DataFrame({"day": days * 6, "net": [0.01, 0.012, 0.008] * 40,

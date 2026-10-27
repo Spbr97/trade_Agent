@@ -1405,6 +1405,34 @@
       ]
     },
     {
+      "name": "tradedesk-results-fade-forward",
+      "enabled": true,
+      "command": [
+        "results-fade-forward",
+        "scripts/results_fade_forward.py"
+      ],
+      "windows_action": "C:\\Users\\sibap\\OneDrive\\Documents\\Trade_Agent\\.venv\\Scripts\\pythonw.exe \"C:\\Users\\sibap\\OneDrive\\Documents\\Trade_Agent\\scripts\\run_hidden.py\" results-fade-forward scripts/results_fade_forward.py",
+      "time_limit_minutes": 30,
+      "triggers": [
+        {
+          "kind": "Weekly",
+          "at": "20:30",
+          "first_date": "2026-10-29",
+          "days": [
+            "Mon",
+            "Tue",
+            "Wed",
+            "Thu",
+            "Fri"
+          ],
+          "every_days": null,
+          "repeat_minutes": null,
+          "repeat_for_minutes": null,
+          "enabled": true
+        }
+      ]
+    },
+    {
       "name": "tradedesk-instruments-nse",
       "enabled": true,
       "command": [

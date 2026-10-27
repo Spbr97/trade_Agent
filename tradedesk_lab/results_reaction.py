@@ -34,7 +34,15 @@ stricter than a Bonferroni correction for six at 5%. Research only: nothing here
 Caveats: the 15-minute store holds today's listings (survivorship flatters long tests a
 little); results_events gives the date, not the minute, so the rule watches two sessions.
 
-    python -m tradedesk_lab.results_reaction
+    python -m tradedesk_lab.results_reaction                 # the history test above
+    python -m tradedesk_lab.results_reaction --fade-forward  # nightly forward paper record
+
+RESULT (2026-10-28, 2025-10-14 to 2026-10-27, 1,656 stocks, 8,927 results events): every
+variant FAILS, the wrong way round. Buying the pop loses 0.7-0.8% the same day (t -5.5 to
+-6.2, 1,819-3,092 trades, both halves) and 1.5-2.1% over 5-20 sessions, worse than no-news
+pops (paired t -2.3 to -3.6); 35-37% of trades win, early and late signals alike. A results
+stock spiking intraday tends to give it back by the close. That is why earnings drift waits
+for the jump to HOLD into the close, and it suggests the mirror trade - see FADE_FROM below.
 """
 
 from __future__ import annotations
@@ -45,6 +53,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from decimal import Decimal
+from pathlib import Path
 from typing import Any
 
 import pandas as pd
@@ -195,6 +204,111 @@ def outcome(sig: Mapping[str, Any], ctx: Context, exit_name: str) -> dict[str, A
     return {"scrip_code": code, "day": day, "bar": bar, "net": net, "excess": net - mkt}
 
 
+def fade_outcome(sig: Mapping[str, Any], ctx: Context) -> dict[str, Any] | None:
+    """The mirror trade: SHORT at the signal bar's close, cover at the 15:15 price, intraday
+    charges. `excess` is the short's return less the market's (a short gains when the stock
+    falls more than the market); `mae` is the worst move against the short before the exit."""
+    code, day, bar = sig["scrip_code"], sig["day"], int(sig["bar"])
+    try:
+        day_bars = ctx.bars.loc[(code, day)]
+    except KeyError:
+        return None
+    after = day_bars[(day_bars.index > bar) & (day_bars.index <= EXIT_BAR)]
+    if after.empty:
+        return None
+    entry = float(sig["close"]) * (1 - SLIPPAGE)
+    exit_px = float(after["close"].iloc[-1]) * (1 + SLIPPAGE)
+    mkt = (1 + float(after["mret"].iloc[-1])) / (1 + float(sig["mret"])) - 1
+    net = (entry - exit_px) / entry - ctx.cost("intraday", exit_px, entry)
+    return {
+        "scrip_code": code, "day": day, "bar": bar, "entry": entry, "exit": exit_px,
+        "net": net, "excess": net + mkt, "mae": float(after["high"].max()) / entry - 1,
+        "vs_mkt_at_signal": float(sig["vs_mkt"]), "vol_x": float(sig["vol_x"]),
+    }  # fmt: skip
+
+
+# Pre-registered 2026-10-28, AFTER the long test above showed results pops falling back by the
+# close (-0.7% to -0.8% a trade). That makes the short side a hypothesis found in this data,
+# so it is judged ONLY on sessions from FADE_FROM on, never on the history that suggested it.
+# Rule: the up-2% variant's signal, shorted at the bar close, covered at the 15:15 price.
+FADE_FROM = date(2026, 10, 29)
+FADE_MOVE = 0.02
+FADE_PASS = {"min_trades": 150, "min_days": 20, "min_t": 2.5}
+FADE_LEDGER = OUT_DIR / "fade_forward.jsonl"
+
+
+def fade_verdict(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """Forward record against FADE_PASS: enough trades and days, money made after costs, a
+    day-clustered t of the excess >= 2.5, positive in both halves of the forward period."""
+    if not rows:
+        return {"status": "collecting", "trades": 0, "days": 0}
+    df = pd.DataFrame(rows)
+    mean_x, t_x, n_days = day_t(df)
+    days = sorted(df["day"].unique())
+    cut = days[len(days) // 2]
+    halves = [day_t(df[df["day"] < cut])[0], day_t(df[df["day"] >= cut])[0]] if n_days > 1 else []
+    out = {
+        "trades": len(df), "days": n_days, "win_rate": float((df["net"] > 0).mean()),
+        "mean_net": float(df["net"].mean()), "mean_excess_day": mean_x, "t_excess": t_x,
+        "halves_excess": halves, "worst_mae": float(df["mae"].max()),
+        "net_inr_per_10k": float(df["net"].mean() * NOTIONAL),
+    }  # fmt: skip
+    enough = len(df) >= FADE_PASS["min_trades"] and n_days >= FADE_PASS["min_days"]
+    good = (
+        out["mean_net"] > 0 and mean_x > 0 and t_x >= FADE_PASS["min_t"]
+        and all(h > 0 for h in halves)
+    )  # fmt: skip
+    out["status"] = "passed" if enough and good else "failed" if enough else "collecting"
+    return out
+
+
+def run_fade_forward(*, now: datetime | None = None) -> dict[str, Any]:
+    """Nightly: paper-record every fade signal from FADE_FROM to the last stored session
+    (each once), then judge the forward record. Research only."""
+    import duckdb
+
+    now = now or datetime.now(IST)
+    since = int((now - timedelta(days=70)).timestamp())  # 20+ sessions for usual volume
+    con = duckdb.connect(str(M15_DB), read_only=True)
+    try:
+        m15 = con.execute(
+            "SELECT code, ts, open, high, low, close, volume FROM m15 WHERE ts >= ?", [since]
+        ).df()
+    finally:
+        con.close()
+    _, events = load(m15=False)
+    df = prepare(m15)
+    ctx = context(df, cost_function())
+    sigs = news_signals(df, events, FADE_MOVE)
+    sigs = sigs[sigs["day"] >= FADE_FROM]
+    ledger = _read(FADE_LEDGER)
+    seen = {r["key"] for r in ledger}
+    new = []
+    for s in sigs.to_dict("records"):
+        key = f"{s['scrip_code']}:{s['day']}"
+        if key in seen or (o := fade_outcome(s, ctx)) is None:
+            continue
+        new.append({"key": key, **o, "day": str(o["day"]), "recorded_at": now.isoformat()})
+    if new:
+        FADE_LEDGER.parent.mkdir(parents=True, exist_ok=True)
+        with FADE_LEDGER.open("a", encoding="utf-8") as fh:
+            for row in new:
+                fh.write(json.dumps(row) + "\n")
+    rows = [{**r, "day": date.fromisoformat(str(r["day"]))} for r in [*ledger, *new]]
+    verdict = {"generated_at": now.isoformat(), "from": str(FADE_FROM), "new": len(new),
+               **fade_verdict(rows)}  # fmt: skip
+    (OUT_DIR / "fade_forward.json").write_text(json.dumps(verdict, indent=2, default=str))
+    print(json.dumps(verdict, default=str))
+    return verdict
+
+
+def _read(path: Path) -> list[dict[str, Any]]:
+    try:
+        return [json.loads(x) for x in path.read_text(encoding="utf-8").splitlines() if x]
+    except OSError:
+        return []
+
+
 def day_t(trades: pd.DataFrame, col: str = "excess") -> tuple[float, float, int]:
     """(mean of day means, t over days, days) - one signal day is one piece of evidence."""
     by_day = trades.groupby("day")[col].mean()
@@ -265,14 +379,17 @@ def cost_function() -> Any:
     return cost
 
 
-def load() -> tuple[pd.DataFrame, dict[str, list[date]]]:
+def load(*, m15: bool = True) -> tuple[pd.DataFrame, dict[str, list[date]]]:
+    """All 15-minute bars (unless `m15=False`) and each NSE code's results dates."""
     import duckdb
 
-    con = duckdb.connect(str(M15_DB), read_only=True)
-    try:
-        m15 = con.execute("SELECT code, ts, open, high, low, close, volume FROM m15").df()
-    finally:
-        con.close()
+    bars = pd.DataFrame()
+    if m15:
+        con = duckdb.connect(str(M15_DB), read_only=True)
+        try:
+            bars = con.execute("SELECT code, ts, open, high, low, close, volume FROM m15").df()
+        finally:
+            con.close()
     con = duckdb.connect(str(DAILY_DB), read_only=True)
     try:
         symbols = dict(con.execute(
@@ -286,7 +403,7 @@ def load() -> tuple[pd.DataFrame, dict[str, list[date]]]:
         code = symbols.get(sym)
         if code is not None:
             events.setdefault(code, []).append(pd.Timestamp(d).date())
-    return m15, events
+    return bars, events
 
 
 def _outcomes(signals: pd.DataFrame, ctx: Context, exit_name: str) -> pd.DataFrame:
@@ -329,4 +446,9 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    import sys
+
+    if "--fade-forward" in sys.argv:
+        run_fade_forward()
+    else:
+        main()

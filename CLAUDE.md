@@ -117,7 +117,13 @@ books, but no better than holding the market (11.6%/yr) and a 45% fall (bar 25%)
 ~16%/yr of the capital at ~440 round trips a year. Down-day leaders fail too (2026-10-24,
 tradedesk_lab/down_day_leaders.py): stocks closing up 1%+ on volume while the market fell 1%+
 then trail the market by ~1.6% over 10-20 sessions in every year 2017-2026 (t -4 to -7).
-That is why drift calls made on a market down day are marked weaker (see earnings_drift above). The Rs 10,000 delivery round trip is 0.56%, not 0.39%.
+That is why drift calls made on a market down day are marked weaker (see earnings_drift above).
+Buying a results-day pop as it happens fails too (2026-10-28, tradedesk_lab/results_reaction.py, 15-minute
+bars 2025-10 to 2026-10, 1,656 stocks, 8,927 results events): a results stock up 2% or 4% over the market on
+3x usual volume loses 0.7-0.8% by the close (t -5.5 to -6.2) and 1.5-2.1% over 5-20 sessions, worse than
+no-news pops - the pop tends to fade, which is why drift waits for the jump to hold into the close. The
+mirror trade (short the pop, cover at 15:15) was suggested by that data, so it is judged only forward from
+2026-10-29 (`run_fade_forward`, nightly 20:30, paper; pass: 150+ trades, 20+ days, t >= 2.5, both halves). The Rs 10,000 delivery round trip is 0.56%, not 0.39%.
 Option income (9:20 straddle, Friday iron condor) cannot be backtested - INDstocks' expired-contract
 candles return nothing yet - so `tradedesk_lab/option_income.py` paper-trades both FORWARD on real
 Nifty quotes (scripts/option_income_watch.py, weekdays 09:17-15:20, saves every minute's chain);
