@@ -398,6 +398,11 @@
     <table id="scoreboard-table"></table>
     <p class="muted" style="margin-top:8px;">R = the call's risk (entry to stop). +0.25R on a call risking Rs 1,000 is +Rs 250. Research numbers, not advice.</p>
   </section>
+  <section>
+    <h2>Faster read: 10 sessions vs same-day random stocks <span class="info-ic" title="Every distinct live call (NSE and BSE pooled by company, each counted once), scored at a fixed 10 sessions after entry against 10 random liquid stocks from the same day and liquidity band, with the same stop distance in ATR. One day's calls count as one piece of evidence. AHEAD: beats same-day random stocks with time-uniform 95% confidence; BEHIND: loses to them. It measures stock picking and entry, not the exit, and never changes what alerts.">&#9432;</span>
+      <span class="muted headline-inline" id="excess-meta"></span></h2>
+    <table id="excess-table"></table>
+  </section>
 </main>
 
 <main id="tab-movers" hidden>
@@ -1828,6 +1833,21 @@ async function loadScoreboard() {
     $('scoreboard-table').innerHTML = head + (body || '<tr><td colspan="9" class="muted">No verdicts yet - the profit gate runs every evening.</td></tr>');
   } catch (e) {
     $('scoreboard-meta').textContent = 'failed to load';
+  }
+  try {
+    const r = await fetch('/api/same-day-excess');
+    const d = r.ok ? await r.json() : { setups: [] };
+    $('excess-meta').textContent = d.generated_at ? `updated ${new Date(d.generated_at).toLocaleString()}, ${d.distinct_calls} distinct calls` : 'not run yet';
+    const label = { ahead: ['AHEAD', 'A'], behind: ['BEHIND', 'neg'], collecting: ['COLLECTING', 'C'] };
+    const head = '<tr><th>Setup</th><th>Verdict</th><th>Calls scored</th><th>Signal days</th><th>Avg vs random</th><th>Plausible range</th></tr>';
+    const body = (d.setups || []).slice().sort((a, b) => (b.mean_excess_r ?? -9) - (a.mean_excess_r ?? -9)).map(s => {
+      const [txt, cls] = label[s.verdict] || [s.verdict, ''];
+      const range = s.n_days >= 20 ? `${fmtR(s.lower)} to ${fmtR(s.upper)}` : 'needs 20+ days';
+      return `<tr><td>${esc(s.setup)}</td><td class="${cls}">${txt}</td><td>${s.n_calls}</td><td>${s.n_days}</td><td>${fmtR(s.mean_excess_r)}</td><td>${range}</td></tr>`;
+    }).join('');
+    $('excess-table').innerHTML = head + (body || '<tr><td colspan="6" class="muted">No call has reached 10 sessions yet.</td></tr>');
+  } catch (e) {
+    $('excess-meta').textContent = 'failed to load';
   }
 }
 

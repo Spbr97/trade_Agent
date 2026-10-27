@@ -1718,6 +1718,19 @@ def create_app(
 
         return JSONResponse(await asyncio.to_thread(load))
 
+    @app.get("/api/same-day-excess")
+    async def api_same_day_excess() -> JSONResponse:
+        """Every distinct live call scored at 10 sessions against same-day random stocks
+        (tradedesk_lab/same_day_excess.py), written daily by scripts/profit_gate.py."""
+
+        def load() -> dict[str, Any]:
+            path = Path("data/m14_m18/same_day_excess/nse_bse.json")  # cwd, as SCOREBOARD_PATH
+            if not path.exists():
+                return {"generated_at": None, "setups": []}
+            return json.loads(path.read_text(encoding="utf-8"))
+
+        return JSONResponse(await asyncio.to_thread(load))
+
     @app.get("/api/earnings-drift")
     async def api_earnings_drift() -> JSONResponse:
         """Earnings-drift calls with their live entries, exits and results (earnings_drift.py)."""

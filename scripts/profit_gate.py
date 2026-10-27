@@ -64,6 +64,19 @@ def main() -> int:
     for market, rows in status["markets"].items():
         alerting = {s: r for s, r in rows.items() if r["size_factor"] > 0}
         print(f"{market}: {len(rows)} setups judged; may alert: {json.dumps(alerting)}")
+    # The faster read (2026-10-27): every distinct live call scored at 10 sessions against
+    # same-day random stocks (tradedesk_lab/same_day_excess.py), for the Scoreboard tab.
+    # Research only - it never changes the verdicts written above.
+    try:
+        sys.path.insert(0, str(ROOT))
+        from tradedesk_lab import same_day_excess
+
+        same_day_excess.main(["--markets", "nse", "bse"])
+    except SystemExit as exc:
+        print(f"same-day excess: {exc}")
+    except Exception:  # noqa: BLE001 - the verdicts are already written
+        traceback.print_exc()
+        failed.append("same_day_excess")
     return 1 if failed else 0
 
 
