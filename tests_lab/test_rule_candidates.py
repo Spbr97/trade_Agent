@@ -135,7 +135,8 @@ def test_improvement_variant_reuses_the_production_pattern_and_the_cache_is_tran
 def test_candidate_space_puts_research_backed_rules_first_and_improvements_last() -> None:
     space = candidate_space(["base_breakout"], {"base_breakout": {"enabled": True}})
     names = [c.name for c in space]
-    assert names[0].startswith("r_high52_break_")
+    assert names[: len(R.LEADS)] == [f"r_{t}_{f}_{e}" for t, f, e in R.LEADS]
+    assert names[len(R.LEADS)].startswith("r_high52_break_")
     assert len(names) == len(set(names))  # every name unique - the search's memory key
     n_improve = len(R.FILTERS) * 2
     assert all(n.startswith("imp_base_breakout_") for n in names[-n_improve:])

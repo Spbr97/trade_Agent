@@ -125,6 +125,14 @@ FILTERS: dict[str, str] = {
     "calm_vol": 'df["atr_pct_rank"] < 50',
     "near_high52": 'df["close"] >= 0.9 * df["high"].rolling(252, min_periods=252).max()',
     "tsmom_up": 'df["close"] > df["close"].shift(252)',
+    # Volatility-adjusted 6- and 12-month return above one standard deviation of that
+    # horizon. Added 2026-10-27: the edge found on NSE was in WHICH stocks are held (top
+    # momentum, +0.06-0.10R over random) rather than the entry pattern. A per-stock bar,
+    # not a cross-sectional rank - the grammar sees one stock at a time.
+    "volmom126": '(df["close"] / df["close"].shift(126) - 1) / (df["close"].pct_change()'
+    '.rolling(126, min_periods=126).std(ddof=0) * np.sqrt(126)) > 1.0',
+    "volmom252": '(df["close"] / df["close"].shift(252) - 1) / (df["close"].pct_change()'
+    '.rolling(252, min_periods=252).std(ddof=0) * np.sqrt(252)) > 1.0',
 }
 
 # Where each research-backed rule comes from, and what that source actually found. A
@@ -189,9 +197,15 @@ EXITS: dict[str, ExitStyle] = {
     "target_3r": ExitStyle(2.0, 3.0, 1.0, "atr", 3.0, 20, 21),
     "revert_1r": ExitStyle(3.0, 1.0, 1.0, "ema10_close", 2.0, 5, 6),
     "revert_2r": ExitStyle(3.0, 2.0, 1.0, "ema10_close", 2.0, 10, 5),
+    # Let winners run (2026-10-27): no profit taken; at +1R the stop moves to breakeven and
+    # then trails 3 x ATR under the highest close, for up to 60 sessions. On NSE slow exits
+    # beat quick ones (3R vs 1R target +0.07R, 20 vs 10 sessions +0.08R, a 3 x ATR chandelier
+    # +0.10R). The engine's trail starts after the partial, so the "partial" here is the
+    # smallest lot the engine allows (fraction 0 -> one share).
+    "chandelier_run": ExitStyle(2.5, 1.0, 0.0, "atr", 3.0, 60, 61),
 }
 FAMILY_EXITS: dict[str, tuple[str, ...]] = {
-    "momentum": ("trend_trail", "target_3r"),
+    "momentum": ("trend_trail", "target_3r", "chandelier_run"),
     "reversion": ("revert_1r", "revert_2r"),
 }
 
@@ -495,10 +509,24 @@ def improvement_candidates(
     ]
 
 
+# Tested before everything else: the leads the fair random benchmark left standing
+# (2026-10-25: r_tsmom60_rsi_momentum adds +0.25R over random on its own filter days on NSE,
+# p 0.00005, the only installed rule near the bar) under the exits and selection that the
+# NSE study found pay.
+LEADS: tuple[tuple[str, str, str], ...] = (
+    ("tsmom60", "rsi_momentum", "chandelier_run"),
+    ("tsmom60", "volmom126", "chandelier_run"),
+    ("tsmom60", "volmom252", "chandelier_run"),
+    ("tsmom252", "volmom126", "chandelier_run"),
+)
+
+
 def rule_candidates() -> list[RuleCandidate]:
-    return [
+    leads = [RuleCandidate(*lead) for lead in LEADS]
+    rest = [
         RuleCandidate(trigger, flt, exit_name)
         for trigger, (family, _) in TRIGGERS.items()
         for flt in FILTERS
         for exit_name in FAMILY_EXITS[family]
     ]
+    return leads + [c for c in rest if c not in leads]
