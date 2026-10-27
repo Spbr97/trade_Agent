@@ -60,9 +60,12 @@ grep -q '^KEYRING_CRYPTFILE_PASSWORD=' /etc/tradedesk/env ||
   echo "KEYRING_CRYPTFILE_PASSWORD=$(head -c 32 /dev/urandom | base64 | tr -d '=+/\n')" >> /etc/tradedesk/env
 # `tradedesk-cli auth setup` etc. run as the service user with that environment, on a real
 # terminal so hidden prompts work (a plain `sudo -u tradedesk` would not see the password).
+# Without a terminal (ssh with a command, scripts) `-t` waits forever for one, so the wrapper
+# asks for a terminal only when it has one and pipes output otherwise (2026-10-28).
 cat > /usr/local/bin/tradedesk-cli <<'WRAP'
 #!/usr/bin/env bash
-exec sudo systemd-run -t --quiet --wait --collect -p User=tradedesk   -p EnvironmentFile=/etc/tradedesk/env -p WorkingDirectory=/opt/tradedesk   /opt/tradedesk/.venv/bin/tradedesk "$@"
+if [ -t 0 ]; then io=-t; else io=--pipe; fi
+exec sudo systemd-run "$io" --quiet --wait --collect -p User=tradedesk   -p EnvironmentFile=/etc/tradedesk/env -p WorkingDirectory=/opt/tradedesk   /opt/tradedesk/.venv/bin/tradedesk "$@"
 WRAP
 chmod 755 /usr/local/bin/tradedesk-cli
 
