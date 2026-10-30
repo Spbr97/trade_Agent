@@ -1873,6 +1873,8 @@ async function loadEarningsDrift() {
       if (Object.values(split).some(p => p.open || p.closed)) lines.push(`Made on a market down day: ${part(split.down_day)}; other days: ${part(split.other_days)}.`);
       const trend = sc.by_nifty_trend || {};
       if (Object.values(trend).some(p => p.open || p.closed)) lines.push(`NIFTY above its 200-day average: ${part(trend.above_200dma)}; below: ${part(trend.below_200dma)}.`);
+      const money = sc.by_real_money || {};
+      if (money.skip && (money.skip.open || money.skip.closed)) lines.push(`Marked skip with real money: ${part(money.skip)}; calls to take: ${part(money.take)}.`);
       lines.push(sc.proven ? 'PROVEN live: beats the market.' : `Proof needs about ${sc.closed_calls_for_proof} closed calls.`);
     }
     $('drift-scorecard').textContent = lines.join(' ');

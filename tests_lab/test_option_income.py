@@ -83,3 +83,38 @@ def test_summary_reports_totals_per_rule(tmp_path: Path, monkeypatch) -> None:
     title, body = oi.summary(ledger, today=__import__("datetime").date(2026, 10, 19))
     assert "straddle_30: today -800, 2 closed, total Rs +400" in body and "PAPER ONLY" in body
     assert json.loads(ledger.read_text().splitlines()[0])["net_inr"] == 1200.0
+
+
+def test_straddle_records_its_worst_point_and_the_whipsaw_day() -> None:
+    open_chain = _chain(23140, {23150: ((70, 71), (100, 101))})
+    s30, _ = oi.open_straddles(open_chain, "09:20")
+    s30.step(_chain(23250, {23150: ((88, 89), (94, 95))}), "10:00", square_off=False)
+    s30.step(_chain(23150, {23150: ((50, 51), (60, 61))}), "15:15", square_off=True)
+    r = s30.result(COSTS)
+    assert r["worst_open_inr"] == pytest.approx(((70 - 89) + (100 - 95)) * oi.LOT)
+    gross = -(0.30 * 70 + 0.30 * 100) * oi.LOT
+    assert gross - 600 < r["both_stopped_inr"] < gross  # the stops' loss plus four orders' costs
+
+
+def test_stress_replays_old_trades_from_saved_chains(tmp_path: Path) -> None:
+    legs = [
+        {"side": "ce", "strike": 23150.0, "entry": 70.0, "stop": 91.0, "exit": 95.0,
+         "exit_at": "T11", "reason": "stop"},
+        {"side": "pe", "strike": 23150.0, "entry": 100.0, "stop": 130.0, "exit": 130.5,
+         "exit_at": "T14", "reason": "stop"},
+    ]  # fmt: skip
+    row = {"rule": "straddle_30", "expiry": "E", "opened_at": "T09", "net_inr": -3000.0,
+           "closed_on": "2026-10-20", "legs": legs}  # fmt: skip
+    win = {**row, "net_inr": 1000.0, "legs": [{**x, "exit": 50.0, "reason": "15:15"} for x in legs]}
+    minutes = [
+        {"t": "T10", "expiry": "E", "strikes": {"23150.0": {"ce": [89, 90, 0, 0, 0],
+                                                           "pe": [99, 100, 0, 0, 0]}}},
+        {"t": "T12", "expiry": "E", "strikes": {"23150.0": {"ce": [9, 10, 0, 0, 0],
+                                                           "pe": [119, 120, 0, 0, 0]}}},
+    ]  # fmt: skip
+    (tmp_path / "2026-10-20.jsonl").write_text("\n".join(json.dumps(m) for m in minutes))
+    st = oi.stress([row, win], COSTS, chain_dir=tmp_path)["straddle_30"]
+    assert st["worst_open_inr"] == pytest.approx(((70 - 95) + (100 - 120)) * oi.LOT)
+    assert st["both_stopped_days"] == 1 and st["stops"] == 2
+    assert st["stop_fill_overshoot"] == pytest.approx((95 / 91 - 1 + 130.5 / 130 - 1) / 2)
+    assert st["both_stopped_in_wins"] > 1

@@ -195,17 +195,26 @@ def market_day_move(p: Panels, day: date, market: pd.Series | None = None) -> fl
 
 
 def annotate(p: Panels, ledger: Sequence[Mapping[str, Any]], now: datetime) -> list[dict[str, Any]]:
-    """One appended `annotated` event per call recorded before the down-day mark existed."""
+    """One appended `annotated` event per call recorded before the down-day mark or the NIFTY
+    200-day state existed, carrying only the fields the call lacks."""
 
     market = _market(p)
     out = []
     for cid, c in positions(ledger).items():
-        if "down_day" in c or not c.get("reaction_close_on"):
+        if not c.get("reaction_close_on"):
             continue
-        move = market_day_move(p, date.fromisoformat(c["reaction_close_on"]), market)
-        if move is not None:
-            out.append({"event": "annotated", "call_id": cid, "at": now.isoformat(),
-                        "market_day_move": move, "down_day": move <= DOWN_DAY})  # fmt: skip
+        day = date.fromisoformat(c["reaction_close_on"])
+        marks: dict[str, Any] = {}
+        if "down_day" not in c:
+            move = market_day_move(p, day, market)
+            if move is not None:
+                marks.update(market_day_move=move, down_day=move <= DOWN_DAY)
+        if c.get("nifty_vs_200dma") is None:
+            state = market_state(p, day)
+            if state is not None:
+                marks["nifty_vs_200dma"] = state
+        if marks:
+            out.append({"event": "annotated", "call_id": cid, "at": now.isoformat(), **marks})
     return out
 
 
@@ -440,7 +449,7 @@ def scorecard(
     open_now, closed = [], []
     for c in calls.values():
         if "exit_price" in c:
-            closed.append(c)
+            closed.append({**c, "skip_real_money": skip_real_money(c)})
         elif "entry_price" in c:
             px = latest_close.get(c["scrip_code"])
             if px is not None and math.isfinite(px) and px > 0:
@@ -449,7 +458,8 @@ def scorecard(
                 open_now.append(
                     {"symbol": c.get("symbol"), "entry": c["entry_price"], "now": px,
                      "net": net, "inr": inr, "down_day": c.get("down_day"),
-                     "nifty_vs_200dma": c.get("nifty_vs_200dma")}
+                     "nifty_vs_200dma": c.get("nifty_vs_200dma"),
+                     "skip_real_money": skip_real_money(c)}
                 )  # fmt: skip
     n = len(closed)
     mean = sum(float(c["net_return"]) for c in closed) / n if n else None
@@ -490,6 +500,9 @@ def scorecard(
             open_now, closed, "nifty_vs_200dma",
             (("above_200dma", "above"), ("below_200dma", "below")),
         ),  # fmt: skip
+        "by_real_money": _split(
+            open_now, closed, "skip_real_money", (("skip", True), ("take", False))
+        ),
     }
 
 
@@ -567,6 +580,12 @@ def scorecard_message(card: Mapping[str, Any]) -> tuple[str, str] | None:
         lines.append(
             f"NIFTY above its 200-day average: {_market_day_part(trend.get('above_200dma'))}; "
             f"below: {_market_day_part(trend.get('below_200dma'))}"
+        )
+    money = card.get("by_real_money") or {}
+    if (money.get("skip") or {}).get("open") or (money.get("skip") or {}).get("closed"):
+        lines.append(
+            f"Marked skip with real money: {_market_day_part(money.get('skip'))}; "
+            f"calls to take: {_market_day_part(money.get('take'))}"
         )
     lines.append(
         "PROVEN live: results beat the market" if card["proven"] else

@@ -21,6 +21,13 @@ until checked against a contract note): STT on the sell premium, exchange and SE
 sides, stamp duty on the buy, GST on brokerage + exchange + SEBI, brokerage per order. One lot.
 A day on which Nifty does not move in the first polls is treated as a holiday and not traded.
 Judge after 60 straddle sessions and 12 condor weeks: mean net per lot, worst day, worst week.
+
+Stress (2026-10-31): selling straddles wins small and often, so the win rate hides the risk. Each
+straddle records its worst open loss of the day (marked at the ask every minute) and the summary
+reports, per rule: that worst point, what a day with BOTH legs stopped costs (the whipsaw the
+per-leg stops cannot prevent) in average winning days, how often both legs stopped, and how far
+past the stop the fills landed (a jump between minute polls fills beyond the stop). Trades closed
+before the field existed are replayed from the saved minute chains.
 """
 
 from __future__ import annotations
@@ -133,6 +140,7 @@ class Straddle:
     expiry: str
     opened_at: str
     legs: list[Leg] = field(default_factory=list)
+    worst_open_inr: float = 0.0  # lowest gross mark-to-market of the day, at the ask
 
     def step(self, chain: Mapping[str, Any], now: str, *, square_off: bool) -> None:
         for leg in self.legs:
@@ -145,6 +153,9 @@ class Straddle:
                 leg.exit, leg.exit_at, leg.reason = q["ask"], now, "stop"
             elif square_off:
                 leg.exit, leg.exit_at, leg.reason = q["ask"], now, "15:15"
+        mark = open_value(self.legs, chain)
+        if mark is not None:
+            self.worst_open_inr = min(self.worst_open_inr, mark)
 
     @property
     def done(self) -> bool:
@@ -161,8 +172,33 @@ class Straddle:
             "gross_inr": round(gross, 2),
             "costs_inr": round(fees, 2),
             "net_inr": round(gross - fees, 2),
+            "worst_open_inr": round(self.worst_open_inr, 2),
+            "both_stopped_inr": round(both_stopped(self.legs, costs), 2),
             "legs": [asdict(x) for x in self.legs],
         }
+
+
+def open_value(legs: list[Leg], chain: Mapping[str, Any]) -> float | None:
+    """Gross rupees of the straddle now: closed legs at their exit, open legs bought back at
+    the ask (None while a quote is missing)."""
+
+    total = 0.0
+    for leg in legs:
+        price = leg.exit
+        if price is None:
+            q = quote(chain, leg.strike, leg.side)
+            if not q or q["ask"] <= 0:
+                return None
+            price = q["ask"]
+        total += (leg.entry - price) * LOT
+    return total
+
+
+def both_stopped(legs: list[Leg], costs: OptionCosts) -> float:
+    """Net rupees of the whipsaw day: both legs bought back exactly at their stops."""
+
+    return sum((leg.entry - leg.stop) * LOT - costs.trade(leg.entry, LOT, "sell")
+               - costs.trade(leg.stop, LOT, "buy") for leg in legs)  # fmt: skip
 
 
 def open_straddles(chain: Mapping[str, Any], now: str) -> list[Straddle]:
@@ -247,7 +283,84 @@ def append(path: Path, row: Mapping[str, Any]) -> None:
         fh.write(json.dumps(row, default=str) + "\n")
 
 
-def summary(ledger: Path = LEDGER, today: date | None = None) -> tuple[str, str]:
+def _minutes(chain_dir: Path, day: str) -> list[dict[str, Any]]:
+    path = chain_dir / f"{day}.jsonl"
+    if not path.exists():
+        return []
+    return [json.loads(x) for x in path.read_text(encoding="utf-8").splitlines() if x.strip()]
+
+
+def replay_worst(row: Mapping[str, Any], minutes: list[dict[str, Any]]) -> float | None:
+    """The worst open loss of a closed straddle, from that day's saved minute chains (the
+    compact form: strikes[k][side] = [bid, ask, last, iv, delta])."""
+
+    legs = [Leg(**leg) for leg in row.get("legs") or []]
+    if not legs or not minutes:
+        return None
+    worst, seen = 0.0, False
+    for m in minutes:
+        t = str(m.get("t"))
+        if t < str(row["opened_at"]) or m.get("expiry") != row.get("expiry"):
+            continue
+        total = 0.0
+        for leg in legs:
+            if leg.exit is not None and leg.exit_at is not None and t >= leg.exit_at:
+                price = leg.exit
+            else:
+                k = next((k for k in m["strikes"] if abs(float(k) - leg.strike) < 1e-6), None)
+                q = (m["strikes"].get(k) or {}).get(leg.side) if k else None
+                if not q or not q[1]:
+                    break
+                price = float(q[1])
+            total += (leg.entry - price) * LOT
+        else:
+            worst, seen = min(worst, total), True
+    return worst if seen else None
+
+
+def stress(
+    rows: list[dict[str, Any]], costs: OptionCosts | None = None, chain_dir: Path | None = None
+) -> dict[str, dict[str, Any]]:
+    """Per straddle rule: the risk a high win rate hides (see the module docstring)."""
+
+    costs = costs or OptionCosts()
+    chain_dir = chain_dir or ROOT / "chain"
+    days: dict[str, list[dict[str, Any]]] = {}
+    out = {}
+    for rule in STOPS:
+        mine = [r for r in rows if r.get("rule") == rule and r.get("legs")]
+        if not mine:
+            continue
+        worst, whipsaw, both, overshoot = [], [], 0, []
+        for r in mine:
+            legs = [Leg(**leg) for leg in r["legs"]]
+            w = r.get("worst_open_inr")
+            if w is None:
+                day = str(r.get("closed_on"))
+                w = replay_worst(r, days.setdefault(day, _minutes(chain_dir, day)))
+            if w is not None:
+                worst.append(w)
+            whipsaw.append(r.get("both_stopped_inr") or both_stopped(legs, costs))
+            stopped = [x for x in legs if x.reason == "stop"]
+            both += len(stopped) == len(legs)
+            overshoot += [x.exit / x.stop - 1 for x in stopped if x.exit and x.stop]
+        wins = [r["net_inr"] for r in mine if r["net_inr"] > 0]
+        typical = sum(whipsaw) / len(whipsaw)
+        out[rule] = {
+            "sessions": len(mine),
+            "worst_open_inr": min(worst) if worst else None,
+            "both_stopped_inr": typical,
+            "both_stopped_in_wins": -typical / (sum(wins) / len(wins)) if wins else None,
+            "both_stopped_days": both,
+            "stop_fill_overshoot": sum(overshoot) / len(overshoot) if overshoot else None,
+            "stops": len(overshoot),
+        }
+    return out
+
+
+def summary(
+    ledger: Path = LEDGER, today: date | None = None, chain_dir: Path | None = None
+) -> tuple[str, str]:
     rows = []
     if ledger.exists():
         rows = [json.loads(x) for x in ledger.read_text(encoding="utf-8").splitlines() if x]
@@ -264,6 +377,19 @@ def summary(ledger: Path = LEDGER, today: date | None = None) -> tuple[str, str]
             f"{rule}: {today_txt}{len(nets)} closed, total Rs {sum(nets):+,.0f}, "
             f"avg {sum(nets) / len(nets):+,.0f}, worst {min(nets):+,.0f} per lot"
         )
+    for rule, st in stress(rows, chain_dir=chain_dir).items():
+        bits = []
+        if st["worst_open_inr"] is not None:
+            bits.append(f"worst point in a day Rs {st['worst_open_inr']:+,.0f}")
+        whip = f"a both-legs-stopped day about Rs {st['both_stopped_inr']:+,.0f}"
+        if st["both_stopped_in_wins"] is not None:
+            whip += f" (= {st['both_stopped_in_wins']:.1f} average winning days)"
+        bits.append(whip)
+        bits.append(f"both stopped on {st['both_stopped_days']} of {st['sessions']} days")
+        if st["stop_fill_overshoot"] is not None:
+            bits.append(f"stops filled {100 * st['stop_fill_overshoot']:+.0f}% past the stop "
+                        f"({st['stops']} stops)")  # fmt: skip
+        lines.append(f"{rule} risk: " + ", ".join(bits))
     if CONDOR_STATE.exists():
         c = json.loads(CONDOR_STATE.read_text(encoding="utf-8"))
         lines.append(
@@ -271,6 +397,8 @@ def summary(ledger: Path = LEDGER, today: date | None = None) -> tuple[str, str]
             f"{c['max_loss_inr']:,.0f} per lot"
         )
     lines.append(
-        "PAPER ONLY on real quotes, 1 Nifty lot (65); not an alert. Brokerage provisional."
+        "PAPER ONLY on real quotes, 1 Nifty lot (65); not an alert. Brokerage is an estimate "
+        f"(Rs {OptionCosts().brokerage_per_order:.0f} an order) until a real F&O contract note "
+        "confirms it."
     )
     return "Option income paper test", "\n".join(lines or ["no closed paper trades yet"])

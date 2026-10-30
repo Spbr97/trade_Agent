@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
@@ -59,6 +60,19 @@ def test_calls_from_before_the_mark_are_annotated_once(tmp_path: Path) -> None:
     assert [m["event"] for m in marks] == ["annotated"] and marks[0]["down_day"] is True
     merged = ed.positions([old, *marks])["JUMPY:x"]
     assert merged["down_day"] is True and merged["symbol"] == "JUMPY"
+    assert ed.annotate(p, [old, *marks], datetime.now(IST)) == []
+
+
+def test_calls_from_before_the_nifty_trend_mark_get_only_that_field() -> None:
+    base = _panels(n_sessions=230)
+    rising = pd.Series(np.linspace(20_000, 25_000, 230), index=base.sessions)  # NIFTY above
+    p = dataclasses.replace(base, nifty=rising)
+    old = {"event": "call", "call_id": "JUMPY:x", "at": "t", "symbol": "JUMPY",
+           "scrip_code": "NSE_J", "reaction_close_on": p.sessions[-1].isoformat(),
+           "down_day": False, "market_day_move": 0.002}  # fmt: skip
+    marks = ed.annotate(p, [old], datetime.now(IST))
+    assert len(marks) == 1 and marks[0]["nifty_vs_200dma"] == "above"
+    assert "down_day" not in marks[0]  # the call's own down-day mark is kept as recorded
     assert ed.annotate(p, [old, *marks], datetime.now(IST)) == []
 
 
@@ -269,3 +283,21 @@ def test_the_paper_record_reports_calls_above_and_below_nifty_200dma_apart() -> 
     assert trend["below_200dma"]["open"] == 1 and trend["above_200dma"]["closed"] == 1
     body = ed.scorecard_message(card)[1]
     assert "NIFTY above its 200-day average: 1 closed +4.0%; below: 1 open -5.6%" in body
+    assert "skip with real money" not in body  # no call is a falling-market down day
+
+
+def test_the_paper_record_reports_the_skip_with_real_money_calls_apart() -> None:
+    rows = [
+        {"event": "call", "call_id": "A:d", "at": "t", "symbol": "A", "scrip_code": "NSE_A",
+         "down_day": True, "nifty_vs_200dma": "below"},
+        {"event": "entered", "call_id": "A:d", "at": "t", "entry_price": 100.0, "qty": 100},
+        *_closed(1, 0.04),
+    ]  # fmt: skip
+    rows[2] = {**rows[2], "down_day": True, "nifty_vs_200dma": "above"}  # a rising-market down day
+    card = ed.scorecard(rows, {"NSE_A": 95.0}, as_of="x")
+    money = card["by_real_money"]
+    assert money["skip"]["open"] == 1 and money["skip"]["closed"] == 0
+    assert money["take"] == {"open": 0, "open_mean_net": None, "closed": 1,
+                             "closed_mean_net": 0.04}  # fmt: skip
+    body = ed.scorecard_message(card)[1]
+    assert "Marked skip with real money: 1 open -5.6%; calls to take: 1 closed +4.0%" in body
