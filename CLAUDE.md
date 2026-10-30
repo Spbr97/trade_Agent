@@ -129,6 +129,7 @@ buying every debut, a 5%+ debut, or the first close above the listing-period hig
 after real costs - none reaches t >= 3 over entry weeks. Closest: listing-period high held 60 sessions,
 +5.7% a call, +3.3% over the market, t 1.7, both halves positive, ~25 calls a year - a weak lead that
 survivorship flatters, too rare to prove forward in under several years. Medians are about zero or below.
+Special-situation events fail too (2026-10-31, tradedesk_lab/event_studies.py, NSE filings 2021-2026, lock-ins from listings 2017 on): buying the next open after the first rights-issue, buyback or open-offer filing, 30 sessions after a rights filing, or after a 30/90/180-day IPO lock-in expiry, held 20 or 60 sessions - none of 14 variants passes (bar: 60+ calls, t >= 3 over entry weeks, both halves). Rights-issue filings are followed by underperformance (-4.6% vs market over 20 sessions, t -5.5) and buyback filings too (-2.5%, t -3.7) - unusable long-only; avoiding them in other calls would be a new hypothesis needing its own test. Closest: lock-in day 30, +1.3% vs market, t 1.7.
 Drift timing (2026-10-28, tradedesk_lab/drift_timing.py): buying the reaction day's close instead of the next
 open adds nothing (+0.01% a call, t 0.8). Dating results by filing time - judging intraday-filed results on
 the same day's close and calling a session sooner - made +1.6% more a call on 28 paired events (t 1.4): under

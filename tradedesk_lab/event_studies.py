@@ -37,6 +37,21 @@ Caveat: the price store holds stocks listed today, so stocks that later delisted
 this flatters every long test, so a pass needs to be clear, and a fail is a fail.
 
     python -m tradedesk_lab.event_studies
+
+RESULT (2026-10-31, filings 2021-01 to 2026-09, lock-ins from listings 2017 on): ALL 14 FAIL.
+                     calls  net/call  vs market (week t)
+  rights_announce_20   136    -3.5%     -4.6% (t -5.5)  27% win - stocks keep falling after
+  rights_announce_60   130    +0.5%     -4.5% (t -3.1)        a rights-issue filing
+  rights_after_30_20   109    +1.7%     -0.4% (t -0.4)  the OLAELEC rebound is not a pattern
+  rights_after_30_60   102    +5.0%     -0.4% (t -0.2)
+  buyback_20           198    -0.4%     -2.5% (t -3.7)  bought the next open, the pop fades
+  buyback_60           190    -0.0%     -4.2% (t -2.7)
+  open_offer_20/60      81    +0.7/+4.1% -2.3/-3.6% (t -1.9)
+  lockin_30_20         410    +2.1%     +1.3% (t +1.7)  closest; the rest -1.6% to +1.0%
+  lockin 90/180         -                t -1.6 to +0.7
+Rights announcements and buyback announcements are followed by UNDERPERFORMANCE (t -5.5, -3.7):
+long-only overnight, so they cannot be traded short; at most a reason to avoid buying such a
+stock, which is a new hypothesis that would need its own pre-registered test.
 """
 
 from __future__ import annotations
