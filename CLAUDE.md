@@ -138,12 +138,12 @@ market down day while NIFTY is below its 200-day average lost -1.5% a call (-2.1
 years positive, 87 calls) - real money should skip them; with NIFTY above its 200-day, down-day calls were the
 best group (+2.2% a call, 8/10 years). So from 2026-10-28 (owner left the call to the agent) the live mark is
 "FALLING-MARKET DOWN DAY - skip with real money" (`earnings_drift.skip_real_money`: down day AND NIFTY below
-its 200-day); down-day calls in a rising market are normal calls. The raw `down_day` flag and the paper
+its 200-day); down-day calls in a rising market are normal calls. The scorecard reports those skip-marked calls apart from the calls to take (`by_real_money`). The raw `down_day` flag and the paper
 record's down-day split are unchanged. The Rs 10,000 delivery round trip is 0.56%, not 0.39%.
 Option income (9:20 straddle, Friday iron condor) cannot be backtested - INDstocks' expired-contract
 candles return nothing yet - so `tradedesk_lab/option_income.py` paper-trades both FORWARD on real
 Nifty quotes (scripts/option_income_watch.py, weekdays 09:17-15:20, saves every minute's chain);
-judge after 60 straddle sessions / 12 condor weeks. Paper only, one lot; F&O brokerage provisional.
+judge after 60 straddle sessions / 12 condor weeks. Paper only, one lot; F&O brokerage provisional. From 2026-10-31 the summary also reports each straddle rule's risk (worst open loss of a day, the both-legs-stopped day in average winning days, stop fill overshoot; older trades replayed from the saved minute chains), because a high win rate hides it.
 
 **Scope limits, by design, not oversight**: paper trading and the live risk manager remain
 NSE-only (crypto/BSE have no paper book to grade against). Crypto/BSE calls are
