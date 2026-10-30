@@ -4,3 +4,4 @@ catboost==1.2.8
 graphviz==0.21
 plotly==6.3.0
 narwhals==2.4.0
+pypdf==5.1.0
