@@ -44,6 +44,15 @@ this flatters every long test, so a pass needs to be clear, and a fail is a fail
 
     python -m tradedesk_lab.insider_buying fetch [--from 2021-01-01]
     python -m tradedesk_lab.insider_buying
+
+RESULT (2026-10-31, 107,476 disclosures 2021-01 to 2026-04 - NSE's API returns nothing from
+May 2026 - of which 14,604 qualifying buys): ALL 16 FAIL. The stocks rose (+2% to +9.5% a call
+after costs, 50-60% win) but no more than the market: excess t -0.9 to +1.75. Closest:
+cluster_small_60 (two insiders within 30 days, Rs 1-5 crore stocks, 60 sessions), +2.8% vs
+market, t 1.75 - all of it in the first half (+5.9%; second half -0.2%). any_buy_small_60
++1.6%, t 1.4, same shape. Whatever edge insider buying had here faded after 2023; buying the
+next open after NSE publishes it does not beat the market. A plausible reason: Indian promoter
+market purchases are often creeping acquisitions or price support, not private conviction.
 """
 
 from __future__ import annotations
