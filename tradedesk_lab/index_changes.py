@@ -83,7 +83,7 @@ PASS = {"min_calls": 50, "min_releases": 12, "min_t": 3.0}
 _MONTH = r"(January|February|March|April|May|June|July|August|September|October|November|December)"
 _RELEASED = re.compile(rf"Mumbai,?\s+{_MONTH}\s+(\d{{1,2}}),?\s+(\d{{4}})", re.I)
 # Releases before 2024 head the page with a bare date line instead of "Mumbai, <date>".
-_DATE_LINE = re.compile(rf"^\s*{_MONTH}\s+(\d{{1,2}}),?\s+(\d{{4}})\s*$", re.I | re.M)
+_DATE_LINE = re.compile(rf"^\s*(?:Date:\s*)?{_MONTH}\s+(\d{{1,2}}),?\s+(\d{{4}})\s*$", re.I | re.M)
 _EFFECTIVE = re.compile(rf"effective\s+from\s+{_MONTH}\s+(\d{{1,2}}),?\s+(\d{{4}})", re.I)
 _HEADING = re.compile(
     r"^\s*(?:[A-Z]\.|\d+[).]|[ivx]+[).])?\s*(nifty[\w &/-]*?)\s*(?:index)?\s*:?\s*$", re.I

@@ -44,10 +44,10 @@ def test_an_equity_release_gives_its_dates_and_changes_per_index() -> None:
 
 
 def test_an_older_release_heads_the_page_with_a_bare_date_line() -> None:
-    old = RELEASE.replace("Mumbai, February 23, 2026", "Press Release\nFebruary 23, 2026")
-    rel = ic.parse(old)
-    assert rel is not None and rel["released"] == date(2026, 2, 23)
-    assert rel["changes"]["nifty 50"]["included"] == ["BAJAJ-AUTO"]
+    for head in ("Press Release\nFebruary 23, 2026", "Date: February 23, 2026"):
+        rel = ic.parse(RELEASE.replace("Mumbai, February 23, 2026", head))
+        assert rel is not None and rel["released"] == date(2026, 2, 23)
+        assert rel["changes"]["nifty 50"]["included"] == ["BAJAJ-AUTO"]
 
 
 def test_each_stock_counts_once_at_its_highest_tier_and_sector_indices_are_left_out() -> None:
