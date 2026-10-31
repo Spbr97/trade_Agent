@@ -39,6 +39,17 @@ only if:
 t >= 3 over releases is stricter than Bonferroni for nine. A pass becomes a proposal for FORWARD
 paper calls, never a live call. Research only.
 
+RESULT (2026-10-31, 249 equity releases parsed from 1,191 press releases 2016-2026, 3,178
+events): all 9 variants FAIL. The forced buying is already in the price by the time the release
+is public. Closest is add_runup_broad - a Nifty 500 / Smallcap add held from the release to the
+funds' buying close: +1.07% over the market a call, t 1.68, both halves positive, 580 calls -
+but it LOSES 2.0% a call in absolute terms after costs, so it only "beats" a market that fell
+harder; long-only, that is not money. Every large-tier variant is negative over the market
+(Nifty 50 / Next 50 adds -0.28% runup, -1.74% held 20 sessions; drops -2.89%), i.e. the stock
+NSE promotes has already run and gives it back. Drops recover in absolute terms (+2.9% large,
++4.0% broad over 20 sessions) but no faster than the market. Do not re-test without new data:
+a different window or tier is the same mined release set.
+
 Caveat: the price store holds stocks listed today, so stocks that later delisted are missing -
 this flatters the long tests (mostly drop_after), so a pass needs to be clear.
 
