@@ -31,7 +31,8 @@ def _impute(values: np.ndarray, imputer: StateBag) -> np.ndarray:
     output = values.astype(float, copy=True)
     missing = ~np.isfinite(output)
     if missing.any():
-        output[missing] = np.take(np.asarray(imputer.statistics_, dtype=float), np.where(missing)[1])
+        stats = np.asarray(imputer.statistics_, dtype=float)
+        output[missing] = np.take(stats, np.where(missing)[1])
     return output
 
 

@@ -59,6 +59,8 @@ packages = ["src/tradedesk"]
 line-length = 100
 target-version = "py312"
 src = ["src", "tests"]
+# Scratch repos written by the self-review apply() tests, not source.
+extend-exclude = [".test-tmp-profitability"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
