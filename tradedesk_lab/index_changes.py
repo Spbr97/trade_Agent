@@ -69,6 +69,7 @@ from tradedesk_lab.artifacts import OUTPUT, ROOT
 STORE = ROOT / "data" / "m14_m18" / "index_changes"
 OUT_DIR = OUTPUT / "index_changes_study"
 URL = "https://niftyindices.com/Press_Release/ind_prs{stamp}.pdf"
+SUFFIXES = ("", "_1", "_2", "_3")
 TIERS = {
     "large": ("nifty 50", "nifty next 50", "nifty 100"),
     "mid": ("nifty midcap 150", "nifty midcap 100", "nifty midcap 50", "nifty 200"),
@@ -95,8 +96,10 @@ _ROW = re.compile(r"^\s*\d+\s+.+?\s+([A-Z][A-Z0-9&-]{1,19})\s*$")
 
 
 def fetch(start: date, end: date, *, store: Path = STORE, pause_seconds: float = 1.0) -> int:
-    """Try every date's press release once; save the text of each that exists (a date with no
-    release is remembered in missing.json so a re-run skips it)."""
+    """Try every date's press releases once; save the text of each that exists (a date with no
+    release is remembered in missing.json so a re-run skips it). A date can carry more than one
+    release, published as ind_prs<DDMMYYYY>_1.pdf and _2.pdf, so those are tried too - on a busy
+    day the equity review is often the second file."""
 
     import httpx
 
@@ -111,14 +114,24 @@ def fetch(start: date, end: date, *, store: Path = STORE, pause_seconds: float =
     with httpx.Client(headers=headers, timeout=60, follow_redirects=True) as client:
         day = start
         while day <= end:
-            key = day.isoformat()
-            if key not in missing and not (store / f"{key}.txt").exists():
-                response = client.get(URL.format(stamp=day.strftime("%d%m%Y")))
+            for suffix in SUFFIXES:
+                key = day.isoformat() + suffix
+                # Extra files only exist on a day that has a release at all.
+                if suffix and not (store / f"{day.isoformat()}.txt").exists():
+                    break
+                if key in missing or (store / f"{key}.txt").exists():
+                    continue
+                response = client.get(URL.format(stamp=day.strftime("%d%m%Y") + suffix))
                 if response.status_code == 200 and response.content[:4] == b"%PDF":
                     reader = pypdf.PdfReader(io.BytesIO(response.content))
                     text = "\n".join(page.extract_text() or "" for page in reader.pages)
-                    (store / f"{key}.txt").write_text(text, encoding="utf-8")
-                    found += 1
+                    same = [p for p in store.glob(f"{day.isoformat()}*.txt")
+                            if p.read_text(encoding="utf-8") == text]  # fmt: skip
+                    if same:  # the same release served under another name
+                        missing.add(key)
+                    else:
+                        (store / f"{key}.txt").write_text(text, encoding="utf-8")
+                        found += 1
                 elif response.status_code == 404 or response.content[:4] != b"%PDF":
                     missing.add(key)
                 else:
