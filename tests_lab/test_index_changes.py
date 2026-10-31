@@ -43,6 +43,13 @@ def test_an_equity_release_gives_its_dates_and_changes_per_index() -> None:
     assert ic.parse("Changes in Nifty Fixed Income indices, effective from March 2, 2026") is None
 
 
+def test_an_older_release_heads_the_page_with_a_bare_date_line() -> None:
+    old = RELEASE.replace("Mumbai, February 23, 2026", "Press Release\nFebruary 23, 2026")
+    rel = ic.parse(old)
+    assert rel is not None and rel["released"] == date(2026, 2, 23)
+    assert rel["changes"]["nifty 50"]["included"] == ["BAJAJ-AUTO"]
+
+
 def test_each_stock_counts_once_at_its_highest_tier_and_sector_indices_are_left_out() -> None:
     evs = ic.events([ic.parse(RELEASE)])
     got = {(e["symbol"], e["direction"]): e["tier"] for e in evs}
