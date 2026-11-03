@@ -120,6 +120,8 @@ def service_unit(job: Mapping[str, Any], *, root: str, user: str) -> str:
             f"Description=tradedesk job {job['name']} (ported from Windows Task Scheduler)",
             "After=network-online.target",
             "Wants=network-online.target",
+            *([f"StartLimitBurst={job['retries']}", "StartLimitIntervalSec=1h"]
+              if job.get("retries") else []),  # fmt: skip
             "",
             "[Service]",
             "Type=oneshot",
@@ -130,6 +132,12 @@ def service_unit(job: Mapping[str, Any], *, root: str, user: str) -> str:
             f"EnvironmentFile=-{ENV_FILE}",
             f"ExecStart={root}/.venv/bin/python {root}/scripts/run_hidden.py {command}",
             *digest_lines(job["name"], root=root),
+            # Opt-in per job, because a blanket retry would re-run jobs that append to a ledger.
+            # Only for jobs that re-read their own state on start, where losing the whole run to
+            # one transient broker error costs evidence (option-income-watch, a 403 on
+            # 2026-11-03). `retries` counts attempts inside StartLimitIntervalSec.
+            *(["Restart=on-failure", f"RestartSec={job.get('retry_seconds', 60)}"]
+              if job.get("retries") else []),  # fmt: skip
             f"TimeoutStartSec={f'{limit}min' if limit else 'infinity'}",
             "Nice=5",
             f"Slice={JOBS_SLICE}",

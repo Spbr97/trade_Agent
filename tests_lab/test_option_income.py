@@ -4,6 +4,7 @@ square-off, the condor's capped loss at expiry and statutory costs."""
 from __future__ import annotations
 
 import json
+from datetime import date
 from pathlib import Path
 
 import pytest
@@ -73,6 +74,16 @@ def test_condor_takes_the_20_delta_shorts_and_caps_the_loss() -> None:
     crash = oi.settle_condor(condor, 21000, COSTS)  # a 9% fall: the put wing caps it
     assert crash["gross_inr"] == pytest.approx(-(200 - condor["credit"]) * oi.LOT)
     assert crash["gross_inr"] == pytest.approx(-condor["max_loss_inr"])
+
+
+def test_a_missed_expiry_is_still_settled_so_the_trial_cannot_stall() -> None:
+    condor = {"expiry": "2026-11-03"}
+    assert oi.settlement_due(condor, date(2026, 11, 2)) is None  # still running
+    assert oi.settlement_due(condor, date(2026, 11, 3)) == "live"
+    # The watcher died on expiry day (broker 403): the next run must still close it, or no new
+    # condor ever opens and the trial stalls without reporting a failure.
+    assert oi.settlement_due(condor, date(2026, 11, 4)) == "late"
+    assert oi.settlement_due(None, date(2026, 11, 4)) is None
 
 
 def test_summary_reports_totals_per_rule(tmp_path: Path, monkeypatch) -> None:

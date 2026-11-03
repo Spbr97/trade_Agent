@@ -1568,7 +1568,9 @@
           "repeat_for_minutes": null,
           "enabled": true
         }
-      ]
+      ],
+      "retries": 3,
+      "retry_seconds": 120
     },
     {
       "name": "tradedesk-owner-trades",

@@ -257,6 +257,23 @@ def open_condor(chain: Mapping[str, Any], now: str) -> dict[str, Any] | None:
     }
 
 
+def settlement_due(condor: Mapping[str, Any] | None, today: date) -> str | None:
+    """"live" (settle at today's last quote), "late" (expiry already gone - settle at that day's
+    index close) or None (still running).
+
+    "late" exists because the watcher missing a single day - a transient broker 403 did on
+    2026-11-03 - otherwise leaves the position open forever, and no new condor opens while one
+    is held, so the trial stalls without ever reporting a failure.
+    """
+
+    if condor is None:
+        return None
+    expiry = str(condor["expiry"])
+    if expiry > today.isoformat():
+        return None
+    return "live" if expiry == today.isoformat() else "late"
+
+
 def settle_condor(condor: Mapping[str, Any], spot: float, costs: OptionCosts) -> dict[str, Any]:
     """Expiry: each leg is worth its intrinsic value against the last Nifty price."""
 

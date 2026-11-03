@@ -13,7 +13,7 @@ import argparse
 import asyncio
 import json
 import sys
-from datetime import datetime
+from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -24,11 +24,29 @@ sys.path.insert(0, str(ROOT / "src"))
 import yaml  # noqa: E402
 from tradedesk_lab import option_income as oi  # noqa: E402
 
-from tradedesk.broker.indstocks.models import IST  # noqa: E402
+from tradedesk.broker.indstocks.models import IST, Interval  # noqa: E402
 
 UNDERLYING, UNDERLYING_SCRIP = "NIFTY", "40000001"
 STRIKE_COUNT = 20
 COSTS_FILE = ROOT / "config" / "option_costs.yaml"
+
+
+def index_close(day: date) -> float | None:
+    """NIFTY's close on `day` from the stored daily candles - an expired index option settles
+    against the index close, so a late settlement is exact, not an estimate."""
+
+    from tradedesk.analysis import db_for
+    from tradedesk.data.candle_store import CandleStore
+
+    try:
+        with CandleStore(db_for("nse")) as store:
+            start = datetime.combine(day, time.min, tzinfo=IST)
+            frame = store.load(f"NSE_{UNDERLYING_SCRIP}", Interval.D1, start,
+                               start + timedelta(days=1))  # fmt: skip
+    except Exception as exc:  # noqa: BLE001 - no close found just leaves the condor open
+        print(f"index close {day} unavailable: {exc!r}")
+        return None
+    return float(frame["close"].iloc[0]) if not frame.empty else None
 
 
 async def _chain(client: Any, expiry: str) -> dict[str, Any] | None:
@@ -100,11 +118,18 @@ async def watch(client: Any, until: str) -> None:
                 oi.append(oi.LEDGER, {"event": "condor_opened", **condor})
                 print("condor opened:", condor)
         await asyncio.sleep(max(1.0, 60 - datetime.now(IST).second))
-    if condor and condor["expiry"] == today.isoformat() and last_ltp is not None:
-        result = oi.settle_condor(condor, last_ltp, costs)
-        oi.append(oi.LEDGER, {**result, "closed_on": today.isoformat()})
-        oi.CONDOR_STATE.unlink(missing_ok=True)
-        print("condor settled:", result)
+    due = oi.settlement_due(condor, today)
+    if condor and due:
+        late = due == "late"
+        spot = index_close(date.fromisoformat(condor["expiry"])) if late else last_ltp
+        if spot is None:
+            print(f"condor {condor['expiry']}: no settlement price yet, leaving it open")
+        else:
+            result = oi.settle_condor(condor, spot, costs)
+            oi.append(oi.LEDGER, {**result, "closed_on": condor["expiry"],
+                                  **({"settled_late": True} if late else {})})  # fmt: skip
+            oi.CONDOR_STATE.unlink(missing_ok=True)
+            print(f"condor settled{' (late)' if late else ''}:", result)
     if opened:
         from tradedesk.task_health import alert
 
