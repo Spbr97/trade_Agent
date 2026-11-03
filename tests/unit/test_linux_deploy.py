@@ -84,3 +84,37 @@ def test_every_unit_reads_the_root_only_secrets_file() -> None:
     files = render_units.render(schedule, root="/opt/tradedesk", user="tradedesk")
     services = [text for name, text in files.items() if name.endswith(".service")]
     assert services and all("EnvironmentFile=-/etc/tradedesk/env" in t for t in services)
+
+
+_CONTRACTS = ROOT / "deploy" / "linux" / "check_live_contracts.py"
+_cspec = importlib.util.spec_from_file_location("check_live_contracts", _CONTRACTS)
+assert _cspec and _cspec.loader
+check_live_contracts = importlib.util.module_from_spec(_cspec)
+_cspec.loader.exec_module(check_live_contracts)
+
+
+def _cohort(root: Path, frozen: dict[str, str]) -> None:
+    state = root / "data" / "m14_m18" / "forward" / "state.json"
+    state.parent.mkdir(parents=True)
+    state.write_text(json.dumps({"activation": {"contract_sha256": frozen}}), encoding="utf-8")
+
+
+def test_a_deploy_that_changes_a_frozen_file_fails_before_any_evidence_is_lost(
+    tmp_path: Path,
+) -> None:
+    # 2026-10-31: one wrapped line in tradedesk_lab/portable.py broke lab_forward for two days.
+    _cohort(tmp_path, {"tradedesk_lab/portable.py": "869e7d77" + "0" * 56, "b.py": "b" * 64})
+    bad = check_live_contracts.check(
+        tmp_path, lambda: {"tradedesk_lab/portable.py": "8d7973da" + "0" * 56, "b.py": "b" * 64}
+    )
+    assert list(bad) == ["tradedesk_lab/portable.py"]
+    assert "869e7d77" in bad["tradedesk_lab/portable.py"]
+    assert check_live_contracts.check(tmp_path, lambda: {"b.py": "b" * 64}) == {
+        "tradedesk_lab/portable.py": "missing from the deployed code"
+    }
+
+
+def test_matching_code_or_no_cohort_yet_passes(tmp_path: Path) -> None:
+    assert check_live_contracts.check(tmp_path, lambda: {"a.py": "a" * 64}) == {}
+    _cohort(tmp_path, {"a.py": "a" * 64})
+    assert check_live_contracts.check(tmp_path, lambda: {"a.py": "a" * 64}) == {}

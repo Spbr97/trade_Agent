@@ -103,6 +103,18 @@ else
   echo "   no lab data yet: the record is created after the data copy, on the next deploy"
 fi
 
+# A frozen file changed by this deploy otherwise only shows up at the next 16:00 after-close,
+# by which time a day of forward evidence may already be lost (2026-11-02 was). Record the
+# failure and keep going, so the rest of the install still completes; the exit code says it.
+echo "== live research contracts: does the deployed code still match the running cohort?"
+# Run as the jobs run: the env file (ntfy topic for the alert) is root-only, so systemd reads it.
+CONTRACTS_OK=0
+systemd-run --quiet --wait --collect --pipe -p User="$USER_NAME" \
+  -p EnvironmentFile=-/etc/tradedesk/env -p WorkingDirectory="$ROOT" \
+  -p Environment=PYTHONPATH="$ROOT:$ROOT/src" \
+  "$ROOT/.venv/bin/python" "$ROOT/deploy/linux/check_live_contracts.py" --root "$ROOT" \
+  || CONTRACTS_OK=1
+
 echo "== links for Windows-written paths in sealed evidence (data/ must already be in place)"
 sudo -u "$USER_NAME" "$ROOT/.venv/bin/python" "$ROOT/deploy/linux/link_windows_paths.py" --root "$ROOT"
 
@@ -147,3 +159,7 @@ systemctl enable --now memory-guard.timer
 
 echo "== done. Next: docs/cloud-deploy.md steps 4-6 (data copy, secrets, ntfy)."
 systemctl list-timers 'tradedesk-*' --no-pager | head -15 || true  # head closes the pipe early: exit 141, not a failure
+if [ "$CONTRACTS_OK" -ne 0 ]; then
+  echo "!! DEPLOY BROKE A LIVE RESEARCH CONTRACT - see the live research contracts step above"
+  exit 3
+fi

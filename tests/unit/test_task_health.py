@@ -43,6 +43,16 @@ def test_failed_or_stale_pipelines_are_problems(tmp_path) -> None:
     assert not any(k.endswith(":bse") for k in problems)
 
 
+def test_a_failed_forward_stage_says_what_waiting_costs(tmp_path) -> None:
+    # 2026-11-02: "degraded at lab_forward" sat for two days; one day's evidence was lost.
+    (tmp_path / "nse.json").write_text(
+        json.dumps({"status": "degraded", "failed_stage": "lab_forward",
+                    "finished_at": "2026-10-14T16:34:00+05:30"}), "utf-8")  # fmt: skip
+    detail = {p["key"]: p["detail"] for p in pipeline_problems(NOW, tmp_path)}["pipeline:nse"]
+    assert detail.startswith("degraded at lab_forward - ")
+    assert "lost for good" in detail and "check_live_contracts" in detail
+
+
 def test_each_failure_is_announced_once_and_its_clearing_too(tmp_path) -> None:
     first = check(NOW, tasks=[_task("tradedesk-after-close", 1)], pipeline_root=tmp_path)
     new, cleared = changes(None, first)

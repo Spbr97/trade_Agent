@@ -305,6 +305,15 @@ def positions(ledger: Sequence[Mapping[str, Any]]) -> dict[str, dict[str, Any]]:
     return calls
 
 
+def _unfillable(cid: str, now: datetime, entry_on: str, price: float) -> dict[str, Any]:
+    """A call whose single share costs more than the Rs 10,000 call cannot be taken at the
+    strategy's size, so it is recorded and never entered, exited or counted in the record."""
+
+    return {"event": "unfillable", "call_id": cid, "at": now.isoformat(), "entry_on": entry_on,
+            "entry_price": price, "qty": 0,
+            "reason": f"one share costs Rs {price:,.2f}, more than the Rs {AMOUNT_INR:,.0f} call"}  # fmt: skip  # noqa: E501
+
+
 def _cost(entry: float, exit_price: float, qty: int) -> float:
     from tradedesk.config import load_config
     from tradedesk.markets.costs import EquityCostModel
@@ -324,6 +333,13 @@ def advance(p: Panels, ledger: Sequence[Mapping[str, Any]], now: datetime) -> li
     sessions = p.sessions
     events = []
     for cid, c in positions(ledger).items():
+        if "unfillable_at" in c:
+            continue
+        if "entry_price" in c and int(c.get("qty") or 0) < 1 and "exit_price" not in c:
+            # Entered before 2026-11-04 with no shares (DIXON): close the record honestly
+            # rather than let its exit divide a one-share cost by Rs 1 (net -6,155%).
+            events.append(_unfillable(cid, now, c["entry_on"], float(c["entry_price"])))
+            continue
         code = c["scrip_code"]
         if code not in p.close.columns:
             continue
@@ -337,6 +353,9 @@ def advance(p: Panels, ledger: Sequence[Mapping[str, Any]], now: datetime) -> li
             if not math.isfinite(price) or price <= 0:
                 continue
             qty = int(AMOUNT_INR // price)
+            if qty < 1:
+                events.append(_unfillable(cid, now, sessions[e].isoformat(), price))
+                continue
             events.append({"event": "entered", "call_id": cid, "at": now.isoformat(),
                            "entry_on": sessions[e].isoformat(), "entry_price": price, "qty": qty})  # fmt: skip  # noqa: E501
             c = {**c, "entry_price": price, "qty": qty, "entry_on": sessions[e].isoformat()}
@@ -447,7 +466,10 @@ def scorecard(
 
     calls = positions(ledger)
     open_now, closed = [], []
+    unfillable = [c for c in calls.values() if "unfillable_at" in c]
     for c in calls.values():
+        if "unfillable_at" in c:
+            continue
         if "exit_price" in c:
             closed.append({**c, "skip_real_money": skip_real_money(c)})
         elif "entry_price" in c:
@@ -483,6 +505,7 @@ def scorecard(
         "as_of": as_of,
         "calls": len(calls),
         "waiting_entry": sum(1 for c in calls.values() if "entry_price" not in c),
+        "unfillable": len(unfillable),
         "open": len(open_now),
         "open_mean_net": sum(r["net"] for r in open_now) / len(open_now) if open_now else None,
         "open_inr": sum(r["inr"] for r in open_now),
@@ -648,6 +671,8 @@ def messages(
                 f"results +{100 * c['jump_vs_market']:.1f}% vs market on {c['volume_x']:.1f}x volume"  # noqa: E501
                 + (" | FALLING-MARKET DOWN DAY - skip with real money"
                    if skip_real_money(c) else "")  # fmt: skip
+                + (f" | ONE SHARE COSTS MORE THAN Rs {AMOUNT_INR:,.0f} - not takeable at this "
+                   "size, not counted" if qty < 1 else "")  # fmt: skip
             )
         if any(skip_real_money(c) for c in result["issued"]):
             lines.append(_down_day_line())

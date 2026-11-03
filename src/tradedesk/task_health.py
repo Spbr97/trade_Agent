@@ -30,6 +30,15 @@ PIPELINE_ROOT = Path("data/m14_m18/accuracy_collection_health")
 # a deliberate stop, and "already running" refusals from MultipleInstances=IgnoreNew.
 BENIGN_RESULTS = frozenset({0, 267009, 267011, 267014, 2147750687, 2147946720})
 PIPELINE_BAD = frozenset({"failed", "degraded"})
+# What a failed stage costs if it is left, for the stages where the answer is "more than it
+# looks". 2026-11-02: "degraded at lab_forward" read as research noise and sat for two days,
+# and one of those days' forward evidence was lost for good.
+STAGE_COST = {
+    "lab_forward": (
+        " - forward evidence is lost for good at each 09:15 cutoff it stays down; fix today "
+        "(a deploy that changed a frozen file: python deploy/linux/check_live_contracts.py)"
+    ),
+}
 PIPELINE_MAX_AGE = {
     "nse": timedelta(days=4),
     "bse": timedelta(days=4),
@@ -144,11 +153,12 @@ def pipeline_problems(now: datetime, root: Path = PIPELINE_ROOT) -> list[dict[st
         status = str(report.get("status"))
         stamp = report.get("finished_at") or report.get("started_at")
         if status in PIPELINE_BAD:
+            stage = report.get("failed_stage") or "unknown stage"
             problems.append(
                 {
                     "key": f"pipeline:{market}",
                     "what": f"{market} after-close pipeline",
-                    "detail": f"{status} at {report.get('failed_stage') or 'unknown stage'}",
+                    "detail": f"{status} at {stage}" + STAGE_COST.get(stage, ""),
                 }
             )
         elif stamp and now - datetime.fromisoformat(stamp) > max_age:

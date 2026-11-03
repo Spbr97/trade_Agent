@@ -126,6 +126,50 @@ def test_a_call_is_entered_at_the_real_open_and_closed_after_20_sessions(tmp_pat
     assert exited["excess_return"] > 0.03 and exited["net_return"] < exited["excess_return"]
 
 
+def _pricey(tmp_path: Path, open_price: float) -> tuple[ed.Panels, Path]:
+    """A call whose next open is `open_price`, with 20 sessions after it to exit in."""
+
+    p = _panels()
+    ledger = tmp_path / "calls.jsonl"
+    ed._append([{"event": "call", "call_id": "JUMPY:x", "at": "t", **ed.candidates(p)[0]}], ledger)
+    extra, d = [], p.sessions[-1] + timedelta(days=1)
+    while len(extra) < 20:
+        if d.weekday() < 5:
+            extra.append(d)
+        d += timedelta(days=1)
+    close = pd.concat([p.close, pd.DataFrame(500.0, index=extra, columns=p.close.columns)])
+    close.loc[extra, "NSE_J"] = open_price * 1.03
+    opens = close.copy()
+    opens.loc[extra[0], "NSE_J"] = open_price
+    vol = pd.concat([p.volume, p.volume.iloc[-20:].set_axis(extra)])
+    return ed.Panels(opens, close, vol, p.symbols, p.events), ledger
+
+
+def test_a_call_one_share_of_which_costs_more_than_the_call_is_never_entered(
+    tmp_path: Path,
+) -> None:
+    longer, ledger = _pricey(tmp_path, 12_342.0)  # DIXON on 2026-11-03
+    moves = ed.advance(longer, ed.read_ledger(ledger), datetime.now(IST))
+    assert [m["event"] for m in moves] == ["unfillable"]
+    ed._append(moves, ledger)
+    # Nothing more happens to it, and it never reaches the record as a -6,155% exit.
+    assert ed.advance(longer, ed.read_ledger(ledger), datetime.now(IST)) == []
+    card = ed.scorecard(ed.read_ledger(ledger), {"NSE_J": 12_700.0}, as_of=None)
+    assert card["unfillable"] == 1 and card["open"] == 0 and card["closed"] == 0
+
+
+def test_a_call_entered_with_no_shares_before_the_fix_is_closed_as_unfillable(
+    tmp_path: Path,
+) -> None:
+    longer, ledger = _pricey(tmp_path, 12_342.0)
+    entry_on = longer.sessions[-20].isoformat()
+    ed._append([{"event": "entered", "call_id": "JUMPY:x", "at": "t", "entry_on": entry_on,
+                 "entry_price": 12_342.0, "qty": 0}], ledger)  # fmt: skip
+    moves = ed.advance(longer, ed.read_ledger(ledger), datetime.now(IST))
+    assert [m["event"] for m in moves] == ["unfillable"]  # not "exited" at -6,155%
+    assert moves[0]["entry_on"] == entry_on
+
+
 def test_new_calls_stop_when_live_results_trail_the_market() -> None:
     losing = [
         {"event": "call", "call_id": f"X{i}:d", "at": "t", "symbol": f"X{i}", "scrip_code": f"C{i}"}
