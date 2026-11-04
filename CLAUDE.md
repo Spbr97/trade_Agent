@@ -88,6 +88,7 @@ Owner-approved 2026-10-28: the momentum rule setups (`r_*` except mean-reversion
 on one evening their alertable calls share ONE full position's risk (`evening_scan.cap_momentum_class`,
 best score first); and the self-review's rolling monitor flags a setup when its 20-day window loses money
 after costs (mean net R < 0, each call once), no longer when its hit rate is under 30%.
+From 2026-11-05 (owner) `signal_tracker.flag_setup_failures`, the separate lifetime check behind the "underperforming" review items, judges money too: 9+ traded calls under one exit contract, 95% confident a call loses after costs; the hit rate is only reported. A 403 that survives or triggers a token refresh now logs the token ages, never the token (`rest.py`), to find the cause of the 29 Oct and 3 Nov failures.
 `earnings_drift.py` is the one strategy that passed a pre-registered bar after costs
 (tradedesk_lab/edge_hunt.py: liquid NSE stocks jumping 5%+ vs the market on 2x volume after
 results beat the market over 20 sessions, 2016-2026 - by +1.6% BEFORE costs, about +0.7% after

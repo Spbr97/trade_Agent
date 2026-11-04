@@ -177,6 +177,30 @@ async def test_403_twice_raises(client: IndstocksClient) -> None:
     with pytest.raises(ApiError) as exc:
         await client.funds()
     assert exc.value.error_type == "TokenException"
+    # The next occurrence must say which it was, without ever showing a token.
+    assert "token rejected at age 0h00m00s, replacement age 0h00m00s" in str(exc.value)
+    assert "replacement rejected too" in str(exc.value)
+    assert "tok-" not in str(exc.value)
+
+
+@respx.mock
+async def test_a_recovered_403_logs_the_token_ages_and_never_the_token(
+    client: IndstocksClient, clock: Any, caplog: pytest.LogCaptureFixture
+) -> None:
+    clock.advance(86_000)  # inside its 24 hours, so it is still used
+    respx.post(f"{BASE_URL}/generate/token").mock(
+        return_value=httpx.Response(200, json={"token": "tok-1"})
+    )
+    respx.get(f"{BASE_URL}/funds").mock(
+        side_effect=[
+            httpx.Response(403, json={"status": "error", "error_type": "TokenException"}),
+            httpx.Response(200, json={"status": "success", "data": {"eq_charges": 12.5}}),
+        ]
+    )
+    with caplog.at_level("WARNING"):
+        await client.funds()
+    assert "token rejected at age 23h53m20s, replacement age 0h00m00s" in caplog.text
+    assert "tok-" not in caplog.text
 
 
 @respx.mock

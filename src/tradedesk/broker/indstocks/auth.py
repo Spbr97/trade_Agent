@@ -240,6 +240,11 @@ class TokenProvider:
     def _expired(self) -> bool:
         return self._issued_at is None or self.clock() - self._issued_at >= TOKEN_TTL_SECONDS
 
+    def age_seconds(self) -> float | None:
+        """Seconds since the current token was issued, by the time this side recorded. For
+        diagnostics: it reveals nothing about the token itself, so it is safe to log."""
+        return None if self._issued_at is None else self.clock() - self._issued_at
+
     async def get_token(self) -> str:
         async with self._lock:
             self._load_persisted()

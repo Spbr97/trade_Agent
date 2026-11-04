@@ -20,6 +20,7 @@ run near "today".
 from __future__ import annotations
 
 import asyncio
+import logging
 import random
 from collections.abc import Awaitable, Callable, Iterable, Sequence
 from dataclasses import dataclass
@@ -57,6 +58,14 @@ _RETRYABLE_TYPES = {
     "ServiceUnavailableException",
     "GatewayTimeoutException",
 }
+
+log = logging.getLogger(__name__)
+
+
+def _age(seconds: float | None) -> str:
+    if seconds is None:
+        return "unknown"
+    return f"{int(seconds // 3600)}h{int(seconds % 3600 // 60):02d}m{int(seconds % 60):02d}s"
 
 
 class ApiError(Exception):
@@ -138,6 +147,7 @@ class IndstocksClient:
         params: dict[str, Any] | None = None,
     ) -> httpx.Response:
         refreshed = False
+        token_trail = ""
         stats = self.stats
         for attempt in range(1, self._max_attempts + 1):
             if attempt > 1:
@@ -163,10 +173,20 @@ class IndstocksClient:
             if status in (401, 403) and not refreshed:
                 # TokenException: regenerate once, then retry the same request.
                 t4 = perf_counter()
+                rejected_age = self.tokens.age_seconds()
                 await self.tokens.refresh(rejected_token=token)
                 stats.token_seconds += perf_counter() - t4
                 refreshed = True
+                token_trail = (
+                    f"token rejected at age {_age(rejected_age)}, "
+                    f"replacement age {_age(self.tokens.age_seconds())}"
+                )
+                log.warning("%s %s: %s", method, path, token_trail)
                 continue
+            if status in (401, 403):
+                # Ages only, never the token: a replacement of age ~0 was freshly generated and
+                # still refused; one near 24h was an old token adopted from the shared cache.
+                message = f"{message} [{token_trail}, replacement rejected too]"
             retryable = status == 429 or status >= 500 or error_type in _RETRYABLE_TYPES
             if retryable and attempt < self._max_attempts:
                 delay = min(BACKOFF_CAP_SECONDS, BACKOFF_BASE_SECONDS * 2 ** (attempt - 1))

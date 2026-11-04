@@ -20,7 +20,6 @@ from tradedesk.signal_tracker import (
     load_log,
     render_session_report,
     save_log,
-    wilson_upper,
 )
 
 
@@ -31,6 +30,15 @@ def _row(i: int, setup: str, outcome: str | None) -> TrackedSignal:
         net_rr_t1=1.0, net_rr_t2=2.0, rejected_for=[], logged_at="2026-01-01",
         outcome=outcome, label=1 if outcome == "target" else (0 if outcome else None),
     )  # fmt: skip
+
+
+_R = {"target": 2.0, "stop": -1.0, "timeout": 0.0, "gap_stop": -1.2}
+
+
+def _traded(i: int, setup: str, outcome: str, r: float | None = None) -> TrackedSignal:
+    row = _row(i, setup, outcome)
+    row.r_multiple = _R[outcome] if r is None else r
+    return row
 
 
 def test_log_round_trips_through_jsonl(tmp_path: Path) -> None:
@@ -74,15 +82,15 @@ def test_invalid_resolution_is_not_reported_as_a_failed_call() -> None:
     assert "WRONG" not in text
 
 
-def test_flag_setup_failures_flags_a_setup_below_the_hit_rate_floor(tmp_path: Path) -> None:
+def test_flag_setup_failures_flags_a_setup_that_clearly_loses_money(tmp_path: Path) -> None:
     review_path = tmp_path / "queue.jsonl"
     rows = {}
     for i in range(20):
-        outcome = "stop" if i < 19 else "target"  # 1/20: clearly below a 30% floor
-        rows[f"sig{i}"] = _row(i, "nr7_breakout", outcome)
+        outcome = "stop" if i < 19 else "target"  # 1/20: clearly loses money
+        rows[f"sig{i}"] = _traded(i, "nr7_breakout", outcome)
 
     flagged = flag_setup_failures(
-        "crypto", rows, min_resolved=5, hit_rate_floor=0.3, review_path=review_path
+        "crypto", rows, min_resolved=5, review_path=review_path
     )
 
     assert flagged == ["nr7_breakout underperforming on crypto"]
@@ -95,10 +103,10 @@ def test_flag_setup_failures_flags_a_setup_below_the_hit_rate_floor(tmp_path: Pa
 
 def test_flag_setup_failures_does_not_flag_below_the_minimum_sample(tmp_path: Path) -> None:
     review_path = tmp_path / "queue.jsonl"
-    rows = {f"sig{i}": _row(i, "nr7_breakout", "stop") for i in range(3)}  # 0% but only 3 resolved
+    rows = {f"sig{i}": _traded(i, "nr7_breakout", "stop") for i in range(3)}  # only 3 resolved
 
     flagged = flag_setup_failures(
-        "crypto", rows, min_resolved=5, hit_rate_floor=0.3, review_path=review_path
+        "crypto", rows, min_resolved=5, review_path=review_path
     )
 
     assert flagged == []
@@ -107,7 +115,7 @@ def test_flag_setup_failures_does_not_flag_below_the_minimum_sample(tmp_path: Pa
 
 def test_flag_setup_failures_does_not_duplicate_an_existing_flag(tmp_path: Path) -> None:
     review_path = tmp_path / "queue.jsonl"
-    rows = {f"sig{i}": _row(i, "nr7_breakout", "stop") for i in range(10)}
+    rows = {f"sig{i}": _traded(i, "nr7_breakout", "stop") for i in range(10)}
 
     first = flag_setup_failures("crypto", rows, min_resolved=5, review_path=review_path)
     second = flag_setup_failures("crypto", rows, min_resolved=5, review_path=review_path)
@@ -119,7 +127,7 @@ def test_flag_setup_failures_does_not_duplicate_an_existing_flag(tmp_path: Path)
 
 def test_flag_setup_failures_leaves_a_healthy_setup_alone(tmp_path: Path) -> None:
     review_path = tmp_path / "queue.jsonl"
-    rows = {f"sig{i}": _row(i, "base_breakout", "target" if i < 4 else "stop") for i in range(5)}
+    rows = {f"sig{i}": _traded(i, "base_breakout", "target" if i < 4 else "stop") for i in range(5)}
 
     flagged = flag_setup_failures("crypto", rows, min_resolved=5, review_path=review_path)
 
@@ -131,10 +139,10 @@ def test_failure_flag_thresholds_do_not_pool_exit_contracts(tmp_path: Path) -> N
     review_path = tmp_path / "queue.jsonl"
     rows = {}
     for i in range(3):
-        quick = _row(i, "base_breakout", "stop")
+        quick = _traded(i, "base_breakout", "stop")
         quick.signal_id = f"quick-{i}"
         quick.contract_version = "quick-profit-v1"
-        swing = _row(i + 10, "base_breakout", "stop")
+        swing = _traded(i + 10, "base_breakout", "stop")
         swing.signal_id = f"swing-{i}"
         swing.contract_version = "swing-v1"
         rows[quick.signal_id] = quick
@@ -146,10 +154,10 @@ def test_failure_flag_names_the_underperforming_exit_contract(tmp_path: Path) ->
     review_path = tmp_path / "queue.jsonl"
     rows = {}
     for i in range(10):
-        quick = _row(i, "base_breakout", "stop")
+        quick = _traded(i, "base_breakout", "stop")
         quick.signal_id = f"quick-{i}"
         quick.contract_version = "quick-profit-v1"
-        swing = _row(i + 20, "base_breakout", "target")
+        swing = _traded(i + 20, "base_breakout", "target")
         swing.signal_id = f"swing-{i}"
         swing.contract_version = "swing-v1"
         rows[quick.signal_id] = quick
@@ -159,19 +167,19 @@ def test_failure_flag_names_the_underperforming_exit_contract(tmp_path: Path) ->
     ]
 
 
-def test_a_small_sample_below_the_floor_is_noise_not_a_flag(tmp_path: Path) -> None:
-    # 0/5 happens 17% of the time at a true 30% hit rate; 2/9 is 22% but could be 50%.
+def test_a_small_or_unclear_loss_is_noise_not_a_flag(tmp_path: Path) -> None:
+    # Five straight stops happen; two targets in nine at 2R is not clearly losing.
     review_path = tmp_path / "queue.jsonl"
-    rows = {f"a{i}": _row(i, "nr7_breakout", "stop") for i in range(5)}
+    rows = {f"a{i}": _traded(i, "nr7_breakout", "stop") for i in range(5)}
     rows |= {
-        f"b{i}": _row(i + 10, "base_breakout", "target" if i < 2 else "stop") for i in range(9)
+        f"b{i}": _traded(i + 10, "base_breakout", "target" if i < 2 else "stop") for i in range(9)
     }
-    assert flag_setup_failures("nse", rows, min_resolved=5, review_path=review_path) == []
+    assert flag_setup_failures("nse", rows, review_path=review_path) == []
 
 
 def test_a_setup_inactive_on_the_market_is_not_flagged(tmp_path: Path) -> None:
     review_path = tmp_path / "queue.jsonl"
-    rows = {f"sig{i}": _row(i, "trend_pullback", "stop") for i in range(12)}
+    rows = {f"sig{i}": _traded(i, "trend_pullback", "stop") for i in range(12)}
     assert (
         flag_setup_failures(
             "nse", rows, review_path=review_path, inactive=frozenset({"trend_pullback"})
@@ -183,6 +191,38 @@ def test_a_setup_inactive_on_the_market_is_not_flagged(tmp_path: Path) -> None:
     ]
 
 
-def test_wilson_upper_bound() -> None:
-    assert wilson_upper(0, 5) > 0.3 > wilson_upper(0, 10)
-    assert wilson_upper(0, 0) == 1.0
+def test_a_setup_with_few_targets_that_makes_money_is_not_flagged(tmp_path: Path) -> None:
+    # A trail or timeout exit can make money while hardly ever recording a target.
+    review_path = tmp_path / "queue.jsonl"
+    rows = {f"sig{i}": _traded(i, "r_trail", "timeout", r=0.6 + 0.01 * i) for i in range(30)}
+    assert flag_setup_failures("nse", rows, review_path=review_path) == []
+    assert load_queue(review_path) == {}
+
+
+def test_a_setup_with_many_targets_that_loses_money_is_flagged(tmp_path: Path) -> None:
+    # Half the calls hit a small target, and the stops cost far more than the targets pay.
+    review_path = tmp_path / "queue.jsonl"
+    rows = {}
+    for i in range(40):
+        rows[f"sig{i}"] = _traded(i, "r_tight", *(("target", 0.3) if i % 2 else ("stop", -1.0)))
+    assert flag_setup_failures("nse", rows, review_path=review_path) == [
+        "r_tight underperforming on nse"
+    ]
+    detail = next(iter(load_queue(review_path).values())).detail
+    assert "R a call after costs over 40 legacy-t1-tracker-v1 calls" in detail
+    assert "20 of 40 resolved calls hit target" in detail
+
+
+def test_without_a_cost_figure_the_flag_says_its_money_is_before_costs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from tradedesk import digests
+
+    def broken(market: str) -> float:
+        raise OSError("no config")
+
+    monkeypatch.setattr(digests, "round_trip", broken)
+    review_path = tmp_path / "queue.jsonl"
+    rows = {f"sig{i}": _traded(i, "r_trail", "stop") for i in range(10)}
+    assert flag_setup_failures("nse", rows, review_path=review_path)
+    assert "-1.00R a call before costs" in next(iter(load_queue(review_path).values())).detail

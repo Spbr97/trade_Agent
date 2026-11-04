@@ -12,8 +12,8 @@ and dashboards never mix (same "independent datasets" reasoning as everywhere el
 project: a crypto hit rate says nothing about a BSE one).
 
 Also owns flag_setup_failures(): rule-based (no Claude call, no spend-cap risk) failure
-detection that feeds review_queue.py - "this setup's hit rate on this market has dropped
-below a floor" is a fact code can check directly, so it doesn't need an LLM to say it. This
+detection that feeds review_queue.py - "this setup's calls on this market clearly lose money
+after costs" is a fact code can check directly, so it doesn't need an LLM to say it. This
 is the "self-analyse if a call fails" surface for markets that have no paper book to run
 `tradedesk review week` against.
 """
@@ -21,6 +21,8 @@ is the "self-analyse if a call fails" surface for markets that have no paper boo
 from __future__ import annotations
 
 import json
+import math
+import statistics
 from dataclasses import asdict, dataclass, field
 from datetime import date, datetime
 from pathlib import Path
@@ -574,17 +576,6 @@ def backfill_watchlists(
     return new_rows
 
 
-def wilson_upper(wins: int, n: int, z: float = 1.96) -> float:
-    """Upper end of the 95% Wilson interval for a hit rate of wins/n."""
-    if n <= 0:
-        return 1.0
-    p = wins / n
-    denom = 1 + z * z / n
-    centre = (p + z * z / (2 * n)) / denom
-    half = z * ((p * (1 - p) / n + z * z / (4 * n * n)) ** 0.5) / denom
-    return min(1.0, centre + half)
-
-
 def inactive_setups(market: str, root: Path = Path(".")) -> set[str]:
     """Setups retired on `market`: still scanned and shadow-tracked there, never a call, so
     there is nothing to switch off. (Research-only setups are not inactive: a provisional
@@ -599,22 +590,27 @@ def flag_setup_failures(
     market: str,
     rows: dict[str, TrackedSignal],
     *,
-    min_resolved: int = 5,
-    hit_rate_floor: float = 0.3,
+    min_resolved: int = 9,
     review_path: Path | None = None,
     inactive: set[str] | frozenset[str] = frozenset(),
 ) -> list[str]:
-    """Rule-based failure analysis (no Claude call - a hit rate crossing a floor is a fact
-    code can check directly): for each setup with at least `min_resolved` resolved calls on
-    this market, flag it into review_queue.py if its hit rate is below the floor with 95%
-    confidence (Wilson upper bound under the floor). One item per (market, setup) -
-    re-running this daily does not re-flag a setup that already has an open or decided item,
-    so the queue doesn't fill with duplicates.
+    """Rule-based failure analysis (no Claude call - losing money is a fact code can check
+    directly): for each setup with at least `min_resolved` traded calls on this market under
+    one exit contract, flag it into review_queue.py if those calls lose money after costs with
+    95% confidence (mean net R plus 1.96 standard errors is below zero). One item per
+    (market, setup) - re-running this daily does not re-flag a setup that already has an open
+    or decided item, so the queue doesn't fill with duplicates.
+
+    2026-11-05 (owner): judged on MONEY, as rolling_failure_monitor has been since 2026-10-28.
+    A target hit rate says nothing about whether a setup makes money. Measured on the live logs
+    when this changed: every setup the hit-rate rule flagged also loses money, and this rule
+    added one setup losing money that the hit rate had missed.
 
     2026-10-20: the confidence test and `inactive` were added after six flags in one evening
-    were 0-2 hits out of 5-9 calls (0/5 happens 17% of the time at a true 30% rate) and three
-    named trend_pullback, already retired on both markets. Owner's rule: replace, never
-    retire into a blank, so a flag is information for the self-review, not a switch-off.
+    were 0-2 hits out of 5-9 calls and three named trend_pullback, already retired on both
+    markets. Nine calls stays the smallest sample, the smallest the old test could fire on.
+    Owner's rule: replace, never retire into a blank, so a flag is information for the
+    self-review, not a switch-off.
 
     This is the "self-analyse if a call fails" surface for crypto and BSE, which have no
     paper book to run `tradedesk review week`'s Claude-based analysis against.
@@ -623,7 +619,15 @@ def flag_setup_failures(
     (the same lesson learned from claude/weekly_review.py writing into the production
     queue during a pytest run before this parameter existed)."""
     from tradedesk.review_queue import QUEUE, add_item, load_queue
+    from tradedesk.rolling_failure_monitor import call_net_r
 
+    try:
+        from tradedesk.digests import round_trip
+
+        cost: float | None = round_trip(market)
+    except Exception:  # noqa: BLE001 - rows without a recorded net R fall back to gross R
+        cost = None
+    basis = "after costs" if cost is not None else "before costs (no cost figure)"
     path = review_path or QUEUE
     existing_titles = {i.title for i in load_queue(path).values()}
     by_setup: dict[tuple[str, str], list[TrackedSignal]] = {}
@@ -632,12 +636,13 @@ def flag_setup_failures(
             by_setup.setdefault((r.setup, r.contract_version), []).append(r)
     flagged: list[str] = []
     for (setup, contract_version), done in by_setup.items():
-        if len(done) < min_resolved or setup in inactive:
+        nets = [v for r in done if (v := call_net_r(r, cost)) is not None]
+        if len(nets) < max(min_resolved, 2) or setup in inactive:
+            continue
+        mean = statistics.fmean(nets)
+        if mean + 1.96 * statistics.stdev(nets) / math.sqrt(len(nets)) >= 0:  # not clear: noise
             continue
         wins = sum(1 for r in done if r.outcome == "target")
-        rate = wins / len(done)
-        if wilson_upper(wins, len(done)) >= hit_rate_floor:  # not clearly below: noise
-            continue
         contract_label = (
             "" if contract_version == LEGACY_TRACKER_V1.version else f" [{contract_version}]"
         )
@@ -648,8 +653,9 @@ def flag_setup_failures(
             market=market,
             title=title,
             detail=(
-                f"{wins}/{len(done)} {contract_version} calls hit target ({rate:.0%}), below the "
-                f"{hit_rate_floor:.0%} floor checked over the last {len(done)} resolved calls."
+                f"{mean:+.2f}R a call {basis} over {len(nets)} {contract_version} calls, losing "
+                f"money with 95% confidence. {wins} of {len(done)} resolved calls hit target "
+                "(for information; the hit rate does not decide this flag)."
             ),
             proposal=(
                 f"{setup} stays on the {market} roster; the daily self-review keeps searching "
