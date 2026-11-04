@@ -24,8 +24,8 @@ traded value >= Rs 5 crore known before the entry, price >= Rs 20.
 
 Rules (quarter against the same quarter a year before; both years' profit must be positive):
   strong        profit up 25%+ and sales up 10%+;
-  sue           profit surprise >= 2: (profit - year-ago profit) / the spread of that same difference
-                over the previous 8 quarters, with profit positive now;
+  sue           profit surprise >= 2: (profit - year-ago profit) / the spread of that same
+                difference over the previous 8 quarters, with profit positive now;
   quiet_strong  strong, and the open is -1% to +2% from the previous close: not priced yet;
   loud_strong   strong, and the open is +3% or more: priced, and is it still running?
   weak_short    profit down 25%+ and sales not up (year-ago profit positive): SHORT, same day only.
