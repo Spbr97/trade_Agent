@@ -30,6 +30,19 @@ A pass is a proposal for the owner, not a change to the live rule. Research only
 
 Caveat: the price store holds stocks listed today, which flatters every long test.
 
+RESULT (2026-11-05, 1,520 live-rule calls 2016-2026): ALL 5 FAIL. Longer holds make more per call,
+but nearly all of it is the market: none beats the live exit over the market by the bar.
+                 net/call  vs market  gain t  days  win   Rs a year  worst fall
+  live            +1.28%    +1.00%      -      15   59%     9,239     -15,867
+  trail10         +2.07%    +1.07%     0.41    35   45%    12,038     -28,052
+  trail15         +3.13%    +1.52%     0.62    47   49%    14,131     -28,421
+  hold60          +4.73%    +1.87%     0.80    60   56%    10,301     -51,069
+  first_close     +1.17%    +0.61%    -0.68    17   26%     8,337     -32,024
+  half_runner     +1.87%    +0.71%    -1.20    48   62%     7,844     -23,501
+The live +10% rule stays. trail15's extra rupees came with nearly double the fall and are market
+exposure an index holds more cheaply. first_close, the version that starts as a day trade, is the
+worst for the win rate: a drift stock that closes its first day down often recovers later.
+
     python -m tradedesk_lab.drift_runner
 """
 
