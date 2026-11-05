@@ -488,6 +488,14 @@ def fetch_figures(
         for n, row in enumerate(pending, 1):
             try:
                 response = client.get(row["xbrl"])
+                if response.status_code == 404:  # that filing has no file; the rest may well
+                    counts["unusable"] += 1
+                    missing = {k: v for k, v in row.items() if k != "xbrl"}
+                    out.write(json.dumps(missing | {"error": "404"}) + "\n")
+                    out.flush()
+                    errors = 0
+                    time_module.sleep(pause_seconds)
+                    continue
                 response.raise_for_status()
             except httpx.HTTPError as exc:
                 errors += 1
