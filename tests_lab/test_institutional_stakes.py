@@ -244,3 +244,28 @@ def test_a_rule_that_works_in_too_few_quarters_fails() -> None:
     got = st.judge(_calls(0.04, excess, 0.03))
     assert got["quarters_positive_share"] < 0.6
     assert any("of quarters" in f for f in got["fails"])
+
+
+def test_the_middle_format_with_nses_misspelt_labels_is_read() -> None:
+    text = _xbrl(
+        [
+            _context("One", "InstitutionsForeignPortfolioInvestorCatergoryOneMember"),
+            _context("Two", "InstitutionsForeignPortfolioInvestorCatergoryTwoMember"),
+            _context("Promoter", "ForeignPortfolioInvestorMember"),
+            _context("All", "ShareholdingPatternMember"),
+        ],
+        [
+            _fact("NumberOfShares", "One", 30),
+            _fact("NumberOfShares", "Two", 10),
+            _fact("NumberOfShares", "Promoter", 99),
+            _fact("NumberOfShares", "All", 200),
+        ],
+    )
+    assert st.parse_xbrl(text)["fpi"] == 20.0
+
+
+def test_a_quarter_where_most_filings_show_no_fpi_is_flagged() -> None:
+    rows = [{"quarter": "2023-09-30", "fpi": 0.0}] * 60
+    rows += [{"quarter": "2023-12-31", "fpi": 2.0}] * 60
+    assert st.suspect_quarters(rows) == {"2023-09-30": 1.0}
+    assert st.suspect_quarters([{"quarter": "2023-09-30", "fpi": 0.0}] * 10) == {}

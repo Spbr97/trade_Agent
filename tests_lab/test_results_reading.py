@@ -3,8 +3,10 @@ market could not yet see."""
 
 from __future__ import annotations
 
+import json
 import math
 from datetime import date, datetime
+from pathlib import Path
 
 import pytest
 from tradedesk_lab import results_reading as rr
@@ -252,3 +254,49 @@ def test_a_missing_close_is_not_traded_or_trailed_through() -> None:
     assert rr.exit_row("day", 100.0, [math.nan], 0) is None
     closes = [100.0, math.nan, 89.0] + [89.0] * 70
     assert rr.exit_row("runner", 100.0, closes, 0) == (2, False)
+
+
+def test_an_older_filing_uses_the_quarter_context_it_never_defines() -> None:
+    text = _xbrl(
+        _context("OneOperatingExpenses01D", "2019-04-01", "2019-06-30", segment=True),
+        _fact("ProfitLossForPeriod", "OneD", 81),
+        _fact("RevenueFromOperations", "OneD", 381),
+    )
+    assert rr.parse_figures(text) == {"profit": 81.0, "sales": 381.0}
+
+
+def test_a_defined_quarter_context_with_the_wrong_span_is_refused() -> None:
+    text = _xbrl(
+        _context("OneD", "2026-04-01", "2026-09-30"),
+        _fact("ProfitLossForPeriod", "OneD", 81),
+        _fact("RevenueFromOperations", "OneD", 381),
+    )
+    assert rr.parse_figures(text) is None
+
+
+def test_the_named_quarter_wins_over_another_three_month_context() -> None:
+    text = _xbrl(
+        _context("FourD", "2023-01-01", "2023-03-31"),
+        _context("OneD", "2023-01-01", "2023-03-31"),
+        _fact("ProfitLossForPeriod", "FourD", 400),
+        _fact("ProfitLossForPeriod", "OneD", 100),
+        _fact("RevenueFromOperations", "FourD", 900),
+        _fact("RevenueFromOperations", "OneD", 300),
+    )
+    assert rr.parse_figures(text) == {"profit": 100.0, "sales": 300.0}
+
+
+def test_a_year_of_unreadable_filings_is_flagged(tmp_path: Path) -> None:
+    path = tmp_path / "figures.jsonl"
+    rows = [{"record_id": str(i), "quarter": "2019-06-30", "error": "x"} for i in range(60)]
+    rows += [{"record_id": f"a{i}", "quarter": "2024-06-30", "profit": 1.0} for i in range(60)]
+    path.write_text("\n".join(json.dumps(r) for r in rows), encoding="utf-8")
+    assert rr.suspect_years(path) == {"2019": 1.0}
+
+
+def test_a_later_good_read_replaces_a_failed_one(tmp_path: Path) -> None:
+    path = tmp_path / "figures.jsonl"
+    rows = [{"record_id": "1", "quarter": "2019-06-30", "error": "x"}]
+    rows += [{"record_id": "1", "quarter": "2019-06-30", "profit": 1.0}]
+    path.write_text("\n".join(json.dumps(r) for r in rows), encoding="utf-8")
+    assert rr.suspect_years(path) == {}

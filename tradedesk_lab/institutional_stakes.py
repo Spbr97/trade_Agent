@@ -95,6 +95,11 @@ MORE_FUNDS = 2
 PEER_LOOKBACK, PEER_BUCKETS = 60, 5
 PASS = {"min_calls": 100, "min_t": 3.0, "min_peer_t": 2.0, "min_quarter_share": 0.6}
 MIN_QUARTER_CALLS = 5
+# The first parser read no FPI line in NSE's Sep 2022 - Mar 2025 format; rows it wrote for those
+# quarters carry no `parser` field and are fetched again.
+PARSER = 2
+REFETCH = ("2022-09-30", "2025-03-31")
+SUSPECT_ZERO_SHARE = 0.5
 
 # XBRL dimension members; the two formats spell them differently. A category's own line carries
 # one explicit member; the per-holder detail lines carry a typed member, so they are not counted.
@@ -102,6 +107,9 @@ _MEMBERS = {
     "InstitutionsForeignPortfolioInvestorMember": "fpi",
     "InstitutionsForeignPortfolioInvestorCategoryOneMember": "fpi",
     "InstitutionsForeignPortfolioInvestorCategoryTwoMember": "fpi",
+    # NSE's own spelling in the Sep 2022 - Mar 2025 filings.
+    "InstitutionsForeignPortfolioInvestorCatergoryOneMember": "fpi",
+    "InstitutionsForeignPortfolioInvestorCatergoryTwoMember": "fpi",
     "MutualFundsOrUtiMember": "mf",
     "MutualFundsOrUTIMember": "mf",
     "AlternativeInvestmentFundsMember": "other",
@@ -397,7 +405,10 @@ def fetch_stakes(
     if STAKES.exists():
         for line in STAKES.read_text(encoding="utf-8").splitlines():
             if line.strip():
-                done.add(json.loads(line)["record_id"])
+                row = json.loads(line)
+                stale = REFETCH[0] <= row["quarter"] <= REFETCH[1] and "parser" not in row
+                if not stale:
+                    done.add(row["record_id"])
     pending = [
         r for r in read_index()
         if r["symbol"] in symbols and r["record_id"] not in done and r["xbrl"].endswith(".xml")
@@ -424,7 +435,7 @@ def fetch_stakes(
                 stakes = parse_xbrl(response.content)
             except ET.ParseError:
                 stakes = None
-            record = {k: v for k, v in row.items() if k != "xbrl"}
+            record = {k: v for k, v in row.items() if k != "xbrl"} | {"parser": PARSER}
             if stakes is None:
                 counts["unusable"] += 1
                 record["error"] = "no total share count or bad XML"
@@ -437,6 +448,21 @@ def fetch_stakes(
                 print(f"{n}/{len(pending)} {counts}", flush=True)
             time_module.sleep(pause_seconds)
     return counts
+
+
+def suspect_quarters(rows: Iterable[Mapping[str, Any]]) -> dict[str, float]:
+    """Quarters where most filings show no FPI line: a format the parser cannot read, which
+    would turn the next real figures into huge false rises. A study must not be trusted on them."""
+
+    total: dict[str, int] = {}
+    zero: dict[str, int] = {}
+    for r in rows:
+        total[r["quarter"]] = total.get(r["quarter"], 0) + 1
+        zero[r["quarter"]] = zero.get(r["quarter"], 0) + (r["fpi"] == 0)
+    return {
+        q: zero[q] / n for q, n in sorted(total.items())
+        if n >= 50 and zero[q] / n > SUSPECT_ZERO_SHARE
+    }  # fmt: skip
 
 
 # --------------------------------------------------------------------------- study
@@ -463,9 +489,13 @@ def main(argv: list[str] | None = None) -> None:
     turnover = (p.close * p.volume).rolling(20).mean().shift(1)
     peers = Peers(p, turnover)
     stakes = read_stakes()
+    suspect = suspect_quarters(stakes)
+    if suspect:
+        print("WARNING - parser may have missed a format, results not valid:", suspect, flush=True)
     report: dict[str, Any] = {
         "generated_at": datetime.now(IST).isoformat(), "pass_bar": PASS,
         "filings_listed": len(read_index()), "filings_parsed": len(stakes),
+        "suspect_quarters": suspect,
         "variants": {},
     }  # fmt: skip
     for rule in RULES:

@@ -48,6 +48,16 @@ PASS BAR (written 2026-11-05, before any figure was downloaded). A variant passe
 4 rules x 4 exits + the short = 17 variants; t >= 3 is about Bonferroni's bar for seventeen. A pass
 becomes a proposal for FORWARD paper calls, never a live call. Research only.
 
+ADDED 2026-11-06, a second bar for a mirror trade. The first run could read only filings from 2022
+on (older ones never define their "OneD" context), so it covered entries from 2023-07. There,
+buying strong results at the open lost by that close (strong_day -0.74% vs market, t -4.61;
+quiet_strong_day -0.67%, t -3.73). That suggests SHORTING them at the open and covering at the
+close, a hypothesis found in that data, so it cannot be judged on it. Two variants,
+strong_short_day and quiet_strong_short_day, are judged ONLY on entries before 2023-07-01, whose
+figures had not been read when this was written. Same six-part bar, intraday charges. A pass still
+needs forward paper trades. The 17 original variants and their bar are unchanged and now run on
+all the history. `_recent` lines show the mirror on the data that suggested it, never judged.
+
 Caveats: the price store holds stocks listed today, which flatters long tests. The open is known
 only at the auction's end, so an open-based filter needs the 09:08 pre-open price in real use.
 Profit includes one-offs; a study of the number itself, not of analysts' expectations.
@@ -101,6 +111,10 @@ TRAIL, LONG_HOLD = 0.10, 60
 EXITS = ("day", "20", "60", "runner")
 LONG_RULES = ("strong", "sue", "quiet_strong", "loud_strong")
 NOTIONAL = 10_000.0
+QUARTER_CONTEXT = "OneD"
+HELD_OUT_END = date(2023, 7, 1)
+MIRRORS = {"strong_short_day": "strong", "quiet_strong_short_day": "quiet_strong"}
+SUSPECT_UNREADABLE = 0.2
 _PROFIT = ("ProfitLossForPeriod", "ProfitLossForThePeriod")
 _SALES = ("RevenueFromOperations", "InterestEarned")
 
@@ -117,6 +131,7 @@ def parse_figures(text: str | bytes) -> dict[str, float] | None:
 
     root = ET.fromstring(text)
     quarter: set[str] = set()
+    defined: set[str] = set()
     for node in root.iter():
         if _local(node.tag) != "context":
             continue
@@ -127,17 +142,28 @@ def parse_figures(text: str | bytes) -> dict[str, float] | None:
             span = date.fromisoformat(parts["endDate"]) - date.fromisoformat(parts["startDate"])
         except ValueError:
             continue
+        defined.add(node.get("id") or "")
         if 80 <= span.days <= 100:
             quarter.add(node.get("id") or "")
+    # Filings before 2023 use NSE's "OneD" for the quarter without defining that context. Where it
+    # is defined, its span must still be a quarter.
+    if QUARTER_CONTEXT not in defined:
+        quarter.add(QUARTER_CONTEXT)
     found: dict[str, float] = {}
+    named: dict[str, float] = {}
     for node in root:
         name = _local(node.tag)
-        if node.get("contextRef") in quarter and name in (*_PROFIT, *_SALES):
+        context = node.get("contextRef")
+        if context in quarter and name in (*_PROFIT, *_SALES):
             try:
                 value = float(node.text or "")
             except ValueError:
                 continue
-            found.setdefault("profit" if name in _PROFIT else "sales", value)
+            key = "profit" if name in _PROFIT else "sales"
+            found.setdefault(key, value)
+            if context == QUARTER_CONTEXT:
+                named.setdefault(key, value)
+    found |= named  # a March filing's year-to-date context can also span three months
     return found if {"profit", "sales"} <= found.keys() else None
 
 
@@ -449,7 +475,8 @@ def fetch_figures(
     STORE.mkdir(parents=True, exist_ok=True)
     done: set[str] = set()
     if FIGURES.exists():
-        done = {json.loads(x)["record_id"] for x in FIGURES.read_text(encoding="utf-8").splitlines() if x}  # noqa: E501
+        rows = [json.loads(x) for x in FIGURES.read_text(encoding="utf-8").splitlines() if x]
+        done = {r["record_id"] for r in rows if "profit" in r}  # failed reads are tried again
     pending = [r for r in to_fetch(read_index(), symbols) if r["record_id"] not in done]
     print(f"{len(pending)} filings to fetch, {len(done)} already done", flush=True)
     counts: Counter = Counter()
@@ -491,6 +518,27 @@ def read_figures(path: Path = FIGURES) -> list[dict[str, Any]]:
     return [r for r in rows if "profit" in r]
 
 
+def suspect_years(path: Path = FIGURES) -> dict[str, float]:
+    """Years where a large share of filings could not be read: a format the parser has missed."""
+
+    if not path.exists():
+        return {}
+    latest: dict[str, dict[str, Any]] = {}
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if line.strip():
+            row = json.loads(line)
+            latest[row["record_id"]] = row
+    total: Counter = Counter()
+    failed: Counter = Counter()
+    for row in latest.values():
+        total[row["quarter"][:4]] += 1
+        failed[row["quarter"][:4]] += "profit" not in row
+    return {
+        y: failed[y] / n for y, n in sorted(total.items())
+        if n >= 50 and failed[y] / n > SUSPECT_UNREADABLE
+    }  # fmt: skip
+
+
 def liquid_symbols(p: nl.Panels, codes: Mapping[str, str]) -> set[str]:
     turnover = (p.close * p.volume).rolling(20).mean().shift(1)
     since = [d for d in turnover.index if d >= OLD_FIRST]
@@ -519,6 +567,9 @@ def main(argv: list[str] | None = None) -> None:
     sessions = list(p.close.index)
     measure = Measure(p)
     table = one_per_quarter(read_figures())
+    suspect = suspect_years()
+    if suspect:
+        print("WARNING - parser may have missed a format, results not valid:", suspect, flush=True)
     picks: dict[str, list[tuple[str, int]]] = defaultdict(list)
     skipped: Counter = Counter()
     hours: Counter = Counter()
@@ -549,7 +600,7 @@ def main(argv: list[str] | None = None) -> None:
             picks[rule].append((code, e))
     report: dict[str, Any] = {
         "generated_at": datetime.now(IST).isoformat(), "pass_bar": st.PASS,
-        "filings_listed": len(read_index()), "figures": len(table),
+        "filings_listed": len(read_index()), "figures": len(table), "suspect_years": suspect,
         "skipped": dict(skipped), "publication_hours": dict(sorted(hours.items())),
         "signals": {k: len(v) for k, v in picks.items()}, "variants": {},
     }  # fmt: skip
@@ -563,6 +614,16 @@ def main(argv: list[str] | None = None) -> None:
         verdict["mean_days_held"] = float(calls["days"].mean()) if len(calls) else None
         report["variants"][key] = verdict
         print(key, json.dumps(verdict, default=str), flush=True)
+    for name, source in MIRRORS.items():
+        for key, wanted in ((name, True), (f"{name}_recent", False)):
+            rows = [
+                c for code, e in picks[source]
+                if (sessions[e] < HELD_OUT_END) == wanted
+                and (c := measure.call(code, e, "day", short=True))
+            ]  # fmt: skip
+            calls = pd.DataFrame(rows, columns=["code", "day", "net", "excess", "peer", "days"])
+            report["variants"][key] = st.judge(calls)
+            print(key, json.dumps(report["variants"][key], default=str), flush=True)
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     (OUT_DIR / "report.json").write_text(json.dumps(report, indent=2, default=str))
     print("report:", OUT_DIR / "report.json")
