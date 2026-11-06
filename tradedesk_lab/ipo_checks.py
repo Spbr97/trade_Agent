@@ -17,9 +17,7 @@ forward paper trial, nothing more: the same history cannot prove what it suggest
   bands     5-25% and 15-35%. FAILS if either has a mean excess <= 0 or t under 1.5: a real effect
             should not depend on the exact edges.
   recent    2023 on alone. FAILS if its mean excess is not positive.
-Reported only: the gain band by band in 5-point steps, the IPOs themselves, and, where 15-minute
-bars exist (from 2025-10), how far the first bar's close sits from the day's open, which is what a buyer
-who misses the auction really pays.
+Reported only: the gain band by band in 5-point steps and the IPOs themselves.
 
     python -m tradedesk_lab.ipo_checks
 """
