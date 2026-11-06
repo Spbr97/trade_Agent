@@ -45,7 +45,7 @@ RESULT (2026-11-07, entries 2021-02 to 2026-08): two_in_60 PASSES its bar; the o
   alone: fund_bulk +2.51% (t 2.02), both_up +2.53% (t 2.49), loud_strong +1.94% (t 1.60)
 two_in_60 won 56%, median +3.90% net, about 33 calls a year. convergence_checks.py then tried to
 break it: its first placebo FAILED (42.2%), a flaw in that placebo, see there; the fair later-only
-placebo holds (1.8%; real +4.74% a call, placebo +1.54% on average). Quarter t 2.76, +3.08% without the
+placebo holds (1.8%; real +4.74% a call, placebo +1.54%). Quarter t 2.76, +3.08% without the
 5 best calls, median +2.60%, every year positive, nearby settings t 1.97 to 3.24. But 42% of its
 summed excess comes from 5 stocks, the signals were chosen after seeing them, the period is mostly
 a rising market, delisted stocks are missing, and the pass bar was chosen for the same history.
