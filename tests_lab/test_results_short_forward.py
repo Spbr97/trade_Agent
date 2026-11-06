@@ -132,3 +132,30 @@ def test_every_amount_is_reported_beside_the_verdict() -> None:
 
 def test_an_empty_record_is_still_collecting() -> None:
     assert fw.judge([], FlatCost())["status"] == "collecting"
+
+
+def test_trades_are_grouped_by_whether_they_look_shortable() -> None:
+    rows = [{"net": 0.01, "short_margin": 0.2}, {"net": -0.03, "short_margin": 0.2},
+            {"net": 0.05, "short_margin": 1.0}, {"net": 0.02}]  # fmt: skip
+    got = fw.margin_groups(rows)
+    assert got["shortable"]["trades"] == 2
+    assert got["shortable"]["mean_net"] == pytest.approx(-0.01)
+    assert got["shortable"]["win_rate"] == 0.5
+    assert got["not_shortable"]["mean_net"] == pytest.approx(0.05)
+    assert got["unknown"]["trades"] == 1
+
+
+def test_a_failed_margin_lookup_never_costs_the_record(monkeypatch: pytest.MonkeyPatch) -> None:
+    import tradedesk.cli as cli
+
+    def broken(fn: object) -> object:
+        raise OSError("no broker tonight")
+
+    monkeypatch.setattr(cli, "_with_client", broken)
+    rows = [{"entry": 100.0, "scrip_code": "NSE_1", "net": 0.01}]
+    fw.add_margins(rows)
+    assert "short_margin" not in rows[0]
+
+
+def test_no_trades_need_no_lookup() -> None:
+    fw.add_margins([])

@@ -25,6 +25,13 @@ mean net > 0 after costs; t >= 3.0 on net, one trade as one unit; positive in bo
 in at least 60% of calendar years with 20+ trades (momentum's 3 years count as they come). A pass
 becomes a proposal for forward paper trades. 5 rules; t >= 3 is well past Bonferroni's bar.
 
+RESULT (2026-11-07): ALL 5 FAIL. Momentum, 633 days 2024-2026: +0.0004% before costs, -0.08%
+after, t -10.9, 28% win; the published effect does not appear on the Nifty here. momentum_big
++0.01% before costs, -0.07% after. Overnight, 2,515 nights 2016-2026: +0.09% before costs, a real
+drift worth about 22% a year, but +0.01% after costs, t 0.76, and -0.03% in the second half.
+overnight_low about zero. day_short -0.02%, t -1.04: the session's slide is too small to short at
+these costs.
+
     python -m tradedesk_lab.index_timing
 """
 

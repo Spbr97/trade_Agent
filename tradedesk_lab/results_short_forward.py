@@ -21,11 +21,19 @@ What real use would still need, and this trial does not prove: the signal has to
 09:08 pre-open, and the stock has to be available to short intraday at the broker. This job records
 after the close, from the publication minute, so it measures the rule, not that delivery.
 
+ADDED 2026-11-07, before the first trade, and it does not touch the bar. The broker's read-only
+calculator asked 20% margin to short larger stocks intraday but 100% on 5 of 11 recent signals,
+which suggests those cannot really be shorted. So each trade also records `short_margin`, that
+margin as a share of the position when it was recorded, and the verdict reports the group under
+50% apart, because that is what the owner could actually trade. A failed lookup leaves it empty
+and fails nothing.
+
     python scripts/results_short_forward.py
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
 import math
 import time as time_module
@@ -47,6 +55,8 @@ OUT_DIR = OUTPUT / "results_short"
 LEDGER = OUT_DIR / "forward.jsonl"
 VERDICT = OUT_DIR / "forward.json"
 LOOK_BACK = timedelta(days=7)  # a filing from the weekend before FROM can enter on FROM
+SHORTABLE = 0.5
+MARGIN_VALUE = 100_000.0
 
 
 def refresh_index(today: date, *, pause_seconds: float = 1.5) -> None:
@@ -125,11 +135,57 @@ def new_trades(
     return sorted(out, key=lambda r: (r["day"], r["key"]))
 
 
+def margin_groups(rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    """Mean net of trades that look shortable (margin under half), the rest, and unknown."""
+
+    groups: dict[str, list[float]] = {"shortable": [], "not_shortable": [], "unknown": []}
+    for row in rows:
+        share = row.get("short_margin")
+        name = "unknown" if share is None else "shortable" if share < SHORTABLE else "not_shortable"
+        groups[name].append(float(row["net"]))
+    return {
+        name: {"trades": len(v), "mean_net": sum(v) / len(v) if v else None,
+               "win_rate": sum(x > 0 for x in v) / len(v) if v else None}
+        for name, v in groups.items()
+    }  # fmt: skip
+
+
 def judge(rows: list[dict[str, Any]], cm: Any) -> dict[str, Any]:
     """The fade's forward bar, at Rs 10,000; each other amount beside it for information."""
 
     table = am.fade_table(rows, cm) if rows else {}
-    return {**fade.fade_verdict(rows), "by_amount": table}
+    return {**fade.fade_verdict(rows), "by_amount": table, "by_margin": margin_groups(rows)}
+
+
+def add_margins(rows: list[dict[str, Any]]) -> None:
+    """Fill `short_margin` from the broker's read-only calculator. Never places an order."""
+
+    if not rows:
+        return
+
+    async def lookup(client: Any) -> None:
+        from tradedesk.broker.indstocks.ratelimit import Category
+
+        for row in rows:
+            qty = max(1, int(MARGIN_VALUE // float(row["entry"])))
+            await client.limiter.acquire(Category.NON_TRADING)
+            token = await client.tokens.get_token()
+            response = await client.http.request(
+                "GET", "/margin", headers={"Authorization": token},
+                json={"segment": "EQUITY", "exchange": "NSE", "txnType": "SELL",
+                      "securityID": str(row["scrip_code"]).split("_")[1], "quantity": str(qty),
+                      "price": str(round(float(row["entry"]), 2)), "product": "INTRADAY"},
+            )  # fmt: skip
+            total = (response.json().get("data") or {}).get("total_margin")
+            if total:
+                row["short_margin"] = float(total) / (qty * float(row["entry"]))
+
+    from tradedesk.cli import _with_client
+
+    try:
+        asyncio.run(_with_client(lookup))
+    except Exception as exc:  # noqa: BLE001 - a lookup must never cost a night's record
+        print(f"margin lookup failed, trades recorded without it: {exc}", flush=True)
 
 
 def read_ledger(path: Path = LEDGER) -> list[dict[str, Any]]:
@@ -152,6 +208,8 @@ def run(*, now: datetime | None = None, fetch: bool = True) -> dict[str, Any]:
     table = rr.one_per_quarter(rr.read_figures())
     ledger = read_ledger()
     new = new_trades(table, measure, codes, {r["key"] for r in ledger})
+    if fetch:
+        add_margins(new)
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     if new:
         with LEDGER.open("a", encoding="utf-8") as fh:
