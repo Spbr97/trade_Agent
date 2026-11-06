@@ -44,7 +44,7 @@ Caveats: the price store holds stocks listed today, which flatters long tests. F
 matched by a fixed pattern, so foreign funds are left out, because high-speed firms use "fund"
 names too.
 
-RESULT (2026-11-07, about 158,000 bulk and 11,000 block deals, 2016-2026, every year populated):
+RESULT (2026-11-07, about 154,000 bulk and 11,000 block deals, 2016-2026, every year populated):
 ALL 26 FAIL. Closest: fund_bulk_liquid_60 (a named domestic fund buying in a bulk deal, liquid
 stock, 60 sessions), 363 calls, +5.24% net, +2.53% over the market, t 2.08, both halves about +2.5%,
 72% of quarters, and over equally strong stocks only t 1.93. Over shorter holds it adds nothing
