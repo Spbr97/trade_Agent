@@ -37,6 +37,20 @@ if agreeing evidence adds nothing, a combination should not beat its parts.
 Caveats: both_up exists only from 2022, so most calls are from then, nearly all a rising market. The
 price store holds stocks listed today, which flatters long tests.
 
+RESULT (2026-11-07, entries 2021-02 to 2026-08): two_in_60 PASSES its bar; the other two do not.
+                calls  net/call  vs market (week t)  vs peers (t)  quarters
+  two_in_60       199   +6.75%    +5.88% (t 3.28)    +5.47% (3.06)  16 of 16
+  two_in_20        84   +5.59%    +3.86% (t 2.14)    +3.42% (1.96)  too few calls
+  all_three        10   +1.73%    +5.90% (t 0.78)                   too few calls
+  alone: fund_bulk +2.51% (t 2.02), both_up +2.53% (t 2.49), loud_strong +1.94% (t 1.60)
+two_in_60 won 56%, median +3.90% net, about 33 calls a year. convergence_checks.py then tried to
+break it: its first placebo FAILED (42.2%), a flaw in that placebo, see there; the fair later-only
+placebo holds (1.8%; real +4.74% a call against +1.54% on average). Quarter t 2.76, +3.08% without the
+5 best calls, median +2.60%, every year positive, nearby settings t 1.97 to 3.24. But 42% of its
+summed excess comes from 5 stocks, the signals were chosen after seeing them, the period is mostly
+a rising market, delisted stocks are missing, and the pass bar was chosen for the same history.
+A forward paper trial is the only thing that can settle it. Not a live call.
+
     python -m tradedesk_lab.convergence
 """
 
