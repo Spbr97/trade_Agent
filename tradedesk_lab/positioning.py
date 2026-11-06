@@ -45,6 +45,14 @@ the kept group's mean excess beats the dropped group's with t >= 2.5 over entry 
 halves, and the kept group makes more rupees a call. 2 variants. A pass is a proposal, not a
 change to the live rule.
 
+RESULT (2026-11-07, 2,188 of 2,193 sessions 2018-2026, no stale tables, trades from 2019): ALL 12
+FAIL, AND BOTH DRIFT FILTERS FAIL. Day trades lose to costs either way: fii_follow_1 -0.06% a trade,
+fii_fade_1 -0.10%, client_fade_1 -0.04%, fii_shift_1 -0.05%, positive in at most 25% of years. Best:
+client_fade_20 (75 trades, +0.48% net, +0.63% vs drift, t 1.05). fii_follow_5 +0.11%, t 0.80, first
+half only. Drift calls with friendly FII positioning make far more rupees (+2.20% against +0.08%)
+but no more over the market (t -0.34; clients t -0.17): friendly positioning only marks a rising
+market. Next-day and multi-week Nifty direction is not in this table, or is priced by the next open.
+
     python -m tradedesk_lab.positioning fetch
     python -m tradedesk_lab.positioning
 """
