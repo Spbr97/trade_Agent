@@ -337,8 +337,11 @@ def _months(start: date, end: date) -> Iterator[tuple[date, date]]:
         first = following
 
 
-def fetch_index(start: date, end: date, *, pause_seconds: float = 1.5) -> int:
-    """Save NSE's list of filings one month per request; a finished saved month is kept."""
+def fetch_index(
+    start: date, end: date, *, pause_seconds: float = 1.5, refresh: bool = False
+) -> int:
+    """Save NSE's list of filings one month per request; a finished saved month is kept, unless
+    `refresh`: a month's file can be written before all of that month's filings have appeared."""
 
     import httpx
 
@@ -350,7 +353,7 @@ def fetch_index(start: date, end: date, *, pause_seconds: float = 1.5) -> int:
         client.get("https://www.nseindia.com/")  # sets the cookies the API requires
         for first, last in _months(start, end):
             path = INDEX_DIR / f"{first:%Y-%m}.json"
-            if path.exists() and last < end:
+            if path.exists() and last < end and not refresh:
                 continue
             response = client.get(NSE_SHP_URL, params={
                 "index": "equities", "from_date": first.strftime("%d-%m-%Y"),
