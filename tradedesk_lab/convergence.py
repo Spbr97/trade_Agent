@@ -21,7 +21,7 @@ distinct kinds within the window before it, once per stock per 60 sessions. Liqu
 trade's delivery charges, sold at the 60th close. Excess = net minus the equal-weight liquid
 market, same span.
 
-Variants: two_in_20 (2+ kinds within 20 sessions), two_in_60 (2+ within 60), all_three (3 within 60).
+Variants: two_in_20 (2+ kinds within 20 sessions), two_in_60 (2+ within 60), all_three (3 in 60).
 
 PASS BAR (written 2026-11-07, before any combination was run). A variant passes only if:
   1. at least 100 calls;
