@@ -9,8 +9,8 @@ that open with 0.05% slippage, sold at the 20th close with 0.05% slippage, a Rs 
 delivery charges. Excess = net minus the equal-weight liquid market over the same span.
 
 PASS BAR (written 2026-11-07, before the first forward listing, FROM 2026-11-09). Judged at 30
-closed calls and on every later run: mean net > 0; mean excess > 0, t >= 2.0, one listing WEEK as one
-unit; positive excess in both halves (split at the median listing date). Under 30 closed:
+closed calls and on every later run: mean net > 0; mean excess > 0, t >= 2.0, one listing WEEK
+as one unit; positive excess in both halves (split at the median listing date). Under 30 closed:
 "collecting". At 30 or more and not all met: "failing", which can recover. About 25-30 such listings
 a year at the recent pace, so the first judgement is about a year away.
 

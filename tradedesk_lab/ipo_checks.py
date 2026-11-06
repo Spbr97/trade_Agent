@@ -19,6 +19,15 @@ forward paper trial, nothing more: the same history cannot prove what it suggest
   recent    2023 on alone. FAILS if its mean excess is not positive.
 Reported only: the gain band by band in 5-point steps and the IPOs themselves.
 
+RESULT (2026-11-07): IT SURVIVES EVERY CHECK. 101 IPOs at 20 sessions. Buyer after real charges
+and a 1% worse entry: +5.95% a call, median +4.10%, 55% win. Vs market +7.92%, median +4.76%,
++4.59% without the 5 best; all 11 years positive (thin before 2021: 8 IPOs); quarter t 3.84; 5-25%
+t 3.19, 15-35% t 2.99; 2023 on +7.93%. By 5-point band: 10% +6.0, 15% +11.2, 20% +9.3, 25% +5.0,
+30% +2.6, 35% -6.4, over 55% -6.4; under 10% about zero, median negative. Buying at the 10:00 open
+instead of the auction cost +0.86% on average on 19 recent IPOs. That the reason for the hump is
+unknown is the main doubt: it was found on this history, and missing delisted stocks flatter it a
+little at 20 sessions.
+
     python -m tradedesk_lab.ipo_checks
 """
 

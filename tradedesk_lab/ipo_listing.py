@@ -37,6 +37,18 @@ Caveats: the store holds stocks listed today, which flatters holding, so a "hold
 extra care and a "sell" verdict is the stronger for it. Allotment odds, retail discounts and
 subscription figures are not in this data. No listing-day intraday path before 2025.
 
+RESULT (2026-11-07, 457 mainboard IPOs 2016-2026 kept; dropped: 16 no issue price, 55 a later
+split or bonus, 35 no price history, 14 first candle off the date). Mean listing-open gain +18.8%,
+median +9.1%, 21% open below the issue price, about Rs 2,800 on a Rs 15,000 allotment, before the
+odds of getting one.
+A verdict for 4 of the 20 tests, all HOLD, and 3 of them in one band:
+  open 10-30% up   close +2.77%, 66% win, +3.41% vs market, t 4.58; 20 sessions +7.58%, 59% win,
+                   +7.80%, t 3.55; 60 sessions +13.40%, 63% win, +14.61%, t 3.45
+  all IPOs         close +0.78%, +1.57% vs market, t 3.65, thin in the second half
+  under 10% up, below the issue price, over 30% up: no verdict at any hold, median mostly negative
+Hot market fails: IPOs after a hot stretch gain +25.0% against +13.6%, t 1.70. No test says sell at
+the open is better. ipo_checks.py could not break the band; ipo_forward.py trials it forward.
+
     python -m tradedesk_lab.ipo_listing fetch
     python -m tradedesk_lab.ipo_listing
 """
