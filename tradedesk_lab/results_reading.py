@@ -389,7 +389,10 @@ class Measure:
         qty = max(1, int(NOTIONAL // max(buy, sell)))
         return am.intraday_cost(self.cm, buy, sell, qty) / (qty * max(buy, sell))
 
-    def call(self, code: str, e: int, exit_rule: str, short: bool = False) -> dict[str, Any] | None:
+    def call(
+        self, code: str, e: int, exit_rule: str, short: bool = False, *,
+        slippage: float = SLIPPAGE, band: tuple[float, float] = (MIN_TURNOVER, math.inf),
+    ) -> dict[str, Any] | None:  # fmt: skip
         j = self.column[code]
         raw = float(self.opens[e, j])
         if not (math.isfinite(raw) and raw > 0):
@@ -400,14 +403,14 @@ class Measure:
         x, same_day = sold
         close = float(self.closes[x, j])
         if short:
-            entry, out = raw * (1 - SLIPPAGE), close * (1 + SLIPPAGE)
+            entry, out = raw * (1 - slippage), close * (1 + slippage)
             net = (entry - out) / entry - self.intraday(out, entry)
         else:
-            entry, out = raw * (1 + SLIPPAGE), close * (1 - SLIPPAGE)
+            entry, out = raw * (1 + slippage), close * (1 - slippage)
             charges = self.intraday(entry, out) if same_day else self.delivery(entry, out)
             net = out / entry - 1 - charges
         mkt = self.market(e, x)
-        peer_table = self.peers.table(e - 1, x - e + 1, MIN_TURNOVER, math.inf) if e > 0 else None
+        peer_table = self.peers.table(e - 1, x - e + 1, *band) if e > 0 else None
         peer = math.nan
         if peer_table is not None and code in peer_table.index:
             peer = float(peer_table[code])
