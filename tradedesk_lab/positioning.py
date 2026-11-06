@@ -86,7 +86,7 @@ HOLDS = (1, 5, 20)
 RULES = ("fii_follow", "fii_fade", "client_fade", "fii_shift")
 PASS = {"min_trades": 60, "min_t": 3.0, "min_year_share": 0.6, "drift_min_t": 2.5}
 MIN_YEAR_TRADES = 5
-_TITLE = re.compile(r"as on\s+([A-Za-z]{3})\s+(\d{1,2}),\s*(\d{4})")
+_TITLE = re.compile(r"as on\s+([A-Za-z]{3,9})\s+(\d{1,2}),\s*(\d{4})")
 FIELDS = ("day", "party", "fut_idx_long", "fut_idx_short", "opt_call_long", "opt_put_long",
           "opt_call_short", "opt_put_short")  # fmt: skip
 
@@ -97,18 +97,24 @@ FIELDS = ("day", "party", "fut_idx_long", "fut_idx_short", "opt_call_long", "opt
 def parse_file(text: str, wanted: date) -> list[dict[str, Any]] | None:
     """The participants' rows, or None if the file is not that session's or cannot be read."""
 
-    match = _TITLE.search(text[:200])
-    if not match:
-        return None
-    try:
-        stated = datetime.strptime(" ".join(match.groups()), "%b %d %Y").date()
-    except ValueError:
-        return None
-    if stated != wanted:
-        return None
     lines = text.splitlines()
+    at = next((i for i, line in enumerate(lines[:3]) if line.startswith("Client Type")), None)
+    if at is None:
+        return None
+    match = _TITLE.search(" ".join(lines[:at]))
+    if match:  # some 2018 files have no title; stale_days checks those afterwards
+        month, day, year = match.groups()
+        stated = None
+        for form in ("%b", "%B"):
+            try:
+                stated = datetime.strptime(f"{month} {day} {year}", f"{form} %d %Y").date()
+                break
+            except ValueError:
+                continue
+        if stated != wanted:
+            return None
     rows = []
-    for raw in csv.DictReader(io.StringIO("\n".join(lines[1:]))):
+    for raw in csv.DictReader(io.StringIO("\n".join(lines[at:]))):
         row = {(k or "").strip(): (v or "").strip() for k, v in raw.items()}
         party = row.get("Client Type", "")
         if party not in PARTIES:
@@ -186,6 +192,16 @@ def read_table(path: Path = TABLE) -> pd.DataFrame:
     frame["day"] = pd.to_datetime(frame["day"]).dt.date
     frame["share"] = frame["fut_idx_long"] / (frame["fut_idx_long"] + frame["fut_idx_short"])
     return frame.pivot_table(index="day", columns="party", values="share", aggfunc="last")
+
+
+def stale_days(path: Path = TABLE) -> list[str]:
+    """Sessions whose FII row repeats the session before exactly: a stale file, not a new table."""
+
+    frame = pd.read_csv(path)
+    fii = frame[frame["party"] == "FII"].sort_values("day")
+    columns = list(FIELDS[2:])
+    same = (fii[columns] == fii[columns].shift()).all(axis=1)
+    return list(fii.loc[same, "day"].astype(str))
 
 
 def coverage(shares: pd.DataFrame, sessions: Sequence[date]) -> dict[str, dict[str, float]]:
@@ -402,13 +418,16 @@ def main(argv: list[str] | None = None) -> None:
         print(json.dumps(fetch(sessions)), flush=True)
     shares = read_table()
     cover = coverage(shares, sessions)
-    print(json.dumps(cover), flush=True)
+    stale = stale_days()
+    print(json.dumps(cover), "stale days:", stale, flush=True)
     if args.command == "fetch":
         return
-    shares = shares.reindex([d for d in sessions if d in shares.index])
+    stale_set = {date.fromisoformat(d) for d in stale}
+    shares = shares.reindex([d for d in sessions if d in shares.index and d not in stale_set])
     nifty = nifty.loc[[d for d in sessions if d >= shares.index[0]]]
     report: dict[str, Any] = {
         "generated_at": datetime.now(IST).isoformat(), "pass_bar": PASS, "coverage": cover,
+        "stale_days": stale,
         "variants": {}, "drift_filter": {},
     }  # fmt: skip
     for rule in RULES:

@@ -156,3 +156,28 @@ def test_a_filter_must_keep_the_better_calls() -> None:
     calls = pd.DataFrame({"day": days, "net": good, "excess": good})
     assert ps.judge_filter(calls, bad)["passed"]
     assert not ps.judge_filter(calls, ~bad)["passed"]
+
+
+def test_a_full_month_name_is_read() -> None:
+    text = _file('"Participant wise Open Interest as on June 01, 2018"')
+    assert ps.parse_file(text, date(2018, 6, 1))
+
+
+def test_a_full_month_name_for_the_wrong_day_is_refused() -> None:
+    text = _file('"Participant wise Open Interest as on June 01, 2018"')
+    assert ps.parse_file(text, date(2018, 6, 4)) is None
+
+
+def test_a_file_with_no_title_is_read_from_its_header() -> None:
+    body = _file('"title as on Jan 02, 2018"').split("\r\n", 1)[1]
+    rows = ps.parse_file(body, date(2018, 6, 13))
+    assert {r["party"] for r in rows} == set(ps.PARTIES)
+
+
+def test_a_repeated_table_is_flagged_as_stale(tmp_path) -> None:  # noqa: ANN001
+    path = tmp_path / "t.csv"
+    head = ",".join(ps.FIELDS)
+    lines = [head, "2020-01-01,FII,1,2,3,4,5,6", "2020-01-02,FII,1,2,3,4,5,6",
+             "2020-01-03,FII,9,2,3,4,5,6"]  # fmt: skip
+    path.write_text("\n".join(lines), encoding="utf-8")
+    assert ps.stale_days(path) == ["2020-01-02"]
