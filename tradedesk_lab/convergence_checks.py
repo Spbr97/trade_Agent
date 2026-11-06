@@ -20,6 +20,13 @@ earns only a forward paper trial, because they use the same history.
   nearby     Other windows (30, 45, 90) and holds (20, 40). FAILS if a window is negative or more
              than one of these five settings has t under 1.5: a real effect is no knife edge.
 
+ADDED 2026-11-07, after the placebo above FAILED (42.2% of runs reached the real result; every other
+check passed). That failure stands on the record. But the design has a flaw: moving an event EARLIER
+places a call before the good news it rests on, so it buys ahead of a later 3%+ gap or fund buying,
+which is look-ahead in the placebo's favour. placebo_later moves events LATER only, so a call only
+ever knows what had happened, and is the fair form of the question. Same 500 draws, same 5% line,
+written before it ran. It does not erase the first result: both are reported.
+
     python -m tradedesk_lab.convergence_checks
 """
 
@@ -54,7 +61,9 @@ MOVED = ("both_up", "loud_strong")
 Event = tuple[str, int, str]
 
 
-def shuffled(events: Iterable[Event], rng: random.Random, last_row: int) -> list[Event]:
+def shuffled(
+    events: Iterable[Event], rng: random.Random, last_row: int, *, later_only: bool = False
+) -> list[Event]:
     """Each stock's MOVED kinds shifted by one random amount per stock and kind, inside the data.
     A kind's own spacing within a stock is kept; only its timing against the others is broken."""
 
@@ -66,7 +75,8 @@ def shuffled(events: Iterable[Event], rng: random.Random, last_row: int) -> list
             continue
         key = (code, kind)
         if key not in offsets:
-            offsets[key] = rng.choice((-1, 1)) * rng.randint(*SHIFT)
+            sign = 1 if later_only else rng.choice((-1, 1))
+            offsets[key] = sign * rng.randint(*SHIFT)
         moved = e + offsets[key]
         if 1 <= moved <= last_row:
             out.append((code, moved, kind))
@@ -160,17 +170,25 @@ def main() -> None:
             cache[(code, e)] = _held(measure, code, e, 60)
         return cache[(code, e)]
 
-    rng = random.Random(SEED)
     last_row = len(sessions) - 1
-    placebo = []
-    for _ in range(DRAWS):
-        values = [
-            v for code, e in cv.convergent(shuffled(events, rng, last_row), NEED, WINDOW)
-            if cv.liquid_at(measure, code, e) and (v := excess_of(code, e)) is not None
-        ]  # fmt: skip
-        if values:
-            placebo.append(statistics.fmean(values))
+
+    def run_placebo(later_only: bool) -> list[float]:
+        rng = random.Random(SEED)
+        means = []
+        for _ in range(DRAWS):
+            moved = shuffled(events, rng, last_row, later_only=later_only)
+            values = [
+                v for code, e in cv.convergent(moved, NEED, WINDOW)
+                if cv.liquid_at(measure, code, e) and (v := excess_of(code, e)) is not None
+            ]  # fmt: skip
+            if values:
+                means.append(statistics.fmean(values))
+        return means
+
+    placebo = run_placebo(False)
     share = sum(v >= real for v in placebo) / len(placebo)
+    later = run_placebo(True)
+    later_share = sum(v >= real for v in later) / len(later)
 
     q_mean, q_t, quarters = quarter_t(calls)
     trimmed = without_best(list(calls["excess"]))
@@ -196,6 +214,8 @@ def main() -> None:
     fails = []
     if share >= 0.05:
         fails.append(f"placebo reaches it {share:.1%} of the time")
+    if later_share >= 0.05:
+        fails.append(f"later-only placebo reaches it {later_share:.1%} of the time")
     if not q_t >= 2.0:
         fails.append(f"quarter t {q_t:.2f}")
     if not trimmed > 0:
@@ -212,6 +232,9 @@ def main() -> None:
         "median_net": float(calls["net"].median()),
         "placebo": {"draws": len(placebo), "mean": statistics.fmean(placebo),
                     "p95": sorted(placebo)[int(0.95 * len(placebo))], "share_at_or_above": share},
+        "placebo_later": {"draws": len(later), "mean": statistics.fmean(later),
+                          "p95": sorted(later)[int(0.95 * len(later))],
+                          "share_at_or_above": later_share},
         "quarter": {"mean": q_mean, "t": q_t, "quarters": quarters},
         "without_5_best": trimmed, "median_excess": median,
         "by_year": {str(y): {"calls": int(r["count"]), "mean": float(r["mean"])}

@@ -64,3 +64,14 @@ def test_without_best_removes_the_winners_only() -> None:
 def test_the_kinds_at_a_call_are_those_inside_its_window() -> None:
     events = [("S", 10, "fund_bulk"), ("S", 40, "both_up"), ("S", 200, "loud_strong")]
     assert ck.kinds_at_call([("S", 40)], events) == {("S", 40): "both_up+fund_bulk"}
+
+
+def test_the_later_only_shuffle_never_moves_an_event_earlier() -> None:
+    events = [("S", 500, "both_up"), ("T", 700, "loud_strong"), ("U", 900, "both_up")] * 20
+    rng = random.Random(11)
+    for _ in range(50):
+        for (code, moved, kind), (_, was, _) in zip(
+            ck.shuffled(events, rng, 5000, later_only=True), events, strict=True
+        ):
+            assert kind != "fund_bulk" and code
+            assert 60 <= moved - was <= 250
