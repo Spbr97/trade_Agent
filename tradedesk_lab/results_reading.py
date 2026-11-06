@@ -486,8 +486,9 @@ def to_fetch(rows: Iterable[Mapping[str, Any]], symbols: set[str]) -> list[dict[
 
 
 def fetch_figures(
-    symbols: set[str], *, pause_seconds: float = 0.5, max_errors: int = 25
-) -> Counter:
+    symbols: set[str], *, pause_seconds: float = 0.5, max_errors: int = 25,
+    since: date | None = None,
+) -> Counter:  # fmt: skip
     """Download and parse each filing, keeping only the figures. Resumable."""
 
     import httpx
@@ -500,6 +501,8 @@ def fetch_figures(
         rows = [json.loads(x) for x in FIGURES.read_text(encoding="utf-8").splitlines() if x]
         done = {r["record_id"] for r in rows if "profit" in r}  # failed reads are tried again
     pending = [r for r in to_fetch(read_index(), symbols) if r["record_id"] not in done]
+    if since is not None:  # a nightly run has no need to retry old filings that have no file
+        pending = [r for r in pending if r["published"][:10] >= since.isoformat()]
     print(f"{len(pending)} filings to fetch, {len(done)} already done", flush=True)
     counts: Counter = Counter()
     errors = 0
