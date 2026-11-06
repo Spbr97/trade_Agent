@@ -54,6 +54,14 @@ Caveats: about five years, nearly all a rising market, and no 2020 - a pass stil
 proof. The price store holds stocks listed today, which flatters every long test: a pass needs to
 be clear, and a fail is a fail. Calendar quarters overlap at 60 sessions.
 
+RESULT (2026-11-06, fixed parser, 36,977 filings, entries 2022-01 to 2026-10, no format warning):
+ALL 24 FAIL. Closest: both_up_liquid_60 (FPI and mutual funds each up 0.25 points, 60 sessions),
+1,064 calls, +4.37% net, +3.78% over the market, t 1.99, +4.18% over equally strong stocks, t 2.16,
+both halves positive, 63% of quarters. It misses only the main t >= 3, and the best t of 24 tries
+being about 2 is what chance alone would give. discovery_liquid_60 +4.49%, t 1.51, nearly all in the
+first half. Mutual funds alone: t 0.78; more funds holding: t -0.56. Small stocks trail the market.
+A first run on 2026-11-05 was void: the parser read no FPI line for Sep 2022 - Mar 2025.
+
     python -m tradedesk_lab.institutional_stakes fetch-index
     python -m tradedesk_lab.institutional_stakes fetch-stakes
     python -m tradedesk_lab.institutional_stakes

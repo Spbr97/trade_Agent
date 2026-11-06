@@ -142,7 +142,7 @@
       "triggers": [
         {
           "kind": "Daily",
-          "at": "16:40",
+          "at": "16:50",
           "first_date": "2026-09-29",
           "days": [],
           "every_days": 1,

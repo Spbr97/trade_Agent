@@ -62,6 +62,28 @@ Caveats: the price store holds stocks listed today, which flatters long tests. T
 only at the auction's end, so an open-based filter needs the 09:08 pre-open price in real use.
 Profit includes one-offs; a study of the number itself, not of analysts' expectations.
 
+RESULT (2026-11-06, fixed parser, 41,939 filings, entries 2019-07 to 2026-11, no format warning):
+ALL 17 FAIL, AND BOTH MIRRORS FAIL THEIR BAR.
+                       calls  net/call  vs market (week t)
+  strong_day           3,927   -1.03%   -0.84% (t -6.97)  good numbers fall from the open, every era
+  quiet_strong_day     2,160   -0.96%   -0.79% (t -6.57)
+  strong_20            3,680   +0.52%   -1.65% (t -3.71)
+  strong_60            3,611   +4.14%   -0.27% (t -0.37)
+  sue_60                 874   +2.86%   +1.66% (t  1.46)
+  loud_strong_60         855   +5.56%   +2.01% (t  1.68)  closest long; peers t 1.25
+  strong_runner        3,817   -0.34%   -0.71% (t -2.36)  the start-intraday-then-carry exit loses
+  weak_short_day       1,317   -0.28%   -0.45% (t -2.95)  bad numbers do not fall from the open
+Mirror, held out, entries 2019-08 to 2023-06:
+  strong_short_day     1,271   +0.56%   +0.43% (t  2.33)  62% win; 2nd half -0.07%: FAIL
+  quiet_strong_short     775   +0.40%   +0.37% (t  2.21)  62% win; 57% of quarters: FAIL
+Not judged, the data that suggested it, 2023-07 on:
+  strong_short_day     2,656   +0.51%   +0.24% (t  1.53)  59% win
+  quiet_strong_short   1,385   +0.49%   +0.20% (t  1.15)  60% win
+The opening gap does not price good results away, buyers are simply worse off at the open. The short
+made about +0.5% a trade and won about 60% in both periods, but much of that is the whole market
+sliding from its open (-0.13% and -0.27% over these calls), and the edge over the market is under
+the bar and thins with time. A lead for forward paper trades at most, not a pass.
+
     python -m tradedesk_lab.results_reading fetch-index
     python -m tradedesk_lab.results_reading fetch-figures
     python -m tradedesk_lab.results_reading
