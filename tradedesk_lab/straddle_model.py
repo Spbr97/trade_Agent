@@ -35,6 +35,15 @@ correlate with the real ones at 0.5 or more and its total is within Rs 7,000 of 
 it is not credible, it is reported as unusable and not tuned again; the verdict lines are unchanged
 and count only if it is credible.
 
+RESULT (2026-11-07): NOT CREDIBLE, reported as unusable and not tuned again. f came out at 0.75. On
+the 13 real days straddle_30's model made Rs 11,374 against the real Rs 20,913 (a gap of Rs 9,539,
+limit Rs 7,000), correlation 0.43 (needed 0.5); straddle_40's gap was Rs 16,641, correlation 0.47.
+It showed +Rs 692 a day, 70% wins, t 5.7, 90% of months positive, which does not count. The useful
+finding is the swing: one assumption about time decay moved the result from -Rs 710 to +Rs 692 a
+day, so no model on this data can settle the rule's profit, only the forward trial can. Its risk shape
+leans less on that assumption: the stops capped the worst modelled day at about Rs 9,400 (Rs 12,500
+at +40%), on the 2024-06-04 election crash, and both legs stopped on 14% of days (8% at +40%).
+
     python -m tradedesk_lab.straddle_model
 """
 
