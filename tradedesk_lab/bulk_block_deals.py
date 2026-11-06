@@ -44,6 +44,16 @@ Caveats: the price store holds stocks listed today, which flatters long tests. F
 matched by a fixed pattern, so foreign funds are left out, because high-speed firms use "fund"
 names too.
 
+RESULT (2026-11-07, about 158,000 bulk and 11,000 block deals, 2016-2026, every year populated):
+ALL 26 FAIL. Closest: fund_bulk_liquid_60 (a named domestic fund buying in a bulk deal, liquid
+stock, 60 sessions), 363 calls, +5.24% net, +2.53% over the market, t 2.08, both halves about +2.5%,
+72% of quarters, and over equally strong stocks only t 1.93. Over shorter holds it adds nothing
+(20 sessions t 0.87, same day t -0.31). holder_bulk: any big one-sided buyer trails the market (20
+sessions -0.81%, t -1.71). repeat_buyer does worse the longer it is held (liquid 60 sessions -5.32%,
+t -2.42): repeated buying is not accumulation that pays. seller_short loses in rupees: stocks
+sold heavily rise from the next open (liquid -0.49% vs market, t -5.67), but buying them instead
+would give about that back in double charges and slippage.
+
     python -m tradedesk_lab.bulk_block_deals fetch
     python -m tradedesk_lab.bulk_block_deals
 """

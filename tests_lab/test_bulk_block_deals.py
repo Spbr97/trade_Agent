@@ -36,7 +36,8 @@ def test_a_bad_row_is_skipped_and_not_guessed() -> None:
 
 def _deal(symbol: str, client: str, side: str, value: float = 1e8, day: date = date(2026, 1, 5),
           kind: str = "bulk") -> dict:  # fmt: skip
-    return {"kind": kind, "day": day, "symbol": symbol, "client": client, "side": side, "value": value}
+    return {"kind": kind, "day": day, "symbol": symbol, "client": client, "side": side,
+            "value": value}  # fmt: skip
 
 
 def test_a_client_on_both_sides_the_same_day_is_churn_and_dropped() -> None:
