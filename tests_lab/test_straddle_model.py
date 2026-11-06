@@ -130,3 +130,45 @@ def test_the_verdict_lines() -> None:
     assert not sm.verdict(_summary(by_year=lost), _summary())["supports"]
     few = {"2024": {"sessions": 50, "net": -1.0}}
     assert sm.verdict(_summary(by_year=few), _summary())["supports"]
+
+
+def test_the_trading_clock_counts_sessions_not_calendar_hours() -> None:
+    monday = date(2026, 11, 2)
+    tuesday = date(2026, 11, 3)
+    # All of Monday's session left and one more whole day, on a clock that puts 0.7 in the session.
+    assert sm.trading_years(monday, 375, tuesday, 0.7) == pytest.approx((0.7 + 1) / 252)
+    assert sm.trading_years(tuesday, 0, tuesday, 0.7) == 0.0
+    assert sm.trading_years(tuesday, 187.5, tuesday, 0.7) == pytest.approx(0.35 / 252)
+
+
+def test_a_weekend_counts_no_extra_days() -> None:
+    friday, monday = date(2026, 11, 6), date(2026, 11, 9)
+    assert sm.trading_years(friday, 375, monday, 1.0) == pytest.approx(2 / 252)
+
+
+def test_a_trading_clock_decays_a_flat_day_faster_than_the_calendar() -> None:
+    flat = _session([24000.0] * 25)
+    assert sm.replay(flat, 0.30, 1.0, COSTS, 0.8)["net"] > sm.replay(flat, 0.30, 1.0, COSTS)["net"]
+
+
+def test_straddle_vol_inverts_the_pair() -> None:
+    years = 3 / 252
+    total = sm.price("ce", 24000, 24000, years, 0.14) + sm.price("pe", 24000, 24000, years, 0.14)
+    assert sm.straddle_vol(total, 24000, 24000, years) == pytest.approx(0.14, abs=1e-3)
+    assert sm.straddle_vol(total, 24000, 24000, 0.0) is None
+
+
+def test_the_fit_finds_the_clock_that_made_the_prices() -> None:
+    day, expiry = date(2026, 11, 2), date(2026, 11, 5)
+    points = []
+    for left in range(30, 360, 15):
+        years = sm.trading_years(day, left, expiry, 0.65)
+        total = sum(sm.price(x, 24000, 24000, years, 0.15) for x in ("ce", "pe"))
+        points.append((float(left), 24000.0, 24000.0, total))
+    assert sm.fit_clock({day: (expiry, points)})["f"] == pytest.approx(0.65)
+
+
+def test_the_fit_leaves_out_expiry_days() -> None:
+    day = date(2026, 11, 3)
+    points = [(100.0, 24000.0, 24000.0, 50.0)] * 20
+    assert sm.fit_clock({day: (day, points)})["scores"][0.5] == float("inf")

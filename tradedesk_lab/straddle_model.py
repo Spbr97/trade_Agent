@@ -22,6 +22,19 @@ of margin; 4. the worst day is at most Rs 25,000 lost; and 5. mean net a day is 
 Support is not proof: the forward paper trial's 60 sessions still decide, and a model can only
 count against it.
 
+FIRST RUN (2026-11-07), void: time decay spread evenly over 24 hours. It lost about Rs 710 a day in
+every year (t -7), but on the 13 days traded for real it showed -Rs 3,756 against the real +Rs
+20,913, about Rs 1,900 a day too low, so it fails as a model before it says anything about the rule.
+
+REVISION, the only one (written before it ran). Options lose most value in market hours. A trading
+clock counts each session's hours as a share f of a day's decay and the night as 1 - f, and 252 such
+days a year. f is chosen ONLY to keep implied volatility flattest through the day in the saved real
+minute chains, from option prices, never from any trade's profit. k is then re-measured on that
+clock. The model is CREDIBLE only if, on the real trades' days for straddle_30, its daily results
+correlate with the real ones at 0.5 or more and its total is within Rs 7,000 of the real total. If
+it is not credible, it is reported as unusable and not tuned again; the verdict lines are unchanged
+and count only if it is credible.
+
     python -m tradedesk_lab.straddle_model
 """
 
@@ -33,6 +46,7 @@ import statistics
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -52,6 +66,9 @@ TUESDAY_FROM = date(2025, 9, 1)
 EXPIRY_CLOSE = time(15, 30)
 ENTRY_BAR, LAST_BAR = 0, 23
 MINUTES_A_YEAR = 365.0 * 24 * 60
+SESSION_MINUTES = 375.0
+F_GRID = tuple(round(0.30 + 0.05 * i, 2) for i in range(15))  # 0.30 to 1.00
+CREDIBLE = {"min_correlation": 0.5, "max_gap": 7_000.0}
 LIMITS = {"max_fall": 62_500.0, "max_day_loss": 25_000.0, "min_year_sessions": 100, "k_stress": 0.9}
 
 
@@ -101,6 +118,24 @@ def years_left(day: date, bar: int, expiry: date) -> float:
     return max((end - now).total_seconds() / 60.0, 0.0) / MINUTES_A_YEAR
 
 
+def trading_years(day: date, minutes_left: float, expiry: date, f: float) -> float:
+    """Trading-clock time to the expiry's close: what is left of today's session as a share `f`
+    of a day, plus one whole day per later weekday up to the expiry, over 252 days. Holidays are
+    ignored, as in next_expiry."""
+
+    today = f * max(min(minutes_left, SESSION_MINUTES), 0.0) / SESSION_MINUTES
+    later = int(np.busday_count(day, expiry))
+    return (today + max(later, 0)) / 252.0
+
+
+def clock(day: date, bar: int, expiry: date, f: float | None) -> float:
+    """Years left at the close of `bar`: the trading clock, or the calendar if `f` is None."""
+
+    if f is None:
+        return years_left(day, bar, expiry)
+    return trading_years(day, SESSION_MINUTES - 15.0 * (bar + 1), expiry, f)
+
+
 @dataclass(frozen=True)
 class Session:
     day: date
@@ -111,14 +146,16 @@ class Session:
     vix: np.ndarray  # closing VIX of each bar, as a fraction
 
 
-def replay(s: Session, stop_pct: float, k: float, costs: oi.OptionCosts) -> dict[str, Any]:
+def replay(
+    s: Session, stop_pct: float, k: float, costs: oi.OptionCosts, f: float | None = None
+) -> dict[str, Any]:
     """One modelled day of the rule."""
 
     expiry = next_expiry(s.day)
     spot = float(s.c[ENTRY_BAR])
     strike = round(spot / STRIKE_STEP) * STRIKE_STEP
     start_vol = k * float(s.vix[ENTRY_BAR])
-    start_years = years_left(s.day, ENTRY_BAR, expiry)
+    start_years = clock(s.day, ENTRY_BAR, expiry, f)
     gross, fees, stopped = 0.0, 0.0, 0
     worst = 0.0
     entries = {
@@ -126,9 +163,9 @@ def replay(s: Session, stop_pct: float, k: float, costs: oi.OptionCosts) -> dict
     }
     exits: dict[str, float] = {}
     for bar in range(ENTRY_BAR + 1, LAST_BAR + 1):
-        years = years_left(s.day, bar, expiry)
+        years = clock(s.day, bar, expiry, f)
         vol = k * float(s.vix[bar])
-        open_years = years_left(s.day, bar - 1, expiry)
+        open_years = clock(s.day, bar - 1, expiry, f)
         mark = 0.0
         for side in ("ce", "pe"):
             entry = entries[side]
@@ -151,7 +188,7 @@ def replay(s: Session, stop_pct: float, k: float, costs: oi.OptionCosts) -> dict
         worst = min(worst, mark * LOT)
     for side in ("ce", "pe"):
         if side not in exits:
-            value = price(side, float(s.c[LAST_BAR]), strike, years_left(s.day, LAST_BAR, expiry),
+            value = price(side, float(s.c[LAST_BAR]), strike, clock(s.day, LAST_BAR, expiry, f),
                           k * float(s.vix[LAST_BAR]))  # fmt: skip
             exits[side] = value + SLIP_POINTS
         gross += (entries[side] - exits[side]) * LOT
@@ -241,7 +278,84 @@ def verdict(base: dict[str, Any], stressed: dict[str, Any]) -> dict[str, Any]:
     return {"supports": not fails, "fails": fails}
 
 
-def calibrate(ledger: list[dict[str, Any]], sessions: dict[date, Session]) -> dict[str, Any]:
+def straddle_vol(total: float, spot: float, strike: float, years: float) -> float | None:
+    """The volatility that prices a call and put at this strike to `total` together."""
+
+    low, high = 0.005, 3.0
+    def both(vol: float) -> float:
+        return price("ce", spot, strike, years, vol) + price("pe", spot, strike, years, vol)
+
+    if years <= 0 or not both(low) <= total <= both(high):
+        return None
+    for _ in range(40):
+        mid = (low + high) / 2
+        if both(mid) < total:
+            low = mid
+        else:
+            high = mid
+    return (low + high) / 2
+
+
+def chain_points(path: Path, every: int = 15) -> list[tuple[float, float, float, float]]:
+    """(minutes of the session left, spot, ATM strike, call + put mid) through one saved day."""
+
+    out = []
+    for n, line in enumerate(path.read_text(encoding="utf-8").splitlines()):
+        if n % every:
+            continue
+        rec = json.loads(line)
+        strikes, spot = rec.get("strikes") or {}, rec.get("ltp")
+        at = datetime.fromisoformat(rec["t"])
+        minutes = (at.hour * 60 + at.minute) - (9 * 60 + 15)
+        if not strikes or not spot or not 15 <= minutes <= 360:
+            continue
+        key = min(strikes, key=lambda k: abs(float(k) - float(spot)))
+        ce, pe = strikes[key].get("ce"), strikes[key].get("pe")
+        if not ce or not pe or not all(ce[:2]) or not all(pe[:2]):
+            continue
+        out.append((SESSION_MINUTES - minutes, float(spot), float(key),
+                    (ce[0] + ce[1] + pe[0] + pe[1]) / 2))  # fmt: skip
+    return out
+
+
+def spread_for(points: list[tuple[float, float, float, float]], day: date, expiry: date,
+               f: float) -> float | None:  # fmt: skip
+    """How much implied volatility wanders through one day on this clock, as a share of its mean."""
+
+    vols = [
+        v for left, spot, strike, total in points
+        if (v := straddle_vol(total, spot, strike, trading_years(day, left, expiry, f)))
+    ]  # fmt: skip
+    return statistics.pstdev(vols) / statistics.fmean(vols) if len(vols) >= 10 else None
+
+
+def fit_clock(chains: dict[date, tuple[date, list]]) -> dict[str, Any]:
+    """The f that keeps real implied volatility flattest through the day. Expiry days are left
+    out, because a day's last hours there are dominated by the strike, not the clock."""
+
+    scores = {}
+    for f in F_GRID:
+        spreads = [
+            s for day, (expiry, points) in chains.items()
+            if expiry != day and (s := spread_for(points, day, expiry, f)) is not None
+        ]  # fmt: skip
+        scores[f] = statistics.fmean(spreads) if spreads else math.inf
+    return {"f": min(scores, key=lambda x: scores[x]), "scores": scores}
+
+
+def load_chains(root: Path = oi.ROOT / "chain") -> dict[date, tuple[date, list]]:
+    out = {}
+    for path in sorted(root.glob("*.jsonl")):
+        lines = path.read_text(encoding="utf-8").splitlines()
+        if lines:
+            expiry = date.fromisoformat(json.loads(lines[0])["expiry"])
+            out[date.fromisoformat(path.stem)] = (expiry, chain_points(path))
+    return out
+
+
+def calibrate(
+    ledger: list[dict[str, Any]], sessions: dict[date, Session], f: float | None = None
+) -> dict[str, Any]:
     """k = the real trades' implied vol / VIX, from each straddle's real entry prices."""
 
     ratios = []
@@ -253,7 +367,7 @@ def calibrate(ledger: list[dict[str, Any]], sessions: dict[date, Session]) -> di
         if s is None:
             continue
         expiry = date.fromisoformat(row["expiry"])
-        years = years_left(day, ENTRY_BAR, expiry)
+        years = clock(day, ENTRY_BAR, expiry, f)
         vols = []
         for leg in row["legs"]:
             vol = implied_vol(leg["side"], float(leg["entry"]), float(s.c[ENTRY_BAR]),
@@ -271,11 +385,14 @@ def main() -> None:
     by_day = {s.day: s for s in sessions}
     text = oi.LEDGER.read_text(encoding="utf-8")
     ledger = [json.loads(x) for x in text.splitlines() if x.strip()]
-    cal = calibrate(ledger, by_day)
+    fitted = fit_clock(load_chains())
+    f = fitted["f"]
+    cal = calibrate(ledger, by_day, f)
     k = cal["k"]
     costs = oi.OptionCosts()
     report: dict[str, Any] = {
         "generated_at": datetime.now(IST).isoformat(), "limits": LIMITS, "k": k,
+        "f": f, "clock_fit": fitted["scores"], "credible_needs": CREDIBLE,
         "calibration": cal["days"], "first": str(sessions[0].day), "last": str(sessions[-1].day),
         "rules": {},
     }  # fmt: skip
@@ -284,12 +401,12 @@ def main() -> None:
                if row.get("rule") == rule and "net_inr" in row}
         for rule in oi.STOPS
     }  # fmt: skip
-    print("k", round(k, 3), "sessions", len(sessions), flush=True)
+    print("f", f, "k", round(k, 3), "sessions", len(sessions), fitted["scores"], flush=True)
     for rule, stop in oi.STOPS.items():
-        rows = [replay(s, stop, k, costs) for s in sessions]
+        rows = [replay(s, stop, k, costs, f) for s in sessions]
         base = summarise(rows)
-        stressed = summarise([replay(s, stop, k * LIMITS["k_stress"], costs) for s in sessions])
-        high = summarise([replay(s, stop, k * 1.1, costs) for s in sessions])
+        stressed = summarise([replay(s, stop, k * LIMITS["k_stress"], costs, f) for s in sessions])
+        high = summarise([replay(s, stop, k * 1.1, costs, f) for s in sessions])
         pairs = [(float(r["net"]), real[rule][str(r["day"])]) for r in rows
                  if str(r["day"]) in real[rule]]  # fmt: skip
         check = {
@@ -299,8 +416,13 @@ def main() -> None:
                 float(np.corrcoef(*zip(*pairs, strict=True))[0, 1]) if len(pairs) > 2 else None
             ),
         }  # fmt: skip
+        credible = bool(
+            check["correlation"] is not None
+            and check["correlation"] >= CREDIBLE["min_correlation"]
+            and abs(check["model_total"] - check["real_total"]) <= CREDIBLE["max_gap"]
+        )
         report["rules"][rule] = {
-            **verdict(base, stressed), "base": base,
+            "credible": credible, **verdict(base, stressed), "base": base,
             "k_minus_10pct": {x: stressed[x] for x in ("mean_net", "total", "worst_fall")},
             "k_plus_10pct": {x: high[x] for x in ("mean_net", "total", "worst_fall")},
             "against_real_trades": check,
