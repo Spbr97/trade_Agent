@@ -121,3 +121,20 @@ def test_drift_is_read_from_the_real_ledger_events() -> None:
     assert drift["rupees"] == 940.0
     assert drift["nifty_per_lakh"] == pytest.approx(1000.0)
     assert drift["ahead"] is False
+    assert drift["verdict"] == "Too early: 1 of 92 paper calls closed"
+
+
+def test_drifts_progress_counts_paper_calls_the_slots_could_not_hold() -> None:
+    ledger: list[dict[str, Any]] = []
+    for i in range(12):
+        cid = f"S{i}:1"
+        ledger += [
+            {"event": "call", "call_id": cid, "at": "x", "symbol": f"S{i}", "scrip_code": f"N{i}"},
+            {"event": "entered", "call_id": cid, "at": "x", "entry_on": "2026-10-20",
+             "entry_price": 100.0, "qty": 100},
+            {"event": "exited", "call_id": cid, "at": "x", "exit_on": "2026-10-22",
+             "exit_price": 110.0, "net_return": 0.094, "excess_return": 0.05, "net_inr": 940.0},
+        ]  # fmt: skip
+    (drift, *_) = _build(ledger, [])["rows"]
+    assert drift["closed"] == 10
+    assert drift["verdict"] == "Too early: 12 of 92 paper calls closed"

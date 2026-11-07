@@ -104,12 +104,12 @@ def drift_book(
     }
 
 
-def _verdict(done: int, needed: int, ahead: bool | None) -> str:
+def _verdict(done: int, needed: int, ahead: bool | None, unit: str = "closed") -> str:
     if done < needed:
-        return f"Too early: {done} of {needed} closed"
+        return f"Too early: {done} of {needed} {unit}"
     if ahead is None:
-        return f"{done} closed: no Nifty comparison yet"
-    return f"{done} closed: {'ahead of' if ahead else 'behind'} the Nifty"
+        return f"{done} {unit}: no Nifty comparison yet"
+    return f"{done} {unit}: {'ahead of' if ahead else 'behind'} the Nifty"
 
 
 def _row(
@@ -171,8 +171,9 @@ def build(
     as_of: date,
     now: datetime,
 ) -> dict[str, Any]:
-    book = drift_book(ed.positions(ledger).values(), latest)
-    start = date.fromisoformat(book["start"]) if book["start"] else None
+    calls = ed.positions(ledger).values()
+    book = drift_book(calls, latest)
+    start =date.fromisoformat(book["start"]) if book["start"] else None
     note = (
         f"Rs 1 lakh in {SLOTS} slots: {book['taken']} taken, {book['skipped_full']} skipped with "
         f"every slot full, {book['skipped_marked']} marked skip. Includes "
@@ -188,6 +189,11 @@ def build(
             book["worst_inr"], note,
         )  # fmt: skip
     ]
+    # The proof counts every paper call; the slots only limit what Rs 1 lakh could hold.
+    paper_closed = sum(1 for c in calls if "exit_price" in c)
+    out[0]["verdict"] = _verdict(
+        paper_closed, DRIFT_CALLS_NEEDED, out[0]["ahead"], "paper calls closed"
+    )
     margin_note = "Per lot. Rs 1 lakh figure assumes Rs 3.6 lakh margin, the unconfirmed ceiling."
     for rule, name in STRADDLES.items():
         mine = [r for r in option_rows if r.get("rule") == rule]
