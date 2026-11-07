@@ -393,6 +393,12 @@
 
 <main id="tab-scoreboard" hidden>
   <section>
+    <h2>Is the agent earning? <span class="info-ic" title="Rupees after charges against holding the Nifty over the same days. Paper trades only. Drift is the book Rs 1 lakh could actually hold: ten Rs 10,000 slots, skipping marked calls and calls with every slot full; open trades count at the latest close. Options are per lot.">&#9432;</span>
+      <span class="muted headline-inline" id="money-board-meta"></span></h2>
+    <table id="money-board-table"></table>
+    <p class="muted" style="margin-top:8px;">Paper only. Nothing here is proven until a candidate has enough closed trades.</p>
+  </section>
+  <section>
     <h2>Which setups win, after costs, on live calls <span class="info-ic" title="Every setup that runs on a market, judged daily on its LIVE calls only (backfilled history excluded), in R after real costs. TRADEABLE: the lowest plausible average is above +0.05R per trade (at least 50 calls) - may alert at full size. PROVISIONAL: proven on history (500+ trades, +0.20R or better after costs, NSE/BSE) - may alert at a quarter size until live proof, and is stopped automatically if live results fall below break-even or it loses 12 in a row. NO EDGE / STOPPED: live results are below break-even. Quick twin: the same stock bought at the next open and sold 5 sessions later, against the average stock over the same days - an early read on whether the entry picks winners.">&#9432;</span>
       <span class="muted headline-inline" id="scoreboard-meta"></span></h2>
     <table id="scoreboard-table"></table>
@@ -1812,7 +1818,24 @@ const VERDICT_LABEL = {
   stopped: ['STOPPED', 'neg'], no_edge: ['NO EDGE', 'neg'], collecting: ['COLLECTING', 'C'],
 };
 function fmtR(v) { return v == null ? '-' : (v >= 0 ? '+' : '') + v.toFixed(2) + 'R'; }
+function fmtInr(v) {
+  if (v == null) return '-';
+  return (v < 0 ? '-' : '+') + 'Rs ' + Math.abs(Math.round(v)).toLocaleString('en-IN');
+}
+async function loadMoneyBoard() {
+  try {
+    const r = await fetch('/api/money-board');
+    const d = r.ok ? await r.json() : { rows: [] };
+    $('money-board-meta').textContent = d.as_of ? `prices to ${d.as_of}` : 'not run yet';
+    const head = '<tr><th>Candidate</th><th>Closed</th><th>Won</th><th>Open</th><th>Made after charges</th><th>Per Rs 1 lakh</th><th>Nifty on Rs 1 lakh</th><th>Worst trade</th><th>Where it stands</th></tr>';
+    const body = (d.rows || []).map(x => `<tr title="${esc(x.note)}"><td>${esc(x.name)}</td><td>${x.closed}</td><td>${x.won}</td><td>${x.open}</td><td class="${x.rupees < 0 ? 'neg' : ''}">${fmtInr(x.rupees)}</td><td>${fmtInr(x.per_lakh)}</td><td>${fmtInr(x.nifty_per_lakh)}</td><td>${fmtInr(x.worst_inr)}</td><td>${esc(x.verdict)}</td></tr>`).join('');
+    $('money-board-table').innerHTML = head + (body || '<tr><td colspan="9" class="muted">Not run yet - it updates every weekday evening.</td></tr>');
+  } catch (e) {
+    $('money-board-meta').textContent = 'failed to load';
+  }
+}
 async function loadScoreboard() {
+  loadMoneyBoard();
   try {
     const r = await fetch('/api/scoreboard');
     const d = r.ok ? await r.json() : { verdicts: [] };

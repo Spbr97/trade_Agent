@@ -1718,6 +1718,19 @@ def create_app(
 
         return JSONResponse(await asyncio.to_thread(load))
 
+    @app.get("/api/money-board")
+    async def api_money_board() -> JSONResponse:
+        """Rupees after charges against the Nifty per candidate (money_board.py, nightly)."""
+
+        def load() -> dict[str, Any]:
+            from tradedesk.money_board import BOARD
+
+            if not BOARD.exists():
+                return {"written_at": None, "rows": []}
+            return json.loads(BOARD.read_text(encoding="utf-8"))
+
+        return JSONResponse(await asyncio.to_thread(load))
+
     @app.get("/api/same-day-excess")
     async def api_same_day_excess() -> JSONResponse:
         """Every distinct live call scored at 10 sessions against same-day random stocks

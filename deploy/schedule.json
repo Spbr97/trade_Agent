@@ -1517,6 +1517,34 @@
       ]
     },
     {
+      "name": "tradedesk-money-board",
+      "enabled": true,
+      "command": [
+        "money-board",
+        "scripts/money_board.py"
+      ],
+      "windows_action": "C:\\Users\\sibap\\OneDrive\\Documents\\Trade_Agent\\.venv\\Scripts\\pythonw.exe \"C:\\Users\\sibap\\OneDrive\\Documents\\Trade_Agent\\scripts\\run_hidden.py\" money-board scripts/money_board.py",
+      "time_limit_minutes": 20,
+      "triggers": [
+        {
+          "kind": "Weekly",
+          "at": "21:10",
+          "first_date": "2026-11-09",
+          "days": [
+            "Mon",
+            "Tue",
+            "Wed",
+            "Thu",
+            "Fri"
+          ],
+          "every_days": null,
+          "repeat_minutes": null,
+          "repeat_for_minutes": null,
+          "enabled": true
+        }
+      ]
+    },
+    {
       "name": "tradedesk-instruments-nse",
       "enabled": true,
       "command": [
