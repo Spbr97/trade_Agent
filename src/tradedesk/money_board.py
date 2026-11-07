@@ -15,6 +15,11 @@ from the broker's single-leg quotes, because the true combined margin is not con
 sites suggest Rs 1.5-2.3 lakh, so this may understate it. The condor's margin has no such ceiling,
 so it gets no Rs 1 lakh figure.
 
+A straddle whose last 20 sessions sum to a loss is marked PAUSE: a risk limit, set before any real
+money, that cannot be tested because expired option history is unavailable. The paper trial keeps
+running through a pause. Drift has no such mark: tradedesk_lab/drift_months.py tested the same idea
+and it cost too much money to adopt.
+
     python scripts/money_board.py
 """
 
@@ -40,6 +45,7 @@ STRADDLE_MARGIN = 360_000.0
 DRIFT_CALLS_NEEDED = 92  # earnings_drift.scorecard's closed_calls_for_proof at the live rule
 STRADDLE_SESSIONS_NEEDED = 60
 CONDOR_WEEKS_NEEDED = 12
+STRADDLE_PAUSE_SESSIONS = 20
 STRADDLES = {"straddle_30": "Straddle, 30% stop", "straddle_40": "Straddle, 40% stop"}
 
 
@@ -199,9 +205,13 @@ def build(
     margin_note = "Per lot. Rs 1 lakh figure assumes Rs 3.6 lakh margin, the unconfirmed ceiling."
     for rule, name in STRADDLES.items():
         mine = [r for r in option_rows if r.get("rule") == rule]
-        out.append(
-            option_row(name, mine, STRADDLE_MARGIN, nifty, STRADDLE_SESSIONS_NEEDED, margin_note)
-        )
+        row = option_row(name, mine, STRADDLE_MARGIN, nifty, STRADDLE_SESSIONS_NEEDED, margin_note)
+        last = [float(r["net_inr"]) for r in mine][-STRADDLE_PAUSE_SESSIONS:]
+        if len(last) == STRADDLE_PAUSE_SESSIONS and sum(last) < 0:
+            row["verdict"] = (
+                f"PAUSE: last {STRADDLE_PAUSE_SESSIONS} sessions lost money. {row['verdict']}"
+            )
+        out.append(row)
     condors = [r for r in option_rows if r.get("rule") == "condor"]
     out.append(
         option_row(
