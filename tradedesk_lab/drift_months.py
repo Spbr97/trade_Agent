@@ -23,15 +23,15 @@ A failed pause rule is reported as failed and no other window is tried. Nothing 
 rule or issues a call. History holds only stocks listed today, which flatters it.
 
 RESULT (2026-11-07, 1,603 calls, 633 in the book, entries 2016-2026): the book made Rs 1,01,318 on
-Rs 1 lakh without compounding (Rs 68,873 to Rs 1,09,417 by same-day order), total profit Rs 2,83,582
-against total loss Rs 1,82,264, 61% win. PERIOD BAR FAILS: months 68% and quarters 70% clear it, but
-only 8 of 10 full years do (2016 -Rs 860, 2022 -Rs 4,416). 2025 made +Rs 958 and 2026 so far -Rs 18,
-so the last two years are about flat. Worst month -Rs 7,601, worst trade -Rs 6,062, worst fall from a
-peak -Rs 15,842, longest wait for a new peak 398 sessions. The Nifty's yearly gains on Rs 1 lakh sum
-to about Rs 1,22,300 for 2017-2026, before its costs and dividends, and it beat the book in 6 of those
-10 years; the book's idle cash earns nothing here.
-PAUSE RULE NOT ADOPTED: the worst fall shrinks 37% to -Rs 9,981 and losing quarters fall from 6 and 6
-to 4 and 3, but rupees fall 17% to Rs 84,063, past the 10% limit. No other window is tried.
+Rs 1 lakh without compounding (Rs 68,873 to Rs 1,09,417 by same-day order), total profit Rs
+2,83,582 against total loss Rs 1,82,264, 61% win. PERIOD BAR FAILS: months 68% and quarters 70%
+clear it, but only 8 of 10 full years do (2016 -Rs 860, 2022 -Rs 4,416). 2025 made +Rs 958 and
+2026 so far -Rs 18, so the last two years are about flat. Worst month -Rs 7,601, worst trade -Rs
+6,062, worst fall from a peak -Rs 15,842, longest wait for a new peak 398 sessions. The Nifty's
+yearly gains on Rs 1 lakh sum to about Rs 1,22,300 for 2017-2026, before its costs and dividends,
+and it beat the book in 6 of those 10 years; the book's idle cash earns nothing here. PAUSE RULE
+NOT ADOPTED: the worst fall shrinks 37% to -Rs 9,981 and losing quarters fall from 6 and 6 to 4
+and 3, but rupees fall 17% to Rs 84,063, past the 10% limit. No other window is tried.
 
     python -m tradedesk_lab.drift_months
 """

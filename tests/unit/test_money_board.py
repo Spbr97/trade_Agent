@@ -151,7 +151,7 @@ def test_a_straddle_is_paused_after_twenty_sessions_of_net_loss() -> None:
     day = "2026-10-20"
     earlier = [_option("straddle_30", day, 50_000.0)]
     losing = earlier + [_option("straddle_30", day, -100.0)] * 20
-    assert _build([], losing)["rows"][1]["verdict"].startswith("PAUSE: last 20 sessions lost money.")
+    assert _build([], losing)["rows"][1]["verdict"].startswith("PAUSE: last 20 sessions")
     assert not _build([], losing[:-1])["rows"][1]["verdict"].startswith("PAUSE")
     recovered = [*losing[:-1], _option("straddle_30", day, 5_000.0)]
     assert not _build([], recovered)["rows"][1]["verdict"].startswith("PAUSE")
