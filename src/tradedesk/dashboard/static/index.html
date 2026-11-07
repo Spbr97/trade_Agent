@@ -1827,9 +1827,9 @@ async function loadMoneyBoard() {
     const r = await fetch('/api/money-board');
     const d = r.ok ? await r.json() : { rows: [] };
     $('money-board-meta').textContent = d.as_of ? `prices to ${d.as_of}` : 'not run yet';
-    const head = '<tr><th>Candidate</th><th>Closed</th><th>Won</th><th>Open</th><th>Made after charges</th><th>Per Rs 1 lakh</th><th>Nifty on Rs 1 lakh</th><th>Worst trade</th><th>Where it stands</th></tr>';
-    const body = (d.rows || []).map(x => `<tr title="${esc(x.note)}"><td>${esc(x.name)}</td><td>${x.closed}</td><td>${x.won}</td><td>${x.open}</td><td class="${x.rupees < 0 ? 'neg' : ''}">${fmtInr(x.rupees)}</td><td>${fmtInr(x.per_lakh)}</td><td>${fmtInr(x.nifty_per_lakh)}</td><td>${fmtInr(x.worst_inr)}</td><td>${esc(x.verdict)}</td></tr>`).join('');
-    $('money-board-table').innerHTML = head + (body || '<tr><td colspan="9" class="muted">Not run yet - it updates every weekday evening.</td></tr>');
+    const head = '<tr><th>Candidate</th><th>Closed</th><th>Won</th><th>Open</th><th>Total profit</th><th>Total loss</th><th>Made after charges</th><th>Per Rs 1 lakh</th><th>Nifty on Rs 1 lakh</th><th>Worst trade</th><th>Where it stands</th></tr>';
+    const body = (d.rows || []).map(x => `<tr title="${esc(x.note)}"><td>${esc(x.name)}</td><td>${x.closed}</td><td>${x.won}</td><td>${x.open}</td><td>${fmtInr(x.profit_inr)}</td><td>${fmtInr(x.loss_inr)}</td><td class="${x.rupees < 0 ? 'neg' : ''}">${fmtInr(x.rupees)}</td><td>${fmtInr(x.per_lakh)}</td><td>${fmtInr(x.nifty_per_lakh)}</td><td>${fmtInr(x.worst_inr)}</td><td>${esc(x.verdict)}</td></tr>`).join('');
+    $('money-board-table').innerHTML = head + (body || '<tr><td colspan="11" class="muted">Not run yet - it updates every weekday evening.</td></tr>');
   } catch (e) {
     $('money-board-meta').textContent = 'failed to load';
   }

@@ -99,7 +99,7 @@ def drift_book(
         "unpriced": unpriced,
         "closed_inr": sum(float(c["net_inr"]) for c in closed),
         "open_inr": open_inr,
-        "worst_inr": min(results) if results else None,
+        "results": results,
         "start": str(taken[0]["entry_on"]) if taken else None,
     }
 
@@ -121,7 +121,7 @@ def _row(
     capital: float | None,
     nifty: float | None,
     needed: int,
-    worst: float | None,
+    results: Sequence[float],
     note: str,
 ) -> dict[str, Any]:
     per_lakh = rupees / capital * CAPITAL if capital else None
@@ -138,7 +138,9 @@ def _row(
         "per_lakh": per_lakh,
         "nifty_per_lakh": nifty_per_lakh,
         "ahead": ahead,
-        "worst_inr": worst,
+        "profit_inr": sum(x for x in results if x > 0),  # the owner's bar: this beats the loss
+        "loss_inr": sum(x for x in results if x < 0),
+        "worst_inr": min(results) if results else None,
         "verdict": _verdict(closed, needed, ahead),
         "note": note,
     }
@@ -158,8 +160,8 @@ def option_row(
         start = date.fromisoformat(str(rows[0]["opened_at"])[:10])
         move = nifty_move(nifty, start, date.fromisoformat(str(rows[-1]["closed_on"])[:10]))
     return _row(
-        name, len(nets), sum(1 for n in nets if n > 0), 0, sum(nets), capital, move, needed,
-        min(nets) if nets else None, note,
+        name, len(nets), sum(1 for n in nets if n > 0), 0, sum(nets), capital, move, needed, nets,
+        note,
     )  # fmt: skip
 
 
@@ -186,7 +188,7 @@ def build(
             "Drift", book["closed"], book["won"], book["open"],
             book["closed_inr"] + book["open_inr"], CAPITAL,
             nifty_move(nifty, start, as_of) if start else None, DRIFT_CALLS_NEEDED,
-            book["worst_inr"], note,
+            book["results"], note,
         )  # fmt: skip
     ]
     # The proof counts every paper call; the slots only limit what Rs 1 lakh could hold.

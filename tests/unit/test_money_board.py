@@ -138,3 +138,10 @@ def test_drifts_progress_counts_paper_calls_the_slots_could_not_hold() -> None:
     (drift, *_) = _build(ledger, [])["rows"]
     assert drift["closed"] == 10
     assert drift["verdict"] == "Too early: 12 of 92 paper calls closed"
+
+
+def test_total_profit_and_total_loss_are_kept_apart() -> None:
+    rows = [_option("condor", "2026-10-22", 3000.0), _option("condor", "2026-10-29", -9000.0)]
+    (*_, condor) = _build([], rows)["rows"]
+    assert (condor["profit_inr"], condor["loss_inr"]) == (3000.0, -9000.0)
+    assert condor["rupees"] == -6000.0
