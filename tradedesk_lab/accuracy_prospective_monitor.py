@@ -235,8 +235,10 @@ def _watchlist_availability(root: Path, state: dict[str, Any]) -> dict[str, Any]
         if benchmark_code is None:
             raise ValueError("NSE benchmark code is unavailable for M9 availability")
         benchmark = _load_bars(con, benchmark_code)
+    # The evening scan is scheduled on weekdays only, so a weekend session (Diwali's Sunday muhurat
+    # hour, 2026-11-08) never has a watchlist; expecting one failed every after-close from 11-09.
     expected_days = sorted(
-        {day.isoformat() for day in benchmark.index.date if day > cutoff}
+        {day.isoformat() for day in benchmark.index.date if day > cutoff and day.weekday() < 5}
     )
 
     sessions = []

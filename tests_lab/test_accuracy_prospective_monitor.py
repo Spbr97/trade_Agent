@@ -134,6 +134,18 @@ def test_missing_whole_benchmark_session_is_not_hidden(monkeypatch, tmp_path) ->
     assert result["sessions"][-1]["watchlist_available"] is False
 
 
+def test_a_weekend_muhurat_session_is_not_expected_to_have_a_watchlist(
+    monkeypatch, tmp_path
+) -> None:
+    _stub_benchmark(monkeypatch, tmp_path, ["2026-10-05", "2026-10-11", "2026-10-12"])
+    _write_watchlist(tmp_path, "2026-10-05", [])
+
+    result = _watchlist_availability(tmp_path, _availability_state())
+
+    assert result["expected_sessions"] == 2  # Sunday 2026-10-11 is not one
+    assert result["missing_watchlist_sessions"] == ["2026-10-12"]
+
+
 def test_zero_candidate_watchlist_counts_without_fabricating_a_missing_collection(
     monkeypatch, tmp_path
 ) -> None:
