@@ -35,6 +35,32 @@ A RANKING is adopted only if both:
 Rankings at the other sizes are reported, not judged. Nothing is changed after the run, and no
 fourth size or ranking is tried.
 
+RESULT (2026-11-11; 1,605 calls, 1,517 unmarked, halves split at 2024-02-15). NOTHING PASSES: the
+live ten Rs 10,000 slots stay, and same-session calls stay in the order they arrive.
+Sizes, medians of 200 random-order runs over the ten years:
+  10 x Rs 10,000  +Rs 88,024 (Rs 68,022 to Rs 1,09,323), worst fall Rs 17,436, worst trade
+                  -Rs 6,053, 630 trades, charges 0.58%, 7 of 11 years ahead
+   5 x Rs 20,000  +Rs 65,241 (Rs 31,618 to Rs 96,765), worst fall Rs 30,266, worst trade
+                  -Rs 12,077, 362 trades, charges 0.40%. Fails S1, S2 and S3.
+   4 x Rs 25,000  +Rs 85,663 (Rs 36,896 to Rs 1,43,579), worst fall Rs 28,667, worst trade
+                  -Rs 9,669, 298 trades, charges 0.36%. Fails S1, S2 and S3.
+Larger positions do pay less in charges, but they take half as many calls, so luck in which calls
+they hold swamps the saving: the range of outcomes doubles and the falls are 1.6 to 1.7 times as
+deep, for no more money.
+Rankings, per call (top half against bottom half, by week) and the ranked ten-slot book:
+  reaction         +1.47% against +1.21%, t 0.38; book +Rs 93,647, ahead of 76% of random orders
+  volume_multiple  +1.66% against +1.02%, t 0.09, reversed in the second half; book +Rs 93,340,
+                   ahead of 76%
+  turnover         +1.13% against +1.56%, t -1.48; book +Rs 82,337, ahead of 18%
+None of the three says which call will do better, so there is nothing to rank by.
+THE FINDING THAT MATTERS, which no bar here asked for: the live book's two halves are +Rs 84,829
+and +Rs 3,298. Since February 2024, half of all the calls, a Rs 1 lakh drift book has made about
+nothing. A read-only check per call the same day (unmarked calls, live exit, by entry year):
+2023 +3.88%, 2024 +2.68%, 2025 -0.46%, 2026 +0.49% a call; over the market +1.03%, +0.95%,
++0.58%, +0.18%. First half +1.82% a call, +0.84% over the market, t 2.67, 63% win; second half
++0.86%, +0.59%, t 1.19, 56% win. Calls beat the market in every year 2016-2026, but by less
+lately, and a long-only call earns little when the market itself goes nowhere.
+
     python -m tradedesk_lab.drift_capital
 """
 
