@@ -46,6 +46,29 @@ Known before the run: fixed 8% and 12% stops on these calls were tested in
 earnings_drift_variants.py and not adopted; an ATR stop with R targets and a 10-session limit has
 not been tested.
 
+RESULT (2026-11-11; 1,605 calls with entries 2016-10 to 2026-10, 88 marked skip, none dropped for
+price jumps; the manual plan made no trade on 52 of the 1,517 unmarked calls). THE MANUAL PLAN IS
+NOT APPROVED on drift signals and DRIFT'S OWN EXIT IS BETTER.
+  manual, per trade  1,465 trades, 46% win, +0.027R, profit factor 1.05; in sample +0.169R (421
+                     trades), out of sample -0.030R (1,044); positive in 6 of 11 years (55%).
+                     Fails bars 2, 3 and 4.
+  against any-day    drift signals beat any-day entries under the same plan by +0.238R a trade,
+                     t 4.66 over 231 weeks, +0.262R in sample and +0.213R out (any-day -0.156R,
+                     46,298 trades). The signal is real; this plan turns it into break-even.
+  manual book        397 trades on Rs 1 lakh, +Rs 9,009 in ten years (profit Rs 1,02,876, loss
+                     Rs 93,867), 48% win, worst fall 12.6%, 14.2% in re-orderings, 0.8 trades a
+                     week.
+  live book          635 trades, +Rs 1,03,205 (profit Rs 2,85,469, loss Rs 1,82,264), 61% win,
+                     worst fall 15.8%.
+  same calls         return on the money in each call: manual +0.17%, live +1.31%; the manual
+                     plan is 1.33% a call worse, t -3.7.
+The manual book falls a little less (12.6% against 15.8%) but makes a tenth of the rupees, so by
+the rule written above the live exit stays. Marked calls lose under the manual plan too (-0.27R,
+83 trades). Why: these stocks have just jumped and swing widely, so a 1.5-ATR stop is hit by
+ordinary movement before the drift has paid, and the 10-session limit cuts the rest; the same was
+seen with fixed 8% and 12% stops. Do not re-test an ATR stop, R targets or a 10-session limit on
+drift calls with this history.
+
     python -m tradedesk_lab.drift_swing
 """
 
