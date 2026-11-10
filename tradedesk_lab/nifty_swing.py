@@ -66,6 +66,31 @@ Long rules in a rising market make money without any skill, which is what bar 6 
 that meets 1-5 but not 6 may trade on paper, labelled "not proven against random". No setting, exit
 or bar is changed after this run to rescue a failure.
 
+RESULT (2026-11-11; signals 2017-09 to 2026-10, 2,518 sessions, 98.5% of member-days priced, the
+Nifty above its 200-day EMA on 78% of sessions, 10 price jumps removed). ALL SEVEN FAIL, on every
+part of the manual's bar, in sample and out of sample, and none beats any-day entries. No strategy
+is approved for paper. Mean net R a trade (in sample, out of sample), then against any-day entries,
+then the three-position book on Rs 1 lakh:
+  any-day entries  85,618 trades, 40% win, -0.139R (-0.132, -0.147)
+  ema_pullback      2,437 trades, 41% win, -0.109R (-0.058, -0.154), -0.027R t -1.1; -Rs 47,644
+  breakout_retest   3,160 trades, 39% win, -0.198R (-0.151, -0.237), -0.085R t -3.2; -Rs 47,119
+  rel_strength      1,633 trades, 38% win, -0.225R (-0.168, -0.280), -0.130R t -4.5; -Rs 68,519
+  momentum            359 trades, 40% win, -0.174R (-0.192, -0.155), -0.040R t -0.7; -Rs 22,596
+  structure_break   2,099 trades, 38% win, -0.210R (-0.185, -0.233), -0.184R t -6.8; -Rs 71,858
+  liquidity_sweep     860 trades, 41% win, -0.138R (-0.136, -0.139), +0.008R t  0.2; -Rs 37,749
+  support_bounce      632 trades, 40% win, -0.126R (-0.145, -0.111), -0.035R t -0.7; -Rs 27,171
+Books fell 24% to 72% from their peaks; no rule made money in more than 3 of 10 years.
+Why, from a read-only check the same day: before charges an any-day entry makes +0.002R, nothing.
+The 1.5-ATR stop sits a median 3.7% under the entry, so Rs 500 of risk buys about Rs 12,800 of
+stock, and the charges on that round trip (median Rs 63, 0.50%) are 0.14R of every trade. 43% of
+trades hit the stop within ten sessions and 5% reach both targets. The same entries simply held
+ten sessions make +0.26% (+0.08R) before charges: the stop and targets give up the market's drift
+and add nothing. The best rule before charges is ema_pullback at +0.035R, a quarter of the charges.
+Three rules are significantly WORSE than any-day entries: buying a Nifty 50 stock on a breakout
+retest, a new high among the leaders or a structure break loses to buying it on any day.
+Do not re-test these rules, this stop or these targets on this history. A different entry or exit
+is a new hypothesis and needs its own bar written before it runs.
+
     python -m tradedesk_lab.nifty_swing
 """
 
