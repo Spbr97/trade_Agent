@@ -42,6 +42,23 @@ only; the replayed ones stay a separate line). Each of the three alone, at 60 se
      owner has read that margin from the broker (the API's calculator prices one order, not four).
 A pass is a proposal to the owner, never an order. No width, stop or bar is changed after a run.
 
+RESULT OF THE REPLAY (2026-11-11; 14 finished sessions, 2026-10-19 to 2026-11-09, one lot, after
+charges). The replayed unhedged straddles match the live ledger to the paisa on all 28 rows, so the
+replay fills as the live watch does. WORTH A FORWARD TRIAL by the three-part rule: protection was
+quoted on every session, two versions' profit beats their loss, hedged_hold stayed inside its cap.
+  hedged_30    10 won, +Rs 12,678 (profit Rs 21,388, loss Rs 8,710), worst session -Rs 3,935
+  hedged_40     9 won, +Rs 10,574 (profit Rs 14,263, loss Rs 3,689), worst session -Rs 1,525
+  hedged_hold   7 won, -Rs 14,093 (profit Rs 5,747, loss Rs 19,840), worst session -Rs 9,181
+  straddle_30  11 won, +Rs 24,659 (profit Rs 34,501, loss Rs 9,842), worst session -Rs 5,044
+  straddle_40  12 won, +Rs 24,383 (profit Rs 26,140, loss Rs 1,757), worst session -Rs 1,580
+Protection costs about half the income: the two bought options, their bid-ask spreads and four
+more orders (charges about Rs 234 a session). The mean premium kept is 196 points and the mean cap
+Rs 6,775. On these sessions the stops, not the protection, did the limiting: the worst sessions
+barely change, and without stops the hedged position loses money. What the protection buys is
+what 14 quiet sessions cannot show: a known worst case on a gap day and a far smaller margin.
+Other widths, reported only: 200 points +Rs 9,411 / +Rs 7,700 / -Rs 11,473 (cap Rs 3,209);
+500 points +Rs 16,754 / +Rs 15,053 / -Rs 15,969 (cap Rs 16,406).
+
     python -m tradedesk_lab.hedged_straddle
 """
 
