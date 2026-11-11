@@ -110,7 +110,7 @@
       "triggers": [
         {
           "kind": "Weekly",
-          "at": "16:40",
+          "at": "17:00",
           "first_date": "2026-09-13",
           "days": [
             "Mon",
@@ -142,7 +142,7 @@
       "triggers": [
         {
           "kind": "Daily",
-          "at": "16:50",
+          "at": "17:10",
           "first_date": "2026-09-29",
           "days": [],
           "every_days": 1,
@@ -1262,7 +1262,7 @@
       "triggers": [
         {
           "kind": "Weekly",
-          "at": "17:05",
+          "at": "17:12",
           "first_date": "2026-10-13",
           "days": [
             "Mon",
@@ -1359,7 +1359,7 @@
       "triggers": [
         {
           "kind": "Weekly",
-          "at": "17:15",
+          "at": "17:20",
           "first_date": "2026-10-14",
           "days": [
             "Mon",

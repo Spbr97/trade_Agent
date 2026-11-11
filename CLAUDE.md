@@ -175,7 +175,7 @@ loop's own validation path never depended on a paper book, only on the harness g
 backtest-based rigor, already market-generic), then BSE the same day on the same reasoning
 (it runs the identical daily engine as NSE/crypto, so the earlier crypto exception applied
 equally to it). Scheduled daily for all three (`tradedesk-nse-self-review` 16:25, after
-`tradedesk-after-close`; `tradedesk-bse-self-review` 16:50, after the BSE research tracker that holds its store from 16:40 (2026-11-07: both at 16:40 made it fail on the lock); `tradedesk-crypto-self-review` twice,
+`tradedesk-after-close`; `tradedesk-bse-self-review` 17:10, after the BSE research tracker that holds its store from 17:00 (2026-11-07: both at 16:40 made it fail on the lock; 2026-11-11: moved from 16:40/16:50, with BSE movers to 17:12 and the probation desk to 17:20, because `tradedesk-bse-after-close` now holds the store past 16:40 - its signal-tracker stage grew from 5 to 14 minutes in early November); `tradedesk-crypto-self-review` twice,
 00:20 and 13:45, matching its 24/7 data).
 **Retirement is per-market and never leaves a market with nothing being worked on**
 (2026-09-29): `config/setups.yaml` serves every market, so an approved retirement adds the
