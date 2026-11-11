@@ -59,6 +59,12 @@ what 14 quiet sessions cannot show: a known worst case on a gap day and a far sm
 Other widths, reported only: 200 points +Rs 9,411 / +Rs 7,700 / -Rs 11,473 (cap Rs 3,209);
 500 points +Rs 16,754 / +Rs 15,053 / -Rs 15,969 (cap Rs 16,406).
 
+FORWARD TRIAL (owner approved 2026-11-11, sessions from that day):
+scripts/hedged_straddle_forward.py runs after each close, replays that day's saved minutes and
+appends the three 300-point books to data/m14_m18/hedged_straddle/ledger.jsonl, one row a book a
+session, never rewritten. The live watcher is not touched. A past session whose minutes end before
+15:15 is recorded as unfinished.
+
     python -m tradedesk_lab.hedged_straddle
 """
 
@@ -68,6 +74,7 @@ import json
 import math
 from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass, field
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -75,6 +82,12 @@ from tradedesk_lab import option_income as oi
 from tradedesk_lab.artifacts import OUTPUT
 
 OUT_DIR = OUTPUT / "hedged_straddle"
+LEDGER = OUT_DIR / "ledger.jsonl"
+VERDICT = OUT_DIR / "forward.json"
+FROM = date(2026, 11, 11)
+SESSIONS_NEEDED = 60
+PROFIT_TO_LOSS = 1.5
+PAUSE_SESSIONS = 20
 CHAINS = oi.ROOT / "chain"
 WING = 300
 OTHER_WINGS = (200, 500)
@@ -313,6 +326,89 @@ def load_costs() -> oi.OptionCosts:
 
     raw = yaml.safe_load(COSTS_FILE.read_text(encoding="utf-8")) if COSTS_FILE.exists() else {}
     return oi.load_costs((raw or {}).get("option_costs"))
+
+
+def read_ledger(path: Path = LEDGER) -> list[dict[str, Any]]:
+    if not path.exists():
+        return []
+    return [json.loads(x) for x in path.read_text(encoding="utf-8").splitlines() if x.strip()]
+
+
+def new_rows(
+    seen: set[str], today: date, chains: Path, costs: oi.OptionCosts
+) -> list[dict[str, Any]]:
+    """The rows to append: each unrecorded session from the trial's start, oldest first. Today's
+    session waits until it is finished; an older one that never finished is recorded as such."""
+
+    out: list[dict[str, Any]] = []
+    for path in sorted(chains.glob("*.jsonl")):
+        day = path.stem
+        if day in seen or not FROM <= date.fromisoformat(day) <= today:
+            continue
+        got = replay_day(oi._minutes(chains, day), costs)
+        if got is None:
+            continue
+        rows = [r for r in got["hedged"] if r["wing"] == WING]
+        if len(rows) == len(VARIANTS):
+            out += [{**r, "closed_on": day} for r in rows]
+        elif day < today.isoformat():
+            out.append({"event": "unfinished", "closed_on": day, "quoted": got["quoted"][WING]})
+    return out
+
+
+def judge_forward(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """Bars 1-3 of the forward bar for each book (bar 4 waits for the owner's margin figure)."""
+
+    out = {}
+    for name in VARIANTS:
+        mine = [r for r in rows if r.get("rule") == name]
+        nets = [float(r["net_inr"]) for r in mine]
+        figures = totals(nets)
+        over = [
+            r["closed_on"]
+            for r in mine
+            if -float(r["net_inr"]) > float(r["cap_inr"]) + float(r["costs_inr"]) + 0.01
+        ]
+        fails = []
+        if len(nets) < SESSIONS_NEEDED:
+            fails.append(f"{len(nets)} of {SESSIONS_NEEDED} sessions")
+        if not nets or figures["total_profit"] < PROFIT_TO_LOSS * -figures["total_loss"]:
+            fails.append("profit under 1.5 times loss")
+        if over:
+            fails.append(f"beyond its cap on {over}")
+        if sum(nets[-PAUSE_SESSIONS:]) <= 0:
+            fails.append("last 20 sessions not in profit")
+        out[name] = {**figures, "passed_bars_1_to_3": not fails, "fails": fails}
+    return out
+
+
+def forward(
+    now: datetime | None = None,
+    *,
+    chains: Path = CHAINS,
+    ledger: Path = LEDGER,
+    verdict: Path = VERDICT,
+    costs: oi.OptionCosts | None = None,
+) -> dict[str, Any]:
+    from tradedesk.broker.indstocks.models import IST
+
+    now = now or datetime.now(IST)
+    old = read_ledger(ledger)
+    seen = {str(r.get("closed_on")) for r in old}
+    fresh = new_rows(seen, now.date(), chains, costs or load_costs())
+    for row in fresh:
+        oi.append(ledger, {**row, "recorded_at": now.isoformat()})
+    rows = [*old, *fresh]
+    report = {
+        "generated_at": now.isoformat(),
+        "from": str(FROM),
+        "new_rows": len(fresh),
+        "unfinished_sessions": [r["closed_on"] for r in rows if r.get("event") == "unfinished"],
+        "books": judge_forward(rows),
+    }
+    verdict.parent.mkdir(parents=True, exist_ok=True)
+    verdict.write_text(json.dumps(report, indent=1), encoding="utf-8")
+    return report
 
 
 def run() -> dict[str, Any]:

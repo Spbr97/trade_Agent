@@ -20,6 +20,10 @@ money, that cannot be tested because expired option history is unavailable. The 
 running through a pause. Drift has no such mark: tradedesk_lab/drift_months.py tested the same idea
 and it cost too much money to adopt.
 
+The protected straddles (bought options cap each session's loss) are a forward paper trial from
+2026-11-11, read from tradedesk_lab/hedged_straddle.py's ledger. Their margin is not confirmed, so
+like the condor they get no Rs 1 lakh figure yet.
+
     python scripts/money_board.py
 """
 
@@ -47,6 +51,13 @@ STRADDLE_SESSIONS_NEEDED = 60
 CONDOR_WEEKS_NEEDED = 12
 STRADDLE_PAUSE_SESSIONS = 20
 STRADDLES = {"straddle_30": "Straddle, 30% stop", "straddle_40": "Straddle, 40% stop"}
+# The protected straddle's forward paper trial (tradedesk_lab/hedged_straddle.py, from 2026-11-11).
+HEDGED_LEDGER = Path("data/m14_m18/hedged_straddle/ledger.jsonl")
+HEDGED = {
+    "hedged_30": "Protected straddle, 30% stop",
+    "hedged_40": "Protected straddle, 40% stop",
+    "hedged_hold": "Protected straddle, no stop",
+}
 
 
 def nifty_move(nifty: pd.Series | None, start: date, end: date) -> float | None:
@@ -171,6 +182,17 @@ def option_row(
     )  # fmt: skip
 
 
+def _paused(row: dict[str, Any], rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """Mark a straddle PAUSE when its last 20 sessions sum to a loss (see the module docstring)."""
+
+    last = [float(r["net_inr"]) for r in rows][-STRADDLE_PAUSE_SESSIONS:]
+    if len(last) == STRADDLE_PAUSE_SESSIONS and sum(last) < 0:
+        row["verdict"] = (
+            f"PAUSE: last {STRADDLE_PAUSE_SESSIONS} sessions lost money. {row['verdict']}"
+        )
+    return row
+
+
 def build(
     ledger: Sequence[Mapping[str, Any]],
     option_rows: Sequence[Mapping[str, Any]],
@@ -178,6 +200,7 @@ def build(
     nifty: pd.Series | None,
     as_of: date,
     now: datetime,
+    hedged_rows: Sequence[Mapping[str, Any]] = (),
 ) -> dict[str, Any]:
     calls = ed.positions(ledger).values()
     book = drift_book(calls, latest)
@@ -206,12 +229,14 @@ def build(
     for rule, name in STRADDLES.items():
         mine = [r for r in option_rows if r.get("rule") == rule]
         row = option_row(name, mine, STRADDLE_MARGIN, nifty, STRADDLE_SESSIONS_NEEDED, margin_note)
-        last = [float(r["net_inr"]) for r in mine][-STRADDLE_PAUSE_SESSIONS:]
-        if len(last) == STRADDLE_PAUSE_SESSIONS and sum(last) < 0:
-            row["verdict"] = (
-                f"PAUSE: last {STRADDLE_PAUSE_SESSIONS} sessions lost money. {row['verdict']}"
-            )
-        out.append(row)
+        out.append(_paused(row, mine))
+    hedged_note = (
+        "Per lot, loss capped by bought options. Margin not confirmed, so no Rs 1 lakh figure."
+    )
+    for rule, name in HEDGED.items():
+        mine = [r for r in hedged_rows if r.get("rule") == rule]
+        row = option_row(name, mine, None, nifty, STRADDLE_SESSIONS_NEEDED, hedged_note)
+        out.append(_paused(row, mine))
     condors = [r for r in option_rows if r.get("rule") == "condor"]
     out.append(
         option_row(
@@ -236,8 +261,9 @@ def run(now: datetime | None = None) -> dict[str, Any]:
         raise RuntimeError("no price sessions loaded, the money board was not updated")
     latest = {str(k): float(v) for k, v in panels.close.ffill().iloc[-1].items()}
     board = build(
-        ed.read_ledger(), _read_rows(OPTION_LEDGER), latest, panels.nifty, panels.sessions[-1], now
-    )
+        ed.read_ledger(), _read_rows(OPTION_LEDGER), latest, panels.nifty, panels.sessions[-1], now,
+        [r for r in _read_rows(HEDGED_LEDGER) if "net_inr" in r],
+    )  # fmt: skip
     BOARD.parent.mkdir(parents=True, exist_ok=True)
     scratch = BOARD.with_suffix(".tmp")
     scratch.write_text(json.dumps(board, indent=1), encoding="utf-8")
