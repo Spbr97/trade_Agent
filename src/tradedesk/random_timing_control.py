@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 import math
 from collections.abc import Callable, Mapping, Sequence
+from functools import lru_cache
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -108,16 +109,22 @@ def _is_sha256(value: Any) -> bool:
     )
 
 
+@lru_cache(maxsize=65536)
+def _stamp_iso(text: str) -> str:
+    return pd.Timestamp(text).isoformat()
+
+
 def _frame_hash(frame: pd.DataFrame) -> str:
+    """Fingerprint of the bars. Stored evidence is checked against it, so the result must never
+    change: whole columns are converted at once (2026-11-11; row by row took 18 of the BSE
+    tracker's 19 minutes) and tests/unit/test_frame_hash.py holds it to the row-by-row original.
+    """
+
+    columns = frame[["open", "high", "low", "close", "volume"]]
+    numbers = columns.to_numpy(dtype=float, na_value=np.nan).tolist()
     values = [
-        [
-            pd.Timestamp(str(stamp)).isoformat(),
-            *(
-                None if pd.isna(value) else float(value)
-                for value in row[["open", "high", "low", "close", "volume"]]
-            ),
-        ]
-        for stamp, row in frame.iterrows()
+        [_stamp_iso(str(stamp)), *(None if value != value else value for value in row)]
+        for stamp, row in zip(frame.index, numbers, strict=True)
     ]
     return canonical_sha256(values)
 
