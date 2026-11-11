@@ -160,7 +160,7 @@
         "scripts/bse_signal_tracker.py"
       ],
       "windows_action": "C:\\Users\\sibap\\OneDrive\\Documents\\Trade_Agent\\.venv\\Scripts\\pythonw.exe \"C:\\Users\\sibap\\OneDrive\\Documents\\Trade_Agent\\scripts\\run_hidden.py\" bse-tracker scripts/bse_signal_tracker.py",
-      "time_limit_minutes": 15,
+      "time_limit_minutes": 30,
       "triggers": [
         {
           "kind": "Weekly",
