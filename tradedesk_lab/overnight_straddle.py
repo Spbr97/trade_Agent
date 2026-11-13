@@ -44,6 +44,15 @@ night_hedged at 60 nights:
   4. ahead of holding the Nifty over the same days on the capital one lot really needs overnight.
 A pass is a proposal to the owner, never an order. No width, time or bar is changed after a run.
 
+RESULT (2026-11-13, 12 nights from 2026-10-21 to 2026-11-13). FAILS part b, so no forward trial
+runs; the forward code stays only because the bar was written with it. night_hedged won 2 of 12
+and lost Rs 8,623 a lot (profit Rs 2,783, loss Rs 11,407), worst night -Rs 3,300, inside its cap
+every night (mean cap Rs 6,210, charges Rs 242 a night, credit 204 points). Even unprotected,
+night_plain lost Rs 15,256 (5 of 12 won, worst -Rs 11,455 on the 4-5 Nov gap). These weeks the
+Nifty rose about 11% in steps between sessions, the very risk the paper says sellers are paid
+for, and twelve nights cannot say whether that pay exists after charges; nothing here is to be
+re-run with another time, width or stop.
+
     python -m tradedesk_lab.overnight_straddle
 """
 

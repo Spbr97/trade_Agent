@@ -20,6 +20,11 @@ money, that cannot be tested because expired option history is unavailable. The 
 running through a pause. Drift has no such mark: tradedesk_lab/drift_months.py tested the same idea
 and it cost too much money to adopt.
 
+"Drift + Nifty in free slots" (2026-11-13) is the same book with every slot no call holds kept in
+the Nifty and one index round trip charged per call: on 2016-2026 history it made Rs 1,57,215
+against Rs 1,19,245 for holding the Nifty (tradedesk_lab/drift_core.py), because the plain book
+leaves about 60% of the money idle.
+
 The protected straddles (bought options cap each session's loss) are a forward paper trial from
 2026-11-11, read from tradedesk_lab/hedged_straddle.py's ledger. Their margin is not confirmed, so
 like the condor they get no Rs 1 lakh figure yet.
@@ -51,6 +56,7 @@ STRADDLE_SESSIONS_NEEDED = 60
 CONDOR_WEEKS_NEEDED = 12
 STRADDLE_PAUSE_SESSIONS = 20
 STRADDLES = {"straddle_30": "Straddle, 30% stop", "straddle_40": "Straddle, 40% stop"}
+CORE_SWITCH = 0.0035  # one Nifty ETF round trip on a Rs 10,000 slot (tradedesk_lab/drift_core.py)
 # The protected straddle's forward paper trial (tradedesk_lab/hedged_straddle.py, from 2026-11-11).
 HEDGED_LEDGER = Path("data/m14_m18/hedged_straddle/ledger.jsonl")
 HEDGED = {
@@ -107,6 +113,8 @@ def drift_book(
         open_inr += inr
         results.append(inr)
     return {
+        "spans": [(str(c["entry_on"]), str(c["exit_on"]) if "exit_price" in c else None)
+                  for c in taken],  # fmt: skip
         "taken": len(taken),
         "skipped_marked": marked,
         "skipped_full": full,
@@ -119,6 +127,25 @@ def drift_book(
         "results": results,
         "start": str(taken[0]["entry_on"]) if taken else None,
     }
+
+
+def core_index_inr(
+    spans: Sequence[tuple[str, str | None]], nifty: pd.Series | None, as_of: date
+) -> tuple[float, float] | None:
+    """What the slots no call held earned in the Nifty, and the switch charges paid, from the
+    first entry to `as_of` (tradedesk_lab/drift_core.py's book: a slot is held from its entry
+    session to its exit session inclusive; each call costs one index round trip)."""
+
+    if nifty is None or nifty.empty or not spans:
+        return None
+    start = date.fromisoformat(min(s for s, _ in spans))
+    days = [d for d in nifty.index if start <= d <= as_of]
+    index = 0.0
+    for before, day in zip(days, days[1:], strict=False):
+        key = day.isoformat()
+        held = sum(1 for s, e in spans if s <= key and (e is None or key <= e))
+        index += (SLOTS - held) * CAPITAL / SLOTS * (float(nifty[day]) / float(nifty[before]) - 1)
+    return index, CORE_SWITCH * CAPITAL / SLOTS * len(spans)
 
 
 def _verdict(done: int, needed: int, ahead: bool | None, unit: str = "closed") -> str:
@@ -225,6 +252,19 @@ def build(
     out[0]["verdict"] = _verdict(
         paper_closed, DRIFT_CALLS_NEEDED, out[0]["ahead"], "paper calls closed"
     )
+    core = core_index_inr(book["spans"], nifty, as_of)
+    if core is not None:
+        rupees = book["closed_inr"] + book["open_inr"] + core[0] - core[1]
+        row = _row(
+            "Drift + Nifty in free slots", book["closed"], book["won"], book["open"], rupees,
+            CAPITAL, out[0]["nifty_per_lakh"] / CAPITAL if out[0]["nifty_per_lakh"] is not None
+            else None, DRIFT_CALLS_NEEDED, book["results"],
+            f"The drift book with every free slot in the Nifty: Rs {core[0]:+,.0f} from the "
+            f"index, Rs {core[1]:,.0f} of switch charges. Passed on 2016-2026 history "
+            "(tradedesk_lab/drift_core.py); paper only.",
+        )  # fmt: skip
+        row["verdict"] = out[0]["verdict"]
+        out.append(row)
     margin_note = "Per lot. Rs 1 lakh figure assumes Rs 3.6 lakh margin, the unconfirmed ceiling."
     for rule, name in STRADDLES.items():
         mine = [r for r in option_rows if r.get("rule") == rule]

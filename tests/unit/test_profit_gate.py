@@ -102,7 +102,11 @@ def test_each_call_counts_once_and_untradeable_calls_not_at_all(tmp_path: Path) 
     assert sorted(c["net_r"] for c in calls) == [-1.1, -1.0, 0.4]
 
 
-def test_a_pass_that_fails_the_fair_retest_keeps_its_permission_for_now(tmp_path: Path) -> None:
+def test_a_pass_that_fails_the_fair_retest_keeps_its_permission_until_the_date(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(pg, "GRANDFATHER_UNTIL", "2999-01-01")  # the period, whatever today is
+
     def report(name: str, passed: bool, tested_at: str) -> None:
         row = {"name": "r_x", "passed": passed, "net_r": 0.25, "n_trades": 900,
                "tested_at": tested_at}  # fmt: skip
@@ -115,6 +119,8 @@ def test_a_pass_that_fails_the_fair_retest_keeps_its_permission_for_now(tmp_path
     kept = pg.history("nse", root=tmp_path)["r_x"]
     assert kept["passed"] and kept["fair_test_failed_in"] == "2026-10-26T162502.json"
     assert pg.history_qualifies(kept)
+    monkeypatch.setattr(pg, "GRANDFATHER_UNTIL", "2000-01-01")  # after it, the retest decides
+    assert not pg.history("nse", root=tmp_path)["r_x"]["passed"]
 
 
 def test_the_scan_fails_closed_on_a_missing_or_stale_status(tmp_path: Path) -> None:

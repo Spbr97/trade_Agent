@@ -27,6 +27,17 @@ BAR (written before any figure of this book was computed). The core book passes 
 A pass is a proposal to the owner for how the Rs 1 lakh is held, never an order. Nothing is tuned
 after the run: no other switch charge, slot count or index is tried.
 
+RESULT (2026-11-13, 639 book calls, entries 2016-10-21 to 2026-11-13, 3.95 of 10 slots held on
+average). PASSES all four parts. The core book made Rs 1,57,215 after Rs 22,365 of switch charges,
+against Rs 1,19,245 for Rs 1 lakh held in the Nifty and Rs 1,03,115 for the live book with its
+idle cash earning nothing; ahead in 7 of 10 full years (behind in 2018, 2022, 2025), ahead in both
+halves; worst fall Rs 46,123 against the Nifty's Rs 46,089 - it carries the market's risk, which
+the plain book (worst fall about Rs 16,000) does not. Reported only: the idle cash in a liquid fund
+instead gives Rs 1,33,583 at 5% and Rs 1,42,723 at 6.5%, also ahead of the Nifty with the plain
+book's small falls. History holds only stocks listed today, which flatters drift; the margin over
+the Nifty is about Rs 3,800 a year on Rs 1 lakh, and the live calls have been weaker since 2024.
+From 2026-11-13 the money board scores this book forward on the live calls (paper).
+
     python -m tradedesk_lab.drift_core
 """
 
