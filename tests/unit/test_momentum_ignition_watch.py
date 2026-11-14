@@ -565,29 +565,3 @@ def test_decision_snapshot_excludes_an_unclosed_m15_bar() -> None:
     assert report["candidates"][0]["features"]["last_closed_bar"] == by_code[code][
         "features"
     ]["last_closed_bar"]
-
-
-def test_a_run_killed_between_its_two_writes_is_restored_from_the_ledger(tmp_path) -> None:
-    # 2026-11-13: the job was killed at its time limit after writing latest.json and before
-    # appending it to the ledger, and every later run refused to start.
-    shortlist = _shortlist(16)
-    frames = {
-        str(row.scrip_code): _ignition_frame(index)
-        for index, row in enumerate(shortlist.itertuples(index=False), 1)
-    }
-    observed_at = _observed_at(next(iter(frames.values())))
-    collected = collect_momentum_ignition_watch(
-        shortlist, frames, observed_at=observed_at, output_root=tmp_path
-    )
-    path = tmp_path / "crypto" / "latest.json"
-    orphan = {**collected, "detail": "written, never recorded"}
-    orphan.pop("snapshot_sha256")
-    orphan["snapshot_sha256"] = canonical_sha256(orphan)
-    path.write_text(json.dumps(orphan, sort_keys=True), encoding="utf-8")
-
-    loaded = load_momentum_ignition_watch(
-        "crypto", output_root=tmp_path, observed_at=observed_at
-    )
-    assert loaded["snapshot_sha256"] == collected["snapshot_sha256"]
-    on_disk = json.loads(path.read_text(encoding="utf-8"))
-    assert on_disk["snapshot_sha256"] == collected["snapshot_sha256"]

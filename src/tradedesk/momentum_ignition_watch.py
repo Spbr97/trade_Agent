@@ -164,20 +164,7 @@ def _verify_snapshot_state(output_root: Path) -> dict[str, Any] | None:
     if not events:
         raise ValueError("momentum-ignition snapshot ledger is missing")
     if events[-1].get("snapshot_sha256") != supplied:
-        # A run killed between its two writes (2026-11-13: at the job's time limit) leaves
-        # latest.json one snapshot apart from the ledger. The hash-chained ledger is the record,
-        # so latest.json is restored from its head instead of failing every later run.
-        return _restore_latest(path, events[-1])
-    return value
-
-
-def _restore_latest(path: Path, head: Mapping[str, Any]) -> dict[str, Any]:
-    value = {k: v for k, v in head.items() if k not in ("previous_sha256", "event_sha256")}
-    body = dict(value)
-    body.pop("snapshot_sha256", None)
-    if value.get("snapshot_sha256") != canonical_sha256(body):
-        raise ValueError("momentum-ignition ledger head snapshot hash mismatch")
-    _atomic_json(path, value)
+        raise ValueError("momentum-ignition latest snapshot is not the ledger head")
     return value
 
 
@@ -1045,11 +1032,9 @@ def persist_momentum_ignition_watch(
     ledger = _snapshot_ledger(output_root)
     events = _load_hash_chain(ledger, label="momentum-ignition snapshot")
     _verify_snapshot_state(output_root)
-    # The ledger first, then latest.json: a kill in between leaves latest.json behind the ledger
-    # head, which _verify_snapshot_state restores.
+    _atomic_json(root / "latest.json", value)
     if not events or events[-1].get("snapshot_sha256") != value["snapshot_sha256"]:
         _append_hash_event(ledger, value, label="momentum-ignition snapshot")
-    _atomic_json(root / "latest.json", value)
     return value
 
 
