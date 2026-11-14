@@ -235,7 +235,7 @@
         "crypto"
       ],
       "windows_action": "C:\\Users\\sibap\\OneDrive\\Documents\\Trade_Agent\\.venv\\Scripts\\pythonw.exe \"C:\\Users\\sibap\\OneDrive\\Documents\\Trade_Agent\\scripts\\run_hidden.py\" crypto-pre-takeoff-watch scripts/pre_takeoff_watch.py collect --market crypto",
-      "time_limit_minutes": 10,
+      "time_limit_minutes": 14,
       "triggers": [
         {
           "kind": "Time",
