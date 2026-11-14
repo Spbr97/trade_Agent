@@ -41,6 +41,24 @@ continues. Nothing is tuned after the run: no other filter, exit, gate or panel 
 Reported, not judged: 2020 and 2022 (the plan's stress years), calls only in C and how they did,
 calls sold at a last traded price.
 
+RESULT (2026-11-14, 2,521 bhavcopy sessions 2016-09 to 2026-11, 3,654 stocks; data gate passed:
+99.9% of 4,235,650 shared stock-days agree). Panel C FAILS part 2; parts 1, 3 and 4 pass.
+  A survivors   1,609 calls, +1.18% net a call, +0.55% over the market, t 2.21 (reproduces the
+                earlier studies: 1,605 calls, +1.19%); book Rs 1,03,115
+  B + renames   1,614 calls, +1.17%, +0.54%, t 2.17
+  C everything  1,664 calls, +1.09%, +0.51%, t 1.42; halves +0.63% / +0.39%; book 659 trades,
+                profit Rs 2,91,612 against loss Rs 2,02,332, net Rs 89,281
+The 46 calls only in C (810 stocks added) lost 1.37% a call: real collapses that a survivors-only
+history cannot contain - Jet Airways 2018 -39%, DHFL 2019 -34% and 2016 -30%, Ujjivan 2019 -19%,
+Reliance Capital, Future Retail, IDFC. The average barely moves (gap 0.10 points, under the 0.2
+restatement line, so HISTORY stays), but those few large losses widen the spread enough that drift's
+lead over the market is no longer statistically clear. Stress years in C: 2020 +2.1% a call
+(-0.1% vs market), 2022 -1.1% (+0.3% vs market). Re-checked the same day under drift_core's own
+unchanged bar: Drift + Nifty in free slots on C's calls still PASSES (Rs 1,43,405 against the
+Nifty's Rs 1,19,493, 7 of 10 years, both halves, same worst fall). The ten-slot book's figures move
+by about ten trades between runs because same-session calls arrive in the database's unordered
+DISTINCT order; per-call figures do not move.
+
     python -m tradedesk_lab.drift_survivors
 """
 
