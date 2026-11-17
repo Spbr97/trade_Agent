@@ -23,7 +23,8 @@ and it cost too much money to adopt.
 "Drift + Nifty in free slots" (2026-11-13) is the same book with every slot no call holds kept in
 the Nifty and one index round trip charged per call: on 2016-2026 history it made Rs 1,57,215
 against Rs 1,19,245 for holding the Nifty (tradedesk_lab/drift_core.py), because the plain book
-leaves about 60% of the money idle.
+leaves about 60% of the money idle. That pass was a lucky order of same-day calls: over 200
+orders (2026-11-18) it always ends ahead of the Nifty but passes its full bar in only 19.5%.
 
 The protected straddles (bought options cap each session's loss) are a forward paper trial from
 2026-11-11, read from tradedesk_lab/hedged_straddle.py's ledger. Their margin is not confirmed, so
@@ -260,7 +261,8 @@ def build(
             CAPITAL, out[0]["nifty_per_lakh"] / CAPITAL if out[0]["nifty_per_lakh"] is not None
             else None, DRIFT_CALLS_NEEDED, book["results"],
             f"The drift book with every free slot in the Nifty: Rs {core[0]:+,.0f} from the "
-            f"index, Rs {core[1]:,.0f} of switch charges. Passed on 2016-2026 history "
+            f"index, Rs {core[1]:,.0f} of switch charges. On 2016-2026 history it beat the Nifty "
+            "overall in every call order but passed its full bar in only 1 order in 5 "
             "(tradedesk_lab/drift_core.py); paper only.",
         )  # fmt: skip
         row["verdict"] = out[0]["verdict"]

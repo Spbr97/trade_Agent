@@ -38,6 +38,17 @@ book's small falls. History holds only stocks listed today, which flatters drift
 the Nifty is about Rs 3,800 a year on Rs 1 lakh, and the live calls have been weaker since 2024.
 From 2026-11-13 the money board scores this book forward on the live calls (paper).
 
+CORRECTION (2026-11-18). The pass above was an accident of order. Calls from the same session used
+to arrive in DuckDB's unordered DISTINCT order, and which of them get a free slot changes the book.
+With the events now loaded in a fixed order (edge_hunt.load_panels, entries to 2026-11-17) the bar
+FAILS: ahead in 6 of 10 full years (2026, a year still running, counts as full). Over 200 random
+same-day orders the same unchanged bar passes in only 19.5% (39 orders): years ahead 6 in 151
+orders, 7 in 46, 5 in 3; behind the Nifty in 2018, 2022 and 2025 in essentially every order; ahead
+in both halves in 44%. What does hold in every order: more rupees than the Nifty over the whole
+period (median Rs 1,45,548, range Rs 1,21,746-1,61,990, against Rs 1,20,209) and a worst fall
+within the bar. So Drift + Nifty did NOT pass; it is a weak lead, not an approved way to hold money.
+No new bar is set and nothing is re-tuned.
+
     python -m tradedesk_lab.drift_core
 """
 
