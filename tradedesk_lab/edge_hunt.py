@@ -69,7 +69,9 @@ def load_panels(db: Path) -> dict[str, pd.DataFrame]:
         symbols = dict(con.execute(
             "SELECT trading_symbol, scrip_code FROM instruments WHERE exch='NSE' AND series='EQ'"
         ).fetchall())  # fmt: skip
-        events = con.execute("SELECT DISTINCT symbol, event_date FROM results_events").df()
+        events = con.execute(  # ordered: same-day calls fill the ten-slot book in a fixed order
+            "SELECT DISTINCT symbol, event_date FROM results_events ORDER BY event_date, symbol"
+        ).df()
     finally:
         con.close()
     frame["day"] = (

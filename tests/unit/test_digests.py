@@ -303,3 +303,29 @@ def test_long_summaries_split_on_whole_sections() -> None:
     assert len(parts) > 1 and parts[0][0] == f"T (1/{len(parts)})"
     assert all(len(body) <= digests.MAX_MESSAGE_CHARS for _, body in parts)
     assert parts[-1][1].endswith("END") and "END" not in parts[0][1]
+
+
+def test_weekly_shows_each_trial_against_its_bar(tmp_path: Path) -> None:
+    board = {"rows": [
+        {"name": "Straddle, 30% stop", "rupees": 24968.2, "verdict": "Too early: 19 of 60 closed"},
+        {"name": "Friday condor", "rupees": -9883, "verdict": "Too early: 4 of 12 closed"},
+        {"name": "Drift", "rupees": 6454, "verdict": "Too early: 30 of 92 paper calls closed"},
+    ]}  # fmt: skip
+    (tmp_path / "data/reports").mkdir(parents=True)
+    (tmp_path / "data/reports/money_board.json").write_text(json.dumps(board), encoding="utf-8")
+    fade = tmp_path / "data/m14_m18/results_reaction/fade_forward.json"
+    fade.parent.mkdir(parents=True)
+    fade.write_text(json.dumps({"trades": 603, "days": 14, "t_excess": 0.5469}), encoding="utf-8")
+    body = digests.weekly(date(2026, 11, 20), root=tmp_path)[1]
+    assert "Straddle, 30% stop: Rs +24,968 - Too early: 19 of 60 closed" in body
+    assert "closed (verdict about 18 Jan 2027)" in body  # 41 weekdays after Fri 20 Nov
+    assert "condor: Rs -9,883 - Too early: 4 of 12 closed (verdict about 15 Jan 2027)" in body
+    assert "Drift: Rs +6,454 - Too early: 30 of 92 paper calls closed\n" in body
+    assert "Results-day fade: 603 trades over 14 days, t 0.55 (bar 150+" in body
+    assert "Convergence" not in body
+
+
+def test_verdict_date_counts_weekdays() -> None:
+    assert digests._about(date(2026, 11, 20), 1, "sessions") == date(2026, 11, 23)
+    assert digests._about(date(2026, 11, 20), 0, "sessions") == date(2026, 11, 20)
+    assert digests._about(date(2026, 11, 20), 2, "weeks") == date(2026, 12, 4)

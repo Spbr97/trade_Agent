@@ -11,6 +11,7 @@ is skipped, never guessed.
 from __future__ import annotations
 
 import json
+import re
 from collections import Counter
 from collections.abc import Iterable, Mapping
 from datetime import date, datetime, timedelta
@@ -511,6 +512,7 @@ def weekly(
                 f"winners {overall.get('winners', 0)}, beat market {overall.get('beat_market', 0)}"
             )
     lines += self_review_lines(start, today, root=root)
+    lines += trial_progress_lines(today, root=root)
     health = _json(root / REPORTS / "health.json")
     failing = health.get("failing") or []
     lines.append(f"Failing tasks now: {len(failing)}")
@@ -520,6 +522,60 @@ def weekly(
     )
     lines.append(RESEARCH)
     return "Weekly numbers", "\n".join(lines)
+
+
+# Forward trials judged in the lab: (label, report under LAB, kind, bar as text). Display only;
+# the bars themselves live in each trial's module and are never read or changed here.
+LAB_TRIALS = (
+    ("Results-day fade", "results_reaction/fade_forward.json", "trades",
+     "bar 150+ trades, 20+ days, t >= 2.5"),
+    ("Results short", "results_short/forward.json", "trades",
+     "bar 150+ trades, 20+ days, t >= 2.5"),
+    ("Convergence", "convergence/forward.json", "calls", "bar 30+ closed calls, t >= 2.0"),
+    ("IPO listing", "ipo_listing/forward.json", "calls", "bar 30+ closed calls, t >= 2.0"),
+)  # fmt: skip
+
+
+def _about(today: date, remaining: int, unit: str) -> date:
+    """Rough verdict date: weekdays for sessions (exchange holidays ignored), else weeks."""
+
+    if unit != "sessions":
+        return today + timedelta(weeks=remaining)
+    day = today
+    while remaining > 0:
+        day += timedelta(days=1)
+        remaining -= day.weekday() < 5
+    return day
+
+
+def trial_progress_lines(today: date, *, root: Path = Path(".")) -> list[str]:
+    """Where each forward paper trial stands against its fixed bar, from the money board and
+    the lab trials' own reports. Nothing here judges a trial."""
+
+    lines = ["Trials (paper) - progress to each fixed bar:"]
+    for row in _json(root / REPORTS / "money_board.json").get("rows") or []:
+        verdict = str(row.get("verdict") or "")
+        text = f"  {row.get('name')}: Rs {float(row.get('rupees') or 0):+,.0f} - {verdict}"
+        found = re.search(r"Too early: (\d+) of (\d+) closed$", verdict)
+        if found and "paper calls" not in verdict:
+            unit = "weeks" if "condor" in str(row.get("name")).lower() else "sessions"
+            done, needed = int(found[1]), int(found[2])
+            text += f" (verdict about {_about(today, needed - done, unit):%d %b %Y})"
+        lines.append(text)
+    for label, path, kind, bar in LAB_TRIALS:
+        report = _json(root / LAB / path)
+        if not report:
+            continue
+        if kind == "trades":
+            t = report.get("t_excess")
+            done = (
+                f"{report.get('trades', 0)} trades over {report.get('days', 0)} days, "
+                f"t {'-' if t is None else f'{float(t):.2f}'}"
+            )
+        else:
+            done = f"{report.get('closed', 0)} closed, {report.get('open', 0)} open"
+        lines.append(f"  {label}: {done} ({bar})")
+    return lines if len(lines) > 1 else []
 
 
 def self_review_lines(start: date, end: date, *, root: Path = Path(".")) -> list[str]:
