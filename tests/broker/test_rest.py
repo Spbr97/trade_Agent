@@ -8,7 +8,7 @@ import pytest
 import respx
 
 from tradedesk.broker.indstocks.models import IST, Interval
-from tradedesk.broker.indstocks.rest import BASE_URL, ApiError, IndstocksClient
+from tradedesk.broker.indstocks.rest import BASE_URL, ApiError, IndstocksClient, api_code
 
 HIST = f"{BASE_URL}/market/historical"
 
@@ -98,6 +98,37 @@ async def test_history_batches_codes_five_at_a_time(client: IndstocksClient) -> 
     assert set(got) == set(codes)
     first = route.calls[0].request.url.params["scrip-codes"].split(",")
     assert len(first) == 5
+
+
+def test_api_code_renames_only_index_codes() -> None:
+    assert api_code("NSE_40000001") == "NIDX_40000001"  # NIFTY 50
+    assert api_code("BSE_40000006") == "BIDX_40000006"  # SENSEX
+    assert api_code("NSE_2885") == "NSE_2885"
+    assert api_code("NSE_766875") == "NSE_766875"
+    assert api_code("CDX_BTCINR") == "CDX_BTCINR"
+
+
+@respx.mock
+async def test_index_codes_go_out_as_nidx_and_come_back_as_stored(
+    client: IndstocksClient,
+) -> None:
+    t = datetime(2026, 11, 20, tzinfo=IST)
+    route = respx.get(f"{HIST}/1day").mock(
+        return_value=httpx.Response(200, json={"success": True, "data": {
+            "NIDX_40000001": {"candles": [candle(t, 25800.6)]},
+            "NSE_2885": {"candles": [candle(t, 1367.0)]},
+        }})  # fmt: skip
+    )
+    got = await client.candles(Interval.D1, ["NSE_40000001", "NSE_2885"], t, t + timedelta(1))
+    assert dict(route.calls[0].request.url.params)["scrip-codes"] == "NIDX_40000001,NSE_2885"
+    assert got["NSE_40000001"][0].close == 25800.6 and got["NSE_2885"][0].close == 1367.0
+    assert got["NSE_40000001"][0].scrip_code == "NSE_40000001"
+    respx.get(f"{BASE_URL}/market/quotes/ltp").mock(
+        return_value=httpx.Response(200, json={"status": "success", "data": {
+            "NIDX_40000107": {"live_price": 17.73}}})  # fmt: skip
+    )
+    q = await client.quotes_ltp(["NSE_40000107"])
+    assert q["NSE_40000107"].live_price == 17.73
 
 
 @respx.mock

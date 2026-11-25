@@ -50,6 +50,19 @@ MAX_CANDLE_CODES_PER_CALL = 5
 MIN_WINDOW_PAD = timedelta(days=6)  # stays clear of the narrow-window-near-now quirk above
 MAX_QUOTE_CODES_PER_CALL = 1000
 MAX_ATTEMPTS = 5
+_INDEX_PREFIX = {"NSE": "NIDX_", "BSE": "BIDX_"}
+
+
+def api_code(code: str) -> str:
+    """The REST name of a scrip code. From 2026-11-20 the API answers index codes written
+    NSE_/BSE_ + security id (ids 4000xxxx, /market/instruments?source=index) with
+    DATA_NOT_AVAILABLE and serves them as NIDX_/BIDX_ + id instead, candles from 2017 and
+    quotes alike (checked 2026-11-26). Stored data and every caller keep the NSE_/BSE_ code;
+    only the request and the reply keys are translated here."""
+    exch, _, sid = code.partition("_")
+    if exch in _INDEX_PREFIX and len(sid) == 8 and sid.startswith("4000"):
+        return _INDEX_PREFIX[exch] + sid
+    return code
 BACKOFF_BASE_SECONDS = 0.5
 BACKOFF_CAP_SECONDS = 8.0
 
@@ -270,7 +283,7 @@ class IndstocksClient:
             f"/market/historical/{interval.value}",
             category=Category.DATA,
             params={
-                "scrip-codes": ",".join(scrip_codes),
+                "scrip-codes": ",".join(api_code(c) for c in scrip_codes),
                 "start_time": _to_epoch_ms(start),
                 "end_time": _to_epoch_ms(end),
             },
@@ -278,7 +291,7 @@ class IndstocksClient:
         data = body.get("data") or {}
         out: dict[str, list[Candle]] = {}
         for code in scrip_codes:  # codes with no data are absent from `data`
-            raw = data.get(code, {}).get("candles") or []
+            raw = data.get(api_code(code), {}).get("candles") or []
             out[code] = [Candle.from_api(code, interval, c) for c in raw]
         return out
 
@@ -352,9 +365,11 @@ class IndstocksClient:
             body = await self._get_json(
                 "/market/quotes/full",
                 category=Category.QUOTE,
-                params={"scrip-codes": ",".join(batch)},
+                params={"scrip-codes": ",".join(api_code(c) for c in batch)},
             )
-            for code, raw in (body.get("data") or {}).items():
+            back = {api_code(c): c for c in batch}
+            for key, raw in (body.get("data") or {}).items():
+                code = back.get(key, key)
                 out[code] = FullQuote.from_api(code, raw)
         return out
 
@@ -364,9 +379,11 @@ class IndstocksClient:
             body = await self._get_json(
                 "/market/quotes/ltp",
                 category=Category.QUOTE,
-                params={"scrip-codes": ",".join(batch)},
+                params={"scrip-codes": ",".join(api_code(c) for c in batch)},
             )
-            for code, raw in (body.get("data") or {}).items():
+            back = {api_code(c): c for c in batch}
+            for key, raw in (body.get("data") or {}).items():
+                code = back.get(key, key)
                 out[code] = LtpQuote(scrip_code=code, live_price=float(raw["live_price"]))
         return out
 
