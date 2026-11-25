@@ -2000,6 +2000,24 @@ def _last_scan_ts(store: CandleStore, ref: str, market: str) -> datetime | None:
     return store.last_ts(ref, Interval.D1)
 
 
+def _stocks_ahead_of(
+    store: CandleStore, last: datetime, prefix: str, min_codes: int = 100
+) -> datetime | None:
+    """The newest daily session at least `min_codes` stocks hold beyond the benchmark's `last`
+    bar, or None. Found 2026-11-26: the broker stopped serving index candles on 2026-11-20, the
+    benchmark stuck at 11-19 while stocks kept loading, and every evening scan re-scanned
+    11-19 and overwrote its recorded watchlist."""
+
+    row = store.con.execute(
+        "SELECT max(ts) FROM (SELECT ts FROM candles WHERE interval = '1day' "
+        "AND starts_with(scrip_code, ?) AND ts > ? GROUP BY ts HAVING count(*) >= ?)",
+        [prefix, int(last.timestamp()), min_codes],
+    ).fetchone()
+    if row is None or row[0] is None:
+        return None
+    return datetime.fromtimestamp(int(row[0]), tz=last.tzinfo)
+
+
 @app.command()
 def scan(
     on: str = typer.Option("today", "--date", help="YYYY-MM-DD or 'today' (last stored session)"),
@@ -2048,6 +2066,14 @@ def scan(
             last = _last_scan_ts(store, ref, market)
             if last is None:
                 raise typer.BadParameter("no benchmark candles stored; run `tradedesk data load`")
+            ahead = None if market == "crypto" else _stocks_ahead_of(store, last, mkt.code_prefix)
+            if ahead is not None:
+                typer.echo(
+                    f"BENCHMARK STALE: {ref} ends {last.date()} but stocks have {ahead.date()}; "
+                    "not scanning (it would re-scan an old session and overwrite its watchlist). "
+                    "Check that the index candles still load."
+                )
+                raise typer.Exit(code=1)
             day = last.date()
         else:
             day = datetime.strptime(on, "%Y-%m-%d").date()

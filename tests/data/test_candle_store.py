@@ -383,3 +383,24 @@ def test_scan_uses_todays_bar_for_equity_but_only_closed_bars_for_crypto(
     assert _last_scan_ts(store, "NSE_3045", "bse") == day2
     # crypto: today's bar is still forming until its 24h window ends, so only day1 is final
     assert _last_scan_ts(store, "NSE_3045", "crypto") == day1
+
+
+def test_scan_sees_a_benchmark_left_behind_by_the_stocks(store: CandleStore) -> None:
+    """Regression (2026-11-26): index candles stopped loading, the benchmark stuck on an old
+    session and every evening scan rewrote that session's watchlist."""
+    from tradedesk.cli import _stocks_ahead_of
+
+    day1 = datetime(2026, 11, 19, tzinfo=IST)
+    day2 = day1 + timedelta(days=1)
+
+    def bars(code: str, *days: datetime) -> list[Candle]:
+        return [Candle(scrip_code=code, interval=Interval.D1, ts=t, open=100.0, high=101.0,
+                       low=99.0, close=100.5, volume=10) for t in days]  # fmt: skip
+
+    store.upsert_candles(bars("NSE_40000001", day1))
+    store.upsert_candles([c for i in range(5) for c in bars(f"NSE_{i}", day1, day2)])
+    store.upsert_candles(bars("BSE_9", day1, day2))
+    assert _stocks_ahead_of(store, day1, "NSE_", min_codes=5) == day2
+    assert _stocks_ahead_of(store, day1, "NSE_", min_codes=6) is None  # a few stray codes
+    assert _stocks_ahead_of(store, day2, "NSE_", min_codes=5) is None  # benchmark current
+    assert _stocks_ahead_of(store, day1, "BSE_", min_codes=2) is None
